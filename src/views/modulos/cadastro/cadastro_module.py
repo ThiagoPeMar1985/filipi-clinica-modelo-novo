@@ -363,7 +363,7 @@ class CadastroModule(BaseModule):
         btn_cancelar = tk.Button(
             botoes_frame,
             text="Cancelar",
-            command=self.janela_novo_usuario.destroy,
+            command=self.janela_form_usuario.destroy,
             bg='#f44336',
             fg='white',
             font=('Arial', 10, 'bold'),
