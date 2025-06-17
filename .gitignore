@@ -1,0 +1,343 @@
+# Arquivos de ambiente
+.env
+*.env.local
+*.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDEs e editores
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Banco de dados
+*.sqlite3
+*.db
+*.sql
+
+# Arquivos temporários
+*.tmp
+*.bak
+*.swp
+*~.nib
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos de desenvolvimento local
+instance/
+.webassets-cache
+
+# Arquivos de configuração local
+config_local.py
+
+# Arquivos de cache
+.cache/
+.coverage
+htmlcov/
+
+# Arquivos de build
+dist/
+build/
+*.spec
+
+# Arquivos de teste
+.pytest_cache/
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Arquivos de documentação
+docs/_build/
+
+# Arquivos de ambiente virtual
+venv/
+ENV/
+
+# Arquivos do PyCharm
+.idea/
+
+# Arquivos do VS Code
+.vscode/
+
+# Arquivos do Jupyter Notebook
+.ipynb_checkpoints
+
+# Arquivos de log personalizados
+logs/
+*.log
+
+# Arquivos de banco de dados
+*.sqlite
+*.db
+
+# Arquivos de cache do Python
+.pytest_cache/
+.mypy_cache/
+__pycache__/
+
+# Arquivos de ambiente
+.env
+*.env
+
+# Arquivos de configuração local
+config_local.py
+
+# Arquivos gerados pelo sistema
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Distribuição / instalação
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Instaladores de pacotes
+*.exe
+*.msi
+*.msm
+*.msp
+
+# Unittests / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Documentação
+docs/_build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Configurações locais
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Arquivos de cache do npm
+node_modules/
+
+# Arquivos de cache do yarn
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Arquivos de ambiente do Python
+.env.venv
+env/
+venv/
+ENV/
+
+# Arquivos de configuração do VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Arquivos de configuração do PyCharm
+.idea/
+
+# Arquivos de configuração do PyCharm
+.idea/*
+!.idea/modules.xml
+!.idea/misc.xml
+
+# Arquivos de configuração do Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Arquivos de configuração do Vim
+*.swp
+*.swo
+
+# Arquivos de configuração do macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Arquivos de configuração do Windows
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+
+# Arquivos de configuração do Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Arquivos de configuração do Python
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribuição / instalação
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Instaladores de pacotes
+*.exe
+*.msi
+*.msm
+*.msp
+
+# Unittests / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Documentação
+docs/_build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Configurações locais
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Arquivos de cache do npm
+node_modules/
+
+# Arquivos de cache do yarn
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Arquivos de ambiente do Python
+.env.venv
+env/
+venv/
+ENV/
+
+# Arquivos de configuração do VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Arquivos de configuração do PyCharm
+.idea/
+
+# Arquivos de configuração do PyCharm
+.idea/*
+!.idea/modules.xml
+!.idea/misc.xml
+
+# Arquivos de configuração do Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Arquivos de configuração do Vim
+*.swp
+*.swo
+
+# Arquivos de configuração do macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Arquivos de configuração do Windows
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+
+# Arquivos de configuração do Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
