@@ -72,6 +72,73 @@ class CadastroDB:
         """Inicializa com uma conexão de banco de dados."""
         self.db = db_connection
     
+    # Métodos para Funcionários
+    def listar_funcionarios(self) -> List[Dict[str, Any]]:
+        """Lista todos os funcionários cadastrados."""
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM funcionarios ORDER BY nome")
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"Erro ao listar funcionários: {e}")
+            return []
+    
+    def obter_funcionario(self, funcionario_id: int) -> Optional[Dict[str, Any]]:
+        """Obtém um funcionário pelo ID."""
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM funcionarios WHERE id = %s", (funcionario_id,))
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"Erro ao obter funcionário: {e}")
+            return None
+    
+    def inserir_funcionario(self, **dados) -> bool:
+        """Insere um novo funcionário no banco de dados."""
+        try:
+            cursor = self.db.cursor()
+            campos = ', '.join(dados.keys())
+            valores = tuple(dados.values())
+            placeholders = ', '.join(['%s'] * len(dados))
+            
+            query = f"INSERT INTO funcionarios ({campos}) VALUES ({placeholders})"
+            cursor.execute(query, valores)
+            self.db.commit()
+            return True
+        except Exception as e:
+            print(f"Erro ao inserir funcionário: {e}")
+            self.db.rollback()
+            return False
+    
+    def atualizar_funcionario(self, funcionario_id: int, **dados) -> bool:
+        """Atualiza os dados de um funcionário existente."""
+        try:
+            cursor = self.db.cursor()
+            sets = [f"{campo} = %s" for campo in dados.keys()]
+            valores = list(dados.values())
+            valores.append(funcionario_id)
+            
+            query = f"UPDATE funcionarios SET {', '.join(sets)} WHERE id = %s"
+            cursor.execute(query, valores)
+            self.db.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Erro ao atualizar funcionário: {e}")
+            self.db.rollback()
+            return False
+    
+    def excluir_funcionario(self, funcionario_id: int) -> bool:
+        """Exclui um funcionário do banco de dados."""
+        try:
+            cursor = self.db.cursor()
+            cursor.execute("DELETE FROM funcionarios WHERE id = %s", (funcionario_id,))
+            self.db.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Erro ao excluir funcionário: {e}")
+            self.db.rollback()
+            return False
+    
     # Métodos para Empresa
     def obter_empresa(self) -> Optional[Dict[str, Any]]:
         """Obtém os dados da empresa."""
@@ -100,6 +167,9 @@ class CadastroDB:
                         inscricao_estadual = %s, telefone = %s, endereco = %s
                     WHERE id = %s
                 """
+                # Obtém o ID da empresa existente corretamente
+                empresa_id = empresa_existente[0] if isinstance(empresa_existente, (list, tuple)) else empresa_existente.get('id')
+                
                 valores = (
                     dados['nome_fantasia'],
                     dados['razao_social'],
@@ -107,7 +177,7 @@ class CadastroDB:
                     dados['inscricao_estadual'],
                     dados['telefone'],
                     dados['endereco'],
-                    empresa_existente['id']
+                    empresa_id
                 )
             else:
                 # Insere nova empresa

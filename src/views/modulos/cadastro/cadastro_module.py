@@ -4,14 +4,15 @@ Módulo de Cadastro - Gerencia cadastros do sistema
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-import sys
 import os
-from pathlib import Path
+import sys
+from datetime import datetime
 
-# Adiciona o diretório raiz ao path para importar o módulo de banco de dados
+# Adicione o diretório raiz ao path para permitir importações absolutas
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from db.cadastro_db import CadastroDB
+# Importações locais
+from src.db.cadastro_db import CadastroDB
 from ..base_module import BaseModule
 
 class CadastroModule(BaseModule):
@@ -64,16 +65,116 @@ class CadastroModule(BaseModule):
     def mostrar_empresa(self):
         """Mostra a tela de cadastro da empresa"""
         self.limpar_conteudo()
+        
         try:
-            if self.db:
-                self.dados_empresa = self.db.obter_empresa()
-                # Aqui você pode adicionar os widgets para exibir/editar os dados da empresa
-                tk.Label(self.conteudo_frame, text="Dados da Empresa", font=('Arial', 14, 'bold')).pack(pady=10)
-                # Adicione mais widgets conforme necessário
-            else:
+            if not self.db:
                 messagebox.showwarning("Aviso", "Conexão com o banco de dados não disponível")
+                return
+                
+            # Carrega os dados da empresa
+            self.dados_empresa = self.db.obter_empresa()
+            
+            # Frame principal
+            main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+            main_frame.pack(fill='both', expand=True, padx=20, pady=20)
+            
+            # Título
+            title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+            title_frame.pack(fill='x', pady=(0, 20))
+            
+            tk.Label(
+                title_frame, 
+                text="CADASTRO DA EMPRESA", 
+                font=('Arial', 16, 'bold'),
+                bg='#f0f2f5',
+                fg='#333333'
+            ).pack(side='left')
+            
+            # Frame do formulário
+            form_frame = tk.Frame(main_frame, bg='white', padx=20, pady=20, bd=1, relief='groove')
+            form_frame.pack(fill='both', expand=True)
+            
+            # Estilo dos labels e campos
+            label_style = {'font': ('Arial', 10, 'bold'), 'bg': 'white', 'anchor': 'w'}
+            entry_style = {'font': ('Arial', 10), 'bd': 1, 'relief': 'solid', 'width': 40}
+            
+            # Dados da Empresa
+            tk.Label(form_frame, text="Dados da Empresa", font=('Arial', 12, 'bold'), bg='white').grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
+            
+            # Nome Fantasia (obrigatório)
+            tk.Label(form_frame, text="Nome Fantasia*:", **label_style).grid(row=1, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_nome = tk.Entry(form_frame, **entry_style)
+            self.empresa_nome.grid(row=1, column=1, padx=10, pady=5, sticky='w')
+            
+            # Razão Social
+            tk.Label(form_frame, text="Razão Social:", **label_style).grid(row=2, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_razao = tk.Entry(form_frame, **entry_style)
+            self.empresa_razao.grid(row=2, column=1, padx=10, pady=5, sticky='w')
+            
+            # CNPJ (obrigatório)
+            tk.Label(form_frame, text="CNPJ*:", **label_style).grid(row=3, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_cnpj = tk.Entry(form_frame, **entry_style)
+            self.empresa_cnpj.grid(row=3, column=1, padx=10, pady=5, sticky='w')
+            
+            # Inscrição Estadual
+            tk.Label(form_frame, text="Inscrição Estadual:", **label_style).grid(row=4, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_ie = tk.Entry(form_frame, **entry_style)
+            self.empresa_ie.grid(row=4, column=1, padx=10, pady=5, sticky='w')
+            
+            # Telefone
+            tk.Label(form_frame, text="Telefone:", **label_style).grid(row=5, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_telefone = tk.Entry(form_frame, **entry_style)
+            self.empresa_telefone.grid(row=5, column=1, padx=10, pady=5, sticky='w')
+            
+            # Endereço (texto livre)
+            tk.Label(form_frame, text="Endereço Completo:", **label_style).grid(row=6, column=0, padx=10, pady=5, sticky='nw')
+            self.empresa_endereco = tk.Text(form_frame, width=40, height=5, font=('Arial', 10), bd=1, relief='solid')
+            self.empresa_endereco.grid(row=6, column=1, padx=10, pady=5, sticky='w')
+            
+            # Frame para os botões
+            btn_frame = tk.Frame(main_frame, bg='#f0f2f5', pady=20)
+            btn_frame.pack(fill='x')
+            
+            # Botão Salvar
+            btn_salvar = tk.Button(
+                btn_frame,
+                text="SALVAR",
+                font=('Arial', 10, 'bold'),
+                bg='#4CAF50',
+                fg='white',
+                bd=0,
+                padx=20,
+                pady=8,
+                relief='flat',
+                cursor='hand2',
+                command=self.salvar_empresa
+            )
+            btn_salvar.pack(side='right', padx=10)
+            
+            # Botão Cancelar
+            btn_cancelar = tk.Button(
+                btn_frame,
+                text="CANCELAR",
+                font=('Arial', 10, 'bold'),
+                bg='#f44336',
+                fg='white',
+                bd=0,
+                padx=20,
+                pady=8,
+                relief='flat',
+                cursor='hand2',
+                command=self.cancelar_edicao
+            )
+            btn_cancelar.pack(side='right')
+            
+            # Ajusta o grid para expandir corretamente
+            form_frame.columnconfigure(1, weight=1)
+            
+            # Preenche os campos se existirem dados
+            self.preencher_campos_empresa()
+            
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao carregar dados da empresa: {str(e)}")
+            messagebox.showerror("Erro", f"Erro ao carregar os dados da empresa: {str(e)}")
     
     def mostrar_usuarios(self):
         """Mostra a tela de cadastro de usuários"""
@@ -90,7 +191,7 @@ class CadastroModule(BaseModule):
             # Frame principal com grid
             main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
             main_frame.pack(fill='both', expand=True, padx=10, pady=10)
-            main_frame.columnconfigure(0, weight=1)
+            main_frame.columnconfigure(1, weight=1)
             main_frame.rowconfigure(1, weight=1)
             
             # Frame do título
@@ -181,7 +282,7 @@ class CadastroModule(BaseModule):
             style.configure("Treeview.Heading", 
                 font=('Arial', 10, 'bold'),
                 background='#4a6fa5',
-                foreground='white',
+                foreground='black',
                 relief='flat')
                 
             style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
@@ -496,15 +597,431 @@ class CadastroModule(BaseModule):
     def mostrar_funcionarios(self):
         """Mostra a tela de cadastro de funcionários"""
         self.limpar_conteudo()
+        
         try:
-            if self.db:
-                self.lista_funcionarios = self.db.listar_funcionarios()
-                tk.Label(self.conteudo_frame, text="Lista de Funcionários", font=('Arial', 14, 'bold')).pack(pady=10)
-                # Adicione a tabela ou lista de funcionários aqui
-            else:
+            if not self.db:
                 messagebox.showwarning("Aviso", "Conexão com o banco de dados não disponível")
+                return
+                
+            # Carrega a lista de funcionários
+            self.lista_funcionarios = self.db.listar_funcionarios()
+            
+            # Frame principal com grid
+            main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+            main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+            main_frame.columnconfigure(1, weight=1)
+            main_frame.rowconfigure(1, weight=1)
+            
+            # Frame do título
+            title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+            title_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 10))
+            
+            tk.Label(
+                title_frame, 
+                text="LISTA DE FUNCIONÁRIOS", 
+                font=('Arial', 16, 'bold'),
+                bg='#f0f2f5',
+                fg='#333333'
+            ).pack(side='left')
+            
+            # Frame para os botões (lado esquerdo)
+            botoes_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=10, pady=10)
+            botoes_frame.grid(row=1, column=0, sticky='nsew', padx=(0, 5))
+            botoes_frame.columnconfigure(0, weight=1)
+            
+            # Configurando o estilo dos botões
+            btn_style = {
+                'font': ('Arial', 10, 'bold'),
+                'bg': '#4a6fa5',
+                'fg': 'white',
+                'bd': 0,
+                'padx': 20,
+                'pady': 8,
+                'relief': 'flat',
+                'cursor': 'hand2',
+                'width': 15
+            }
+            
+            # Botão Novo Funcionário
+            btn_novo = tk.Button(
+                botoes_frame,
+                text="Novo Funcionário",
+                **btn_style,
+                command=self.novo_funcionario
+            )
+            btn_novo.pack(pady=5, fill='x')
+            
+            # Botão Editar (inicialmente desabilitado)
+            self.btn_editar_func = tk.Button(
+                botoes_frame,
+                text="Editar",
+                **btn_style,
+                state='disabled',
+                command=self.editar_funcionario
+            )
+            self.btn_editar_func.pack(pady=5, fill='x')
+            
+            # Botão Excluir (inicialmente desabilitado)
+            btn_excluir_style = btn_style.copy()
+            btn_excluir_style['bg'] = '#f44336'  # Cor vermelha para o botão excluir
+            self.btn_excluir_func = tk.Button(
+                botoes_frame,
+                text="Excluir",
+                **btn_excluir_style,
+                state='disabled',
+                command=self.confirmar_exclusao_funcionario
+            )
+            self.btn_excluir_func.pack(pady=5, fill='x')
+            
+            # Frame para a tabela (lado direito)
+            tabela_container = tk.Frame(main_frame, bg='#d1d8e0')
+            tabela_container.grid(row=1, column=1, sticky='nsew', padx=(5, 0))
+            
+            # Frame interno para a tabela
+            tabela_frame = tk.Frame(tabela_container, bg='white', padx=1, pady=1)
+            tabela_frame.pack(fill='both', expand=True, padx=1, pady=1)
+            
+            # Cabeçalho da tabela
+            cabecalho = ['ID', 'Nome', 'Idade', 'CPF', 'Cargo', 'Telefone']
+            
+            # Criando a Treeview
+            style = ttk.Style()
+            style.configure("Treeview", 
+                background="#ffffff",
+                foreground="#333333",
+                rowheight=30,
+                fieldbackground="#ffffff",
+                borderwidth=0)
+                
+            style.map('Treeview', 
+                background=[('selected', '#4a6fa5')],
+                foreground=[('selected', 'white')])
+            
+            style.configure("Treeview.Heading", 
+                font=('Arial', 10, 'bold'),
+                background='#4a6fa5',
+                foreground='black',
+                relief='flat')
+                
+            style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
+            
+            self.tree_funcionarios = ttk.Treeview(
+                tabela_frame, 
+                columns=cabecalho, 
+                show='headings',
+                selectmode='browse',
+                style="Treeview"
+            )
+            
+            # Configurando as colunas
+            for col in cabecalho:
+                self.tree_funcionarios.heading(col, text=col)
+                self.tree_funcionarios.column(col, width=100, anchor='w')
+            
+            # Ajustando largura das colunas
+            self.tree_funcionarios.column('ID', width=50, anchor='center')
+            self.tree_funcionarios.column('Nome', width=200)
+            self.tree_funcionarios.column('Idade', width=60, anchor='center')
+            self.tree_funcionarios.column('CPF', width=120)
+            self.tree_funcionarios.column('Cargo', width=150)
+            self.tree_funcionarios.column('Telefone', width=120)
+            
+            # Adicionando barra de rolagem
+            scrollbar = ttk.Scrollbar(tabela_frame, orient='vertical', command=self.tree_funcionarios.yview)
+            self.tree_funcionarios.configure(yscrollcommand=scrollbar.set)
+            
+            # Posicionando os widgets
+            self.tree_funcionarios.pack(side='left', fill='both', expand=True)
+            scrollbar.pack(side='right', fill='y')
+            
+            # Preenchendo a tabela com os dados
+            for funcionario in self.lista_funcionarios:
+                self.tree_funcionarios.insert(
+                    '', 'end', 
+                    values=(
+                        funcionario.get('id', ''),
+                        funcionario.get('nome', ''),
+                        funcionario.get('idade', ''),
+                        funcionario.get('cpf', ''),
+                        funcionario.get('cargo', ''),
+                        funcionario.get('telefone', '')
+                    )
+                )
+            
+            # Configurar evento de seleção
+            self.tree_funcionarios.bind('<<TreeviewSelect>>', self.atualizar_botoes_funcionarios)
+            
+            # Ajustando o layout
+            self.conteudo_frame.update_idletasks()
+            
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao listar funcionários: {str(e)}")
+            messagebox.showerror("Erro", f"Erro ao carregar funcionários: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def atualizar_botoes_funcionarios(self, event=None):
+        """Atualiza o estado dos botões com base na seleção"""
+        selecionado = bool(self.tree_funcionarios.selection())
+        state = 'normal' if selecionado else 'disabled'
+        self.btn_editar_func.config(state=state)
+        self.btn_excluir_func.config(state=state)
+    
+    def _criar_formulario_funcionario(self, titulo, funcionario_id=None):
+        """Cria o formulário de cadastro/edição de funcionário"""
+        # Janela de formulário
+        self.janela_form_funcionario = tk.Toplevel(self.frame)
+        self.janela_form_funcionario.title(titulo)
+        self.janela_form_funcionario.resizable(False, False)
+        
+        # Armazena o ID do funcionário em edição (None para novo funcionário)
+        self.funcionario_editando_id = funcionario_id
+        
+        # Centraliza a janela
+        largura_janela = 450
+        altura_janela = 500
+        largura_tela = self.janela_form_funcionario.winfo_screenwidth()
+        altura_tela = self.janela_form_funcionario.winfo_screenheight()
+        posx = (largura_tela // 2) - (largura_janela // 2)
+        posy = (altura_tela // 2) - (altura_janela // 2)
+        self.janela_form_funcionario.geometry(f'{largura_janela}x{altura_janela}+{posx}+{posy}')
+        
+        # Frame principal
+        main_frame = tk.Frame(self.janela_form_funcionario, padx=20, pady=20)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Título
+        tk.Label(
+            main_frame,
+            text=titulo.upper(),
+            font=('Arial', 14, 'bold'),
+            pady=10
+        ).grid(row=0, column=0, columnspan=2, pady=(0, 20))
+        
+        # Dicionário para armazenar as variáveis dos campos
+        self.campos_funcionario = {}
+        
+        # Se estiver editando, carrega os dados do funcionário
+        dados_funcionario = None
+        if funcionario_id is not None:
+            # Busca o funcionário pelo ID na lista
+            for func in self.lista_funcionarios:
+                if func['id'] == funcionario_id:
+                    dados_funcionario = func
+                    break
+        
+        # Lista de cargos pré-definidos
+        cargos = [
+            "Bartender", "Caixa", "Gerente", "Garçom",
+            "Auxiliar", "Segurança", "Cozinheiro",
+            "Gerente"
+        ]
+        
+        # Campos do formulário
+        campos = [
+            ("Nome*:", 'entry', True, {'value': dados_funcionario['nome'] if dados_funcionario else ''}),
+            ("Idade:", 'entry', False, {'value': str(dados_funcionario.get('idade', '')) if dados_funcionario and dados_funcionario.get('idade') else ''}),
+            ("CPF:", 'entry', False, {'value': dados_funcionario.get('cpf', '') if dados_funcionario else ''}),
+            ("Cargo:", 'combobox', False, {
+                'values': cargos,
+                'value': dados_funcionario.get('cargo', '') if dados_funcionario else '',
+                'state': 'readonly',
+                'width': 37
+            }),
+            ("Telefone:", 'entry', False, {'value': dados_funcionario.get('telefone', '') if dados_funcionario else ''}),
+            ("Endereço:", 'text', False, {'value': dados_funcionario.get('endereco', '') if dados_funcionario else ''})
+        ]
+        
+        # Cria os campos do formulário
+        for i, (label_text, field_type, required, kwargs) in enumerate(campos, 1):
+            # Label
+            label = tk.Label(main_frame, text=label_text, font=('Arial', 10, 'bold'), anchor='w')
+            label.grid(row=i, column=0, sticky='w', pady=(5, 2))
+            
+            # Campo
+            if field_type == 'entry':
+                var = tk.StringVar(value=kwargs.get('value', ''))
+                entry = tk.Entry(
+                    main_frame, 
+                    textvariable=var,
+                    font=('Arial', 10),
+                    width=40
+                )
+                entry.grid(row=i, column=1, sticky='w', pady=(5, 2), padx=(10, 0))
+                self.campos_funcionario[label_text.replace('*', '').replace(':', '').lower()] = entry
+            elif field_type == 'combobox':
+                var = tk.StringVar()
+                combo = ttk.Combobox(
+                    main_frame,
+                    textvariable=var,
+                    font=('Arial', 10),
+                    **{k: v for k, v in kwargs.items() if k != 'value'}
+                )
+                if 'value' in kwargs:
+                    var.set(kwargs['value'])
+                combo.grid(row=i, column=1, sticky='w', pady=(5, 2), padx=(10, 0))
+                self.campos_funcionario[label_text.replace('*', '').replace(':', '').lower()] = combo
+            elif field_type == 'text':
+                text = tk.Text(
+                    main_frame,
+                    font=('Arial', 10),
+                    width=40,
+                    height=5,
+                    wrap='word'
+                )
+                text.grid(row=i, column=1, sticky='w', pady=(5, 2), padx=(10, 0))
+                if 'value' in kwargs and kwargs['value'] is not None:
+                    text.insert('1.0', str(kwargs['value']))
+                self.campos_funcionario['endereco'] = text
+        
+        # Frame dos botões
+        btn_frame = tk.Frame(main_frame)
+        btn_frame.grid(row=len(campos) + 1, column=0, columnspan=2, pady=(20, 0))
+        
+        # Botão Salvar
+        btn_salvar = tk.Button(
+            btn_frame,
+            text="SALVAR",
+            font=('Arial', 10, 'bold'),
+            bg='#4CAF50',
+            fg='white',
+            bd=0,
+            padx=20,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            command=self.salvar_funcionario
+        )
+        btn_salvar.pack(side='left', padx=5)
+        
+        # Botão Cancelar
+        btn_cancelar = tk.Button(
+            btn_frame,
+            text="CANCELAR",
+            font=('Arial', 10, 'bold'),
+            bg='#f44336',
+            fg='white',
+            bd=0,
+            padx=20,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            command=self.janela_form_funcionario.destroy
+        )
+        btn_cancelar.pack(side='left', padx=5)
+        
+        # Centraliza os botões
+        btn_frame.grid_columnconfigure(0, weight=1)
+        btn_frame.grid_columnconfigure(1, weight=1)
+        
+        # Configura o grid para expandir corretamente
+        main_frame.grid_rowconfigure(len(campos) + 1, weight=1)
+        main_frame.grid_columnconfigure(1, weight=1)
+    
+    def novo_funcionario(self):
+        """Abre o formulário para criar um novo funcionário"""
+        self._criar_formulario_funcionario("Novo Funcionário")
+    
+    def editar_funcionario(self):
+        """Abre o formulário para editar o funcionário selecionado"""
+        selecionado = self.tree_funcionarios.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um funcionário para editar")
+            return
+            
+        # Obtém o ID do funcionário selecionado
+        item = self.tree_funcionarios.item(selecionado[0])
+        funcionario_id = item['values'][0]
+        
+        # Abre o formulário de edição
+        self._criar_formulario_funcionario("Editar Funcionário", funcionario_id)
+    
+    def salvar_funcionario(self):
+        """Salva um funcionário no banco de dados (cria novo ou atualiza existente)"""
+        try:
+            # Obtém os valores dos campos
+            def get_valor(campo, padrao=''):
+                widget = self.campos_funcionario.get(campo)
+                if isinstance(widget, (tk.Entry, ttk.Combobox)):
+                    return widget.get().strip()
+                elif isinstance(widget, tk.Text):
+                    return widget.get('1.0', 'end-1c').strip()
+                return padrao
+            
+            nome = get_valor('nome')
+            idade = get_valor('idade')
+            cpf = get_valor('cpf')
+            cargo = get_valor('cargo')
+            telefone = get_valor('telefone')
+            endereco = get_valor('endereco')
+            
+            # Validação dos campos obrigatórios
+            if not nome:
+                messagebox.showwarning("Aviso", "O campo Nome é obrigatório")
+                if 'nome' in self.campos_funcionario:
+                    self.campos_funcionario['nome'].focus()
+                return
+            
+            # Prepara os dados para salvar
+            try:
+                idade_int = int(idade) if idade and idade.isdigit() else None
+            except (ValueError, AttributeError):
+                idade_int = None
+                
+            dados = {
+                'nome': nome,
+                'idade': idade_int,
+                'cpf': cpf or None,
+                'cargo': cargo or None,
+                'telefone': telefone or None,
+                'endereco': endereco or None
+            }
+            
+            # Salva no banco de dados
+            if self.funcionario_editando_id is not None:
+                # Atualiza funcionário existente
+                resultado = self.db.atualizar_funcionario(self.funcionario_editando_id, **dados)
+                mensagem = "atualizado"
+            else:
+                # Cria novo funcionário
+                resultado = self.db.inserir_funcionario(**dados)
+                mensagem = "cadastrado"
+            
+            if resultado:
+                messagebox.showinfo("Sucesso", f"Funcionário {mensagem} com sucesso!")
+                self.janela_form_funcionario.destroy()
+                self.mostrar_funcionarios()  # Atualiza a lista
+            else:
+                messagebox.showerror("Erro", f"Erro ao salvar funcionário: {self.db.ultimo_erro}")
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao salvar funcionário: {str(e)}")
+    
+    def confirmar_exclusao_funcionario(self):
+        """Confirma a exclusão de um funcionário"""
+        selecionado = self.tree_funcionarios.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um funcionário para excluir")
+            return
+            
+        # Obtém o ID e nome do funcionário selecionado
+        item = self.tree_funcionarios.item(selecionado[0])
+        funcionario_id = item['values'][0]
+        nome = item['values'][1]
+        
+        # Confirma a exclusão
+        if messagebox.askyesno("Confirmar Exclusão", f"Tem certeza que deseja excluir o funcionário {nome}?"):
+            self.excluir_funcionario(funcionario_id)
+    
+    def excluir_funcionario(self, funcionario_id):
+        """Exclui um funcionário do banco de dados"""
+        try:
+            if self.db.excluir_funcionario(funcionario_id):
+                messagebox.showinfo("Sucesso", "Funcionário excluído com sucesso!")
+                self.mostrar_funcionarios()  # Atualiza a lista
+            else:
+                messagebox.showerror("Erro", f"Erro ao excluir funcionário: {self.db.ultimo_erro}")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao excluir funcionário: {str(e)}")
     
     def mostrar_clientes(self):
         """Mostra a tela de cadastro de clientes"""
@@ -673,50 +1190,64 @@ class CadastroModule(BaseModule):
     
     def preencher_campos_empresa(self):
         """Preenche os campos do formulário com os dados da empresa"""
-        if not self.dados_empresa or not hasattr(self, 'campos_empresa'):
+        if not self.dados_empresa:
             return
             
-        for campo, entry in self.campos_empresa.items():
-            try:
+        try:
+            # Mapeia os campos do formulário para as chaves do dicionário de dados
+            campos = {
+                'nome_fantasia': (self.empresa_nome, 'insert'),
+                'razao_social': (self.empresa_razao, 'insert'),
+                'cnpj': (self.empresa_cnpj, 'insert'),
+                'inscricao_estadual': (self.empresa_ie, 'insert'),
+                'telefone': (self.empresa_telefone, 'insert'),
+                'endereco': (self.empresa_endereco, 'insert_text')
+            }
+            
+            # Preenche cada campo com o valor correspondente, se existir
+            for campo, (widget, method) in campos.items():
                 if campo in self.dados_empresa and self.dados_empresa[campo] is not None:
                     valor = str(self.dados_empresa[campo])
-                    if isinstance(entry, tk.Text):
-                        entry.delete('1.0', tk.END)
-                        entry.insert('1.0', valor)
-                    else:
-                        entry.delete(0, tk.END)
-                        entry.insert(0, valor)
-            except Exception as e:
-                print(f"Erro ao preencher campo {campo}: {str(e)}")
+                    if method == 'insert':
+                        widget.delete(0, tk.END)
+                        widget.insert(0, valor)
+                    elif method == 'insert_text':
+                        widget.delete('1.0', tk.END)
+                        widget.insert('1.0', valor)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao preencher os dados da empresa: {str(e)}")
     
     def salvar_empresa(self):
         """Salva os dados da empresa"""
         try:
             # Coleta os dados dos campos
-            dados = {}
-            for campo, entry in self.campos_empresa.items():
-                if isinstance(entry, tk.Text):
-                    dados[campo] = entry.get('1.0', 'end-1c').strip()
-                else:
-                    dados[campo] = entry.get().strip()
+            dados = {
+                'nome_fantasia': self.empresa_nome.get().strip(),
+                'razao_social': self.empresa_razao.get().strip(),
+                'cnpj': self.empresa_cnpj.get().strip(),
+                'inscricao_estadual': self.empresa_ie.get().strip() or None,
+                'telefone': self.empresa_telefone.get().strip() or None,
+                'endereco': self.empresa_endereco.get('1.0', 'end-1c').strip() or None
+            }
             
-            # Validação dos campos obrigatórios
-            if not dados.get('nome_fantasia'):
+            # Validação do campo obrigatório
+            if not dados['nome_fantasia']:
                 messagebox.showwarning("Aviso", "O campo Nome Fantasia é obrigatório.")
+                self.empresa_nome.focus_set()
                 return
                 
-            if not dados.get('cnpj'):
-                messagebox.showwarning("Aviso", "O campo CNPJ é obrigatório.")
-                return
-                
-            # Remove caracteres não numéricos do CNPJ
-            cnpj_limpo = ''.join(filter(str.isdigit, dados['cnpj']))
-            if len(cnpj_limpo) != 14:
-                messagebox.showwarning("Aviso", "CNPJ inválido. Deve conter 14 dígitos.")
-                return
-            
-            # Formata o CNPJ
-            dados['cnpj'] = f"{cnpj_limpo[:2]}.{cnpj_limpo[2:5]}.{cnpj_limpo[5:8]}/{cnpj_limpo[8:12]}-{cnpj_limpo[12:]}"
+            # Formata o CNPJ se preenchido
+            if dados['cnpj']:
+                # Remove caracteres não numéricos do CNPJ
+                cnpj_limpo = ''.join(filter(str.isdigit, dados['cnpj']))
+                if len(cnpj_limpo) != 14:
+                    messagebox.showwarning("Aviso", "CNPJ inválido. Deve conter 14 dígitos.")
+                    self.empresa_cnpj.focus_set()
+                    return
+                # Formata o CNPJ
+                dados['cnpj'] = f"{cnpj_limpo[:2]}.{cnpj_limpo[2:5]}.{cnpj_limpo[5:8]}/{cnpj_limpo[8:12]}-{cnpj_limpo[12:]}"
+            else:
+                dados['cnpj'] = None
             
             # Salva os dados no banco
             sucesso, mensagem = self.db.salvar_empresa(dados)
@@ -724,14 +1255,12 @@ class CadastroModule(BaseModule):
             if sucesso:
                 # Atualiza os dados em memória
                 self.dados_empresa = self.db.obter_empresa() or {}
-                messagebox.showinfo("Sucesso", mensagem)
-                # Volta para a tela inicial do módulo
-                self.mostrar_inicio()
+                messagebox.showinfo("Sucesso", "Dados da empresa salvos com sucesso!")
             else:
-                messagebox.showerror("Erro", mensagem)
+                messagebox.showerror("Erro", f"Não foi possível salvar os dados: {mensagem}")
             
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao salvar os dados: {str(e)}")
+            messagebox.showerror("Erro", f"Erro ao salvar os dados da empresa: {str(e)}")
     
     def cancelar_edicao(self):
         """Cancela a edição e volta para a tela inicial do módulo"""
