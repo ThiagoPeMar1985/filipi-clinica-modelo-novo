@@ -157,6 +157,37 @@ class SistemaPDV:
         self.content_frame = tk.Frame(self.container, bg=self.cores["fundo"])
         self.content_frame.pack(side="right", fill="both", expand=True)
         
+        # Mensagem de boas-vindas
+        welcome_label = tk.Label(
+            self.content_frame,
+            text=f"Bem-vindo, {self.usuario.nome}!",
+            font=("Arial", 28, "bold"),
+            bg=self.cores["fundo"],
+            fg=self.cores["texto"]
+        )
+        welcome_label.pack(pady=50)
+        
+        # Data atual
+        data_formatada = datetime.now().strftime("%d de %B de %Y").replace("June", "junho")
+        date_label = tk.Label(
+            self.content_frame,
+            text=data_formatada,
+            font=("Arial", 20),
+            bg=self.cores["fundo"],
+            fg=self.cores["texto"]
+        )
+        date_label.pack()
+        
+        # Créditos do software
+        credits_label = tk.Label(
+            self.content_frame,
+            text="Software produzido por Thiago Periard Martins",
+            font=("Arial", 14),
+            bg=self.cores["fundo"],
+            fg=self.cores["texto"]
+        )
+        credits_label.pack(side="bottom", pady=50)
+        
         # Inicializa o gerenciador de módulos como None
         self.modulo_manager = None
         
@@ -367,5 +398,3 @@ class SistemaPDV:
         """Fecha a aplicação"""
         if messagebox.askyesno("Sair", "Deseja realmente sair do sistema?"):
             self.root.destroy()
-    
-    
