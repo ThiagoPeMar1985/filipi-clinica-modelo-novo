@@ -48,7 +48,6 @@ id int AI PK
 nome varchar(255) 
 descricao text 
 tipo varchar(50) 
-preco_compra decimal(10,2) 
 preco_venda decimal(10,2) 
 unidade_medida varchar(10) 
 quantidade_minima decimal(10,2)
@@ -64,6 +63,7 @@ email varchar(255)
 
 """
 from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime
 
 class CadastroDB:
     """Classe para operações de banco de dados do módulo de Cadastro."""
@@ -376,6 +376,81 @@ class CadastroDB:
             print(f"Erro ao listar clientes: {e}")
             return []
     
+    def obter_cliente(self, cliente_id: int) -> Optional[Dict[str, Any]]:
+        """Obtém um cliente pendura pelo ID"""
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM clientes_pendura WHERE id = %s", (cliente_id,))
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"Erro ao obter cliente: {e}")
+            return None
+    
+    def inserir_cliente(self, **dados) -> bool:
+        """Insere um novo cliente pendura no banco de dados"""
+        try:
+            cursor = self.db.cursor()
+            query = """
+                INSERT INTO clientes_pendura 
+                (nome, telefone, cpf, endereco, observacoes, ativo)
+                VALUES (%s, %s, %s, %s, %s, 1)
+            """
+            valores = (
+                dados['nome'],
+                dados['telefone'],
+                dados['cpf'],
+                dados['endereco'],
+                dados['observacoes']
+            )
+            cursor.execute(query, valores)
+            self.db.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Erro ao inserir cliente: {e}")
+            self.db.rollback()
+            return False
+    
+    def atualizar_cliente(self, cliente_id: int, **dados) -> bool:
+        """Atualiza os dados de um cliente pendura"""
+        try:
+            cursor = self.db.cursor()
+            query = """
+                UPDATE clientes_pendura SET
+                nome = %s,
+                telefone = %s,
+                cpf = %s,
+                endereco = %s,
+                observacoes = %s
+                WHERE id = %s
+            """
+            valores = (
+                dados['nome'],
+                dados['telefone'],
+                dados['cpf'],
+                dados['endereco'],
+                dados['observacoes'],
+                cliente_id
+            )
+            cursor.execute(query, valores)
+            self.db.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Erro ao atualizar cliente: {e}")
+            self.db.rollback()
+            return False
+    
+    def excluir_cliente(self, cliente_id: int) -> bool:
+        """Exclui um cliente pendura (exclusão lógica)"""
+        try:
+            cursor = self.db.cursor()
+            cursor.execute("UPDATE clientes_pendura SET ativo = 0 WHERE id = %s", (cliente_id,))
+            self.db.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Erro ao excluir cliente: {e}")
+            self.db.rollback()
+            return False
+    
     def salvar_cliente(self, dados: Dict[str, Any]) -> Tuple[bool, str]:
         """Salva ou atualiza um cliente."""
         try:
@@ -442,134 +517,161 @@ class CadastroDB:
         """Lista todos os produtos cadastrados."""
         try:
             cursor = self.db.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM produtos")
+            cursor.execute("SELECT * FROM produtos ORDER BY nome")
             return cursor.fetchall()
         except Exception as e:
             print(f"Erro ao listar produtos: {e}")
             return []
-    
-    def salvar_produto(self, dados: Dict[str, Any]) -> Tuple[bool, str]:
-        """Salva ou atualiza um produto."""
+
+    def obter_produto(self, produto_id: int) -> Optional[Dict[str, Any]]:
+        """Obtém um produto pelo ID."""
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM produtos WHERE id = %s", (produto_id,))
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"Erro ao obter produto: {e}")
+            return None
+
+    def inserir_produto(self, **dados) -> bool:
+        """Insere um novo produto no banco de dados."""
         try:
             cursor = self.db.cursor()
+            campos = ', '.join(dados.keys())
+            valores = tuple(dados.values())
+            placeholders = ', '.join(['%s'] * len(dados))
             
-            if 'id' in dados and dados['id']:
-                # Atualização
-                query = """
-                    UPDATE produtos 
-                    SET nome = %s, descricao = %s, tipo = %s, 
-                        preco_compra = %s, preco_venda = %s, 
-                        unidade_medida = %s, quantidade_minima = %s
-                    WHERE id = %s
-                """
-                valores = (
-                    dados['nome'],
-                    dados.get('descricao', ''),
-                    dados.get('tipo', ''),
-                    dados.get('preco_compra', 0),
-                    dados.get('preco_venda', 0),
-                    dados.get('unidade_medida', 'UN'),
-                    dados.get('quantidade_minima', 0),
-                    dados['id']
-                )
-            else:
-                # Inserção
-                query = """
-                    INSERT INTO produtos 
-                    (nome, descricao, tipo, preco_compra, preco_venda, unidade_medida, quantidade_minima)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """
-                valores = (
-                    dados['nome'],
-                    dados.get('descricao', ''),
-                    dados.get('tipo', ''),
-                    dados.get('preco_compra', 0),
-                    dados.get('preco_venda', 0),
-                    dados.get('unidade_medida', 'UN'),
-                    dados.get('quantidade_minima', 0)
-                )
-            
+            query = f"INSERT INTO produtos ({campos}) VALUES ({placeholders})"
             cursor.execute(query, valores)
             self.db.commit()
-            return True, "Produto salvo com sucesso!"
-            
+            return True
         except Exception as e:
+            print(f"Erro ao inserir produto: {e}")
             self.db.rollback()
-            return False, f"Erro ao salvar produto: {str(e)}"
-    
-    def excluir_produto(self, produto_id: int) -> Tuple[bool, str]:
-        """Exclui um produto pelo ID."""
+            return False
+
+    def atualizar_produto(self, produto_id: int, **dados) -> bool:
+        """Atualiza um produto existente."""
+        try:
+            cursor = self.db.cursor()
+            campos = ', '.join([f"{k} = %s" for k in dados.keys()])
+            valores = tuple(dados.values()) + (produto_id,)
+            
+            query = f"UPDATE produtos SET {campos} WHERE id = %s"
+            cursor.execute(query, valores)
+            self.db.commit()
+            return True
+        except Exception as e:
+            print(f"Erro ao atualizar produto: {e}")
+            self.db.rollback()
+            return False
+
+    def excluir_produto(self, produto_id: int) -> bool:
+        """Exclui um produto do banco de dados"""
         try:
             cursor = self.db.cursor()
             cursor.execute("DELETE FROM produtos WHERE id = %s", (produto_id,))
             self.db.commit()
-            return True, "Produto excluído com sucesso!"
+            return cursor.rowcount > 0
         except Exception as e:
+            print(f"Erro ao excluir produto: {e}")
             self.db.rollback()
-            return False, f"Erro ao excluir produto: {str(e)}"
+            return False
+    
+    def remover_produto(self, produto_id: int) -> bool:
+        """Remove um produto do banco de dados."""
+        try:
+            cursor = self.db.cursor()
+            cursor.execute("DELETE FROM produtos WHERE id = %s", (produto_id,))
+            self.db.commit()
+            return True
+        except Exception as e:
+            print(f"Erro ao remover produto: {e}")
+            self.db.rollback()
+            return False
     
     # Métodos para Fornecedores
     def listar_fornecedores(self) -> List[Dict[str, Any]]:
-        """Lista todos os fornecedores cadastrados."""
+        """Lista todos os fornecedores cadastrados"""
         try:
             cursor = self.db.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM fornecedores")
+            cursor.execute("SELECT * FROM fornecedores ORDER BY empresa")
             return cursor.fetchall()
         except Exception as e:
             print(f"Erro ao listar fornecedores: {e}")
             return []
     
-    def salvar_fornecedor(self, dados: Dict[str, Any]) -> Tuple[bool, str]:
-        """Salva ou atualiza um fornecedor."""
+    def obter_fornecedor(self, fornecedor_id: int) -> Optional[Dict[str, Any]]:
+        """Obtém um fornecedor pelo ID"""
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM fornecedores WHERE id = %s", (fornecedor_id,))
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"Erro ao obter fornecedor: {e}")
+            return None
+    
+    def inserir_fornecedor(self, **dados) -> bool:
+        """Insere um novo fornecedor no banco de dados"""
         try:
             cursor = self.db.cursor()
-            
-            if 'id' in dados and dados['id']:
-                # Atualização
-                query = """
-                    UPDATE fornecedores 
-                    SET empresa = %s, vendedor = %s, produtos = %s, 
-                        telefone = %s, email = %s
-                    WHERE id = %s
-                """
-                valores = (
-                    dados['empresa'],
-                    dados.get('vendedor', ''),
-                    dados.get('produtos', ''),
-                    dados.get('telefone', ''),
-                    dados.get('email', ''),
-                    dados['id']
-                )
-            else:
-                # Inserção
-                query = """
-                    INSERT INTO fornecedores 
-                    (empresa, vendedor, produtos, telefone, email)
-                    VALUES (%s, %s, %s, %s, %s)
-                """
-                valores = (
-                    dados['empresa'],
-                    dados.get('vendedor', ''),
-                    dados.get('produtos', ''),
-                    dados.get('telefone', ''),
-                    dados.get('email', '')
-                )
-            
+            query = """
+                INSERT INTO fornecedores 
+                (empresa, vendedor, telefone, email, produtos)
+                VALUES (%s, %s, %s, %s, %s)
+            """
+            valores = (
+                dados['empresa'],
+                dados['vendedor'],
+                dados['telefone'],
+                dados['email'],
+                dados['produtos']
+            )
             cursor.execute(query, valores)
             self.db.commit()
-            return True, "Fornecedor salvo com sucesso!"
-            
+            return cursor.rowcount > 0
         except Exception as e:
+            print(f"Erro ao inserir fornecedor: {e}")
             self.db.rollback()
-            return False, f"Erro ao salvar fornecedor: {str(e)}"
+            return False
     
-    def excluir_fornecedor(self, fornecedor_id: int) -> Tuple[bool, str]:
-        """Exclui um fornecedor pelo ID."""
+    def atualizar_fornecedor(self, fornecedor_id: int, **dados) -> bool:
+        """Atualiza os dados de um fornecedor"""
+        try:
+            cursor = self.db.cursor()
+            query = """
+                UPDATE fornecedores SET
+                empresa = %s,
+                vendedor = %s,
+                telefone = %s,
+                email = %s,
+                produtos = %s
+                WHERE id = %s
+            """
+            valores = (
+                dados['empresa'],
+                dados['vendedor'],
+                dados['telefone'],
+                dados['email'],
+                dados['produtos'],
+                fornecedor_id
+            )
+            cursor.execute(query, valores)
+            self.db.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Erro ao atualizar fornecedor: {e}")
+            self.db.rollback()
+            return False
+    
+    def excluir_fornecedor(self, fornecedor_id: int) -> bool:
+        """Exclui um fornecedor do banco de dados"""
         try:
             cursor = self.db.cursor()
             cursor.execute("DELETE FROM fornecedores WHERE id = %s", (fornecedor_id,))
             self.db.commit()
-            return True, "Fornecedor excluído com sucesso!"
+            return cursor.rowcount > 0
         except Exception as e:
+            print(f"Erro ao excluir fornecedor: {e}")
             self.db.rollback()
-            return False, f"Erro ao excluir fornecedor: {str(e)}"
+            return False

@@ -138,7 +138,7 @@ class CadastroModule(BaseModule):
             # Botão Salvar
             btn_salvar = tk.Button(
                 btn_frame,
-                text="SALVAR",
+                text="Salvar",
                 font=('Arial', 10, 'bold'),
                 bg='#4CAF50',
                 fg='white',
@@ -154,7 +154,7 @@ class CadastroModule(BaseModule):
             # Botão Cancelar
             btn_cancelar = tk.Button(
                 btn_frame,
-                text="CANCELAR",
+                text="Cancelar",
                 font=('Arial', 10, 'bold'),
                 bg='#f44336',
                 fg='white',
@@ -834,8 +834,8 @@ class CadastroModule(BaseModule):
         # Cria os campos do formulário
         for i, (label_text, field_type, required, kwargs) in enumerate(campos, 1):
             # Label
-            label = tk.Label(main_frame, text=label_text, font=('Arial', 10, 'bold'), anchor='w')
-            label.grid(row=i, column=0, sticky='w', pady=(5, 2))
+            label = tk.Label(main_frame, text=label_text, font=('Arial', 10), anchor='w')
+            label.grid(row=i, column=0, sticky='w', padx=5, pady=5)
             
             # Campo
             if field_type == 'entry':
@@ -846,7 +846,7 @@ class CadastroModule(BaseModule):
                     font=('Arial', 10),
                     width=40
                 )
-                entry.grid(row=i, column=1, sticky='w', pady=(5, 2), padx=(10, 0))
+                entry.grid(row=i, column=1, sticky='w', padx=5, pady=5)
                 self.campos_funcionario[label_text.replace('*', '').replace(':', '').lower()] = entry
             elif field_type == 'combobox':
                 var = tk.StringVar()
@@ -858,7 +858,7 @@ class CadastroModule(BaseModule):
                 )
                 if 'value' in kwargs:
                     var.set(kwargs['value'])
-                combo.grid(row=i, column=1, sticky='w', pady=(5, 2), padx=(10, 0))
+                combo.grid(row=i, column=1, sticky='w', padx=5, pady=5)
                 self.campos_funcionario[label_text.replace('*', '').replace(':', '').lower()] = combo
             elif field_type == 'text':
                 text = tk.Text(
@@ -868,7 +868,7 @@ class CadastroModule(BaseModule):
                     height=5,
                     wrap='word'
                 )
-                text.grid(row=i, column=1, sticky='w', pady=(5, 2), padx=(10, 0))
+                text.grid(row=i, column=1, sticky='w', padx=5, pady=5)
                 if 'value' in kwargs and kwargs['value'] is not None:
                     text.insert('1.0', str(kwargs['value']))
                 self.campos_funcionario['endereco'] = text
@@ -880,7 +880,7 @@ class CadastroModule(BaseModule):
         # Botão Salvar
         btn_salvar = tk.Button(
             btn_frame,
-            text="SALVAR",
+            text="Salvar",
             font=('Arial', 10, 'bold'),
             bg='#4CAF50',
             fg='white',
@@ -896,7 +896,7 @@ class CadastroModule(BaseModule):
         # Botão Cancelar
         btn_cancelar = tk.Button(
             btn_frame,
-            text="CANCELAR",
+            text="Cancelar",
             font=('Arial', 10, 'bold'),
             bg='#f44336',
             fg='white',
@@ -1003,13 +1003,12 @@ class CadastroModule(BaseModule):
             messagebox.showwarning("Aviso", "Selecione um funcionário para excluir")
             return
             
-        # Obtém o ID e nome do funcionário selecionado
+        # Obtém o ID do funcionário selecionado
         item = self.tree_funcionarios.item(selecionado[0])
         funcionario_id = item['values'][0]
-        nome = item['values'][1]
         
         # Confirma a exclusão
-        if messagebox.askyesno("Confirmar Exclusão", f"Tem certeza que deseja excluir o funcionário {nome}?"):
+        if messagebox.askyesno("Confirmar Exclusão", f"Tem certeza que deseja excluir o funcionário {item['values'][1]}?"):
             self.excluir_funcionario(funcionario_id)
     
     def excluir_funcionario(self, funcionario_id):
@@ -1024,17 +1023,126 @@ class CadastroModule(BaseModule):
             messagebox.showerror("Erro", f"Erro ao excluir funcionário: {str(e)}")
     
     def mostrar_clientes(self):
-        """Mostra a tela de cadastro de clientes"""
+        """Mostra a tela de clientes pendura"""
         self.limpar_conteudo()
         try:
             if self.db:
-                self.lista_clientes = self.db.listar_clientes()
-                tk.Label(self.conteudo_frame, text="Lista de Clientes", font=('Arial', 14, 'bold')).pack(pady=10)
-                # Adicione a tabela ou lista de clientes aqui
-            else:
-                messagebox.showwarning("Aviso", "Conexão com o banco de dados não disponível")
+                self.lista_clientes = self.db.listar_clientes(ativo=True)
+                
+                # Frame principal
+                main_frame = tk.Frame(self.conteudo_frame)
+                main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+                
+                # Título
+                tk.Label(main_frame, text="CLIENTES PENDURA", font=('Arial', 14, 'bold'), pady=10).pack()
+                
+                # Frame para conteúdo (botões + tabela)
+                conteudo_frame = tk.Frame(main_frame)
+                conteudo_frame.pack(fill='both', expand=True)
+                
+                # Frame para botões (lado esquerdo)
+                botoes_frame = tk.Frame(conteudo_frame, width=150)
+                botoes_frame.pack(side='left', fill='y', padx=(0, 10), pady=(0, 10))
+                botoes_frame.pack_propagate(False)
+                
+                # Botão Novo Cliente
+                self.btn_novo_cliente = tk.Button(
+                    botoes_frame,
+                    text="Novo Cliente",
+                    font=('Arial', 10, 'bold'),
+                    bg='#4a6fa5',
+                    fg='white',
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    command=self.novo_cliente
+                )
+                self.btn_novo_cliente.pack(pady=2, fill='x')
+                
+                # Botão Editar
+                self.btn_editar_cliente = tk.Button(
+                    botoes_frame,
+                    text="Editar",
+                    font=('Arial', 10, 'bold'),
+                    bg='#4a6fa5',
+                    fg='white',
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    state='disabled',
+                    command=self.editar_cliente
+                )
+                self.btn_editar_cliente.pack(pady=2, fill='x')
+                
+                # Botão Excluir
+                self.btn_excluir_cliente = tk.Button(
+                    botoes_frame,
+                    text="Excluir",
+                    font=('Arial', 10, 'bold'),
+                    bg='#f44336',
+                    fg='white',
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    state='disabled',
+                    command=self.excluir_cliente
+                )
+                self.btn_excluir_cliente.pack(pady=2, fill='x')
+                
+                # Frame da tabela (lado direito)
+                tabela_frame = tk.Frame(conteudo_frame, bg='white')
+                tabela_frame.pack(side='left', fill='both', expand=True)
+                
+                # Cria a Treeview
+                colunas = ("ID", "Nome", "Telefone", "CPF", "Data Cadastro")
+                self.tree_clientes = ttk.Treeview(
+                    tabela_frame,
+                    columns=colunas,
+                    show='headings',
+                    selectmode='browse'
+                )
+                
+                # Configura as colunas
+                for col in colunas:
+                    self.tree_clientes.heading(col, text=col)
+                    self.tree_clientes.column(col, width=100, anchor='w')
+                
+                # Ajusta largura das colunas
+                self.tree_clientes.column('ID', width=50, anchor='center')
+                self.tree_clientes.column('Nome', width=200)
+                self.tree_clientes.column('Telefone', width=120)
+                
+                # Barra de rolagem
+                scrollbar = ttk.Scrollbar(tabela_frame, orient='vertical', command=self.tree_clientes.yview)
+                self.tree_clientes.configure(yscrollcommand=scrollbar.set)
+                
+                # Posiciona os widgets
+                self.tree_clientes.pack(side='left', fill='both', expand=True)
+                scrollbar.pack(side='right', fill='y')
+                
+                # Preenche a tabela com dados
+                for cliente in self.lista_clientes:
+                    data_formatada = cliente['data_cadastro'].strftime('%d/%m/%Y') if cliente['data_cadastro'] else ''
+                    self.tree_clientes.insert('', 'end', values=(
+                        cliente['id'],
+                        cliente['nome'],
+                        cliente['telefone'],
+                        cliente['cpf'],
+                        data_formatada
+                    ))
+                
+                # Evento de seleção na tabela
+                self.tree_clientes.bind('<<TreeviewSelect>>', self.atualizar_botoes_clientes)
+                
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao listar clientes: {str(e)}")
+            messagebox.showerror("Erro", f"Erro ao carregar clientes: {str(e)}")
+
+    def atualizar_botoes_clientes(self, event=None):
+        """Atualiza o estado dos botões com base na seleção"""
+        selecionado = bool(self.tree_clientes.selection())
+        state = 'normal' if selecionado else 'disabled'
+        self.btn_editar_cliente.config(state=state)
+        self.btn_excluir_cliente.config(state=state)
     
     def mostrar_produtos(self):
         """Mostra a tela de cadastro de produtos"""
@@ -1042,12 +1150,297 @@ class CadastroModule(BaseModule):
         try:
             if self.db:
                 self.lista_produtos = self.db.listar_produtos()
-                tk.Label(self.conteudo_frame, text="Lista de Produtos", font=('Arial', 14, 'bold')).pack(pady=10)
-                # Adicione a tabela ou lista de produtos aqui
+                
+                # Frame principal
+                main_frame = tk.Frame(self.conteudo_frame)
+                main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+                
+                # Título
+                tk.Label(main_frame,text="LISTA DE PRODUTOS",font=('Arial', 14, 'bold'),pady=10).pack()
+                
+                # Frame para conteúdo (botões + tabela) em linha horizontal
+                conteudo_frame = tk.Frame(main_frame)
+                conteudo_frame.pack(fill='both', expand=True)
+                
+                # Frame para botões (lado esquerdo)
+                botoes_frame = tk.Frame(conteudo_frame, width=150)
+                botoes_frame.pack(side='left', fill='y', padx=(0, 10), pady=(0, 10))
+                botoes_frame.pack_propagate(False)  # Mantém a largura definida
+                
+                # Botão Novo Produto
+                self.btn_novo_prod = tk.Button(
+                    botoes_frame,
+                    text="Novo Produto",
+                    font=('Arial', 10, 'bold'),  # Com negrito
+                    bg='#4a6fa5',  # Azul escuro
+                    fg='white',
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    command=self.novo_produto
+                )
+                self.btn_novo_prod.pack(pady=2, fill='x')
+                
+                # Botão Editar
+                self.btn_editar_prod = tk.Button(
+                    botoes_frame,
+                    text="Editar",
+                    font=('Arial', 10, 'bold'),  # Com negrito
+                    bg='#4a6fa5',  # Azul escuro
+                    fg='white',
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    state='disabled',
+                    command=self.editar_produto
+                )
+                self.btn_editar_prod.pack(pady=2, fill='x')
+                
+                # Botão Excluir
+                self.btn_excluir_prod = tk.Button(
+                    botoes_frame,
+                    text="Excluir",
+                    font=('Arial', 10, 'bold'),  # Com negrito
+                    bg='#f44336',  # Vermelho
+                    fg='white',
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    state='disabled',
+                    command=self.excluir_produto
+                )
+                self.btn_excluir_prod.pack(pady=2, fill='x')
+                
+                # Frame da tabela (lado direito)
+                tabela_frame = tk.Frame(conteudo_frame, bg='white')
+                tabela_frame.pack(side='left', fill='both', expand=True)
+                
+                # Cria a Treeview
+                colunas = ("ID", "Nome", "Descrição", "Preço", "Unidade", "Estoque Mínimo")
+                self.tree_produtos = ttk.Treeview(
+                    tabela_frame,
+                    columns=colunas,
+                    show='headings',
+                    selectmode='browse'
+                )
+                
+                # Configura as colunas
+                for col in colunas:
+                    self.tree_produtos.heading(col, text=col)
+                    self.tree_produtos.column(col, width=100, anchor='w')
+                
+                # Ajusta largura das colunas
+                self.tree_produtos.column('ID', width=50, anchor='center')
+                self.tree_produtos.column('Nome', width=200)
+                self.tree_produtos.column('Descrição', width=250)
+                self.tree_produtos.column('Preço', width=100, anchor='e')
+                
+                # Barra de rolagem
+                scrollbar = ttk.Scrollbar(tabela_frame, orient='vertical', command=self.tree_produtos.yview)
+                self.tree_produtos.configure(yscrollcommand=scrollbar.set)
+                
+                # Posiciona os widgets
+                self.tree_produtos.pack(side='left', fill='both', expand=True)
+                scrollbar.pack(side='right', fill='y')
+                
+                # Preenche a tabela
+                for produto in self.lista_produtos:
+                    self.tree_produtos.insert('', 'end', values=(
+                        produto.get('id', ''),
+                        produto.get('nome', ''),
+                        produto.get('descricao', ''),
+                        f"R$ {produto.get('preco_venda', 0):.2f}",
+                        produto.get('unidade_medida', 'UN'),
+                        produto.get('quantidade_minima', 0)
+                    ))
+                
+                # Configura evento de seleção
+                self.tree_produtos.bind('<<TreeviewSelect>>', self.atualizar_botoes_produtos)
+                
             else:
                 messagebox.showwarning("Aviso", "Conexão com o banco de dados não disponível")
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao listar produtos: {str(e)}")
+    
+    def atualizar_botoes_produtos(self, event=None):
+        """Atualiza o estado dos botões com base na seleção"""
+        selecionado = bool(self.tree_produtos.selection())
+        state = 'normal' if selecionado else 'disabled'
+        self.btn_editar_prod.config(state=state)
+        self.btn_excluir_prod.config(state=state)
+    
+    def novo_produto(self):
+        """Abre formulário para cadastrar novo produto"""
+        self._criar_formulario_produto("Novo Produto")
+    
+    def _criar_formulario_produto(self, titulo, produto_id=None):
+        """Cria formulário para cadastro/edição de produto"""
+        self.limpar_conteudo()
+        
+        # Dados do produto (se edição)
+        self.produto_atual = None
+        if produto_id and self.db:
+            self.produto_atual = self.db.obter_produto(produto_id)
+        
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame)
+        main_frame.pack(fill='both', expand=True, padx=20, pady=10)
+        
+        # Título
+        tk.Label(main_frame, text=titulo, font=('Arial', 14, 'bold')).pack(pady=10)
+        
+        # Frame do formulário
+        form_frame = tk.Frame(main_frame)
+        form_frame.pack(fill='both', expand=True)
+        
+        # Campos do formulário
+        campos = [
+            ('Nome:', 'nome', 0),
+            ('Descrição:', 'descricao', 1),
+            ('Tipo:', 'tipo', 2),
+            ('Preço Venda:', 'preco_venda', 3),
+            ('Unidade Medida:', 'unidade_medida', 4),
+            ('Quantidade Mínima:', 'quantidade_minima', 5)
+        ]
+        
+        self.entries = {}
+        for label, field, row in campos:
+            # Label
+            tk.Label(form_frame, text=label, font=('Arial', 10)).grid(row=row, column=0, sticky='e', padx=5, pady=5)
+            
+            # Entry
+            entry = tk.Entry(form_frame, font=('Arial', 10), width=40)
+            entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+            
+            # Preenche com dados existentes se estiver editando
+            if self.produto_atual and field in self.produto_atual:
+                entry.insert(0, str(self.produto_atual[field]))
+            
+            self.entries[field] = entry
+        
+        # Garantir que a descrição seja um Text widget
+        if 'descricao' in self.entries and isinstance(self.entries['descricao'], tk.Entry):
+            # Converter Entry para Text se necessário
+            descricao_value = self.entries['descricao'].get()
+            self.entries['descricao'].destroy()
+            
+            descricao = tk.Text(form_frame, font=('Arial', 10), width=40, height=4)
+            descricao.grid(row=1, column=1, sticky='w', padx=5, pady=5)
+            descricao.insert('1.0', descricao_value)
+            self.entries['descricao'] = descricao
+        
+        # Botões de ação
+        botoes_frame = tk.Frame(main_frame)
+        botoes_frame.pack(fill='x', pady=10)
+        
+        tk.Button(
+            botoes_frame, 
+            text="Salvar", 
+            command=lambda: self._salvar_produto(produto_id),
+            font=('Arial', 10, 'bold'),
+            bg='#4a6fa5',
+            fg='white',
+            padx=15,
+            pady=5
+        ).pack(side='left', padx=10)
+        
+        tk.Button(
+            botoes_frame, 
+            text="Cancelar", 
+            command=self.mostrar_produtos,
+            font=('Arial', 10, 'bold'),
+            bg='#f44336',
+            fg='white',
+            padx=15,
+            pady=5
+        ).pack(side='left', padx=10)
+    
+    def _salvar_produto(self, produto_id=None):
+        """Salva os dados do produto com tratamento completo de erros"""
+        try:
+            # Validação do nome
+            nome = self.entries['nome'].get()
+            if not nome or not nome.strip():
+                messagebox.showwarning("Aviso", "Nome do produto é obrigatório")
+                self.entries['nome'].focus_set()
+                return
+
+            # Validação do preço
+            preco_texto = self.entries['preco_venda'].get()
+            if not preco_texto or not preco_texto.strip():
+                messagebox.showwarning("Aviso", "Preço de venda é obrigatório")
+                self.entries['preco_venda'].focus_set()
+                return
+                
+            try:
+                preco = float(preco_texto.replace(',', '.'))
+                if preco <= 0:
+                    raise ValueError("Preço deve ser maior que zero")
+            except ValueError:
+                messagebox.showwarning("Aviso", "Preço inválido. Use números (ex: 12.99 ou 12,99)")
+                self.entries['preco_venda'].focus_set()
+                return
+
+            # Obter descrição corretamente
+            descricao = ''
+            if hasattr(self.entries['descricao'], 'get'):
+                if hasattr(self.entries['descricao'].get, '__code__') and self.entries['descricao'].get.__code__.co_argcount > 1:
+                    descricao = self.entries['descricao'].get('1.0', 'end-1c')
+                else:
+                    descricao = self.entries['descricao'].get()
+            
+            dados = {
+                'nome': nome.strip(),
+                'descricao': descricao.strip(),
+                'tipo': self.entries['tipo'].get().strip(),
+                'preco_venda': preco,
+                'unidade_medida': self.entries['unidade_medida'].get().strip(),
+                'quantidade_minima': int(self.entries['quantidade_minima'].get() or 0)
+            }
+
+            # Operação no banco
+            if produto_id:
+                resultado = self.db.atualizar_produto(produto_id, **dados)
+                msg = "atualizado"
+            else:
+                resultado = self.db.inserir_produto(**dados)
+                msg = "cadastrado"
+
+            if resultado:
+                messagebox.showinfo("Sucesso", f"Produto {msg} com sucesso!")
+                self.mostrar_produtos()
+            else:
+                messagebox.showerror("Erro", f"Falha ao {msg} produto")
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao salvar produto: {str(e)}")
+    
+    def editar_produto(self):
+        """Abre formulário para editar produto selecionado"""
+        selecionado = self.tree_produtos.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um produto")
+            return
+            
+        produto_id = self.tree_produtos.item(selecionado[0])['values'][0]
+        self._criar_formulario_produto("Editar Produto", produto_id)
+    
+    def excluir_produto(self):
+        """Exclui produto selecionado"""
+        selecionado = self.tree_produtos.selection()
+        if not selecionado:
+            return
+            
+        produto_id = self.tree_produtos.item(selecionado[0])['values'][0]
+        nome = self.tree_produtos.item(selecionado[0])['values'][1]
+        
+        if messagebox.askyesno("Confirmar", f"Excluir {nome}?"):
+            try:
+                if self.db.excluir_produto(produto_id):
+                    self.tree_produtos.delete(selecionado[0])
+                    messagebox.showinfo("Sucesso", "Produto excluído")
+            except Exception as e:
+                messagebox.showerror("Erro", f"Falha ao excluir: {str(e)}")
     
     def mostrar_fornecedores(self):
         """Mostra a tela de cadastro de fornecedores"""
@@ -1055,13 +1448,122 @@ class CadastroModule(BaseModule):
         try:
             if self.db:
                 self.lista_fornecedores = self.db.listar_fornecedores()
-                tk.Label(self.conteudo_frame, text="Lista de Fornecedores", font=('Arial', 14, 'bold')).pack(pady=10)
-                # Adicione a tabela ou lista de fornecedores aqui
-            else:
-                messagebox.showwarning("Aviso", "Conexão com o banco de dados não disponível")
+                
+                # Frame principal
+                main_frame = tk.Frame(self.conteudo_frame)
+                main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+                
+                # Título
+                tk.Label(main_frame, text="FORNECEDORES", font=('Arial', 14, 'bold'), pady=10).pack()
+                
+                # Frame para conteúdo (botões + tabela)
+                conteudo_frame = tk.Frame(main_frame)
+                conteudo_frame.pack(fill='both', expand=True)
+                
+                # Frame para botões (lado esquerdo)
+                botoes_frame = tk.Frame(conteudo_frame, width=150)
+                botoes_frame.pack(side='left', fill='y', padx=(0, 10), pady=(0, 10))
+                botoes_frame.pack_propagate(False)
+                
+                # Botão Novo Fornecedor
+                self.btn_novo_forn = tk.Button(
+                    botoes_frame,
+                    text="Novo Fornecedor",
+                    font=('Arial', 10, 'bold'),
+                    bg='#4a6fa5',
+                    fg='white',
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    command=self.novo_fornecedor
+                )
+                self.btn_novo_forn.pack(pady=2, fill='x')
+                
+                # Botão Editar
+                self.btn_editar_forn = tk.Button(
+                    botoes_frame,
+                    text="Editar",
+                    font=('Arial', 10, 'bold'),
+                    bg='#4a6fa5',
+                    fg='white',
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    state='disabled',
+                    command=self.editar_fornecedor
+                )
+                self.btn_editar_forn.pack(pady=2, fill='x')
+                
+                # Botão Excluir
+                self.btn_excluir_forn = tk.Button(
+                    botoes_frame,
+                    text="Excluir",
+                    font=('Arial', 10, 'bold'),
+                    bg='#f44336',
+                    fg='white',
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    state='disabled',
+                    command=self.excluir_fornecedor
+                )
+                self.btn_excluir_forn.pack(pady=2, fill='x')
+                
+                # Frame da tabela (lado direito)
+                tabela_frame = tk.Frame(conteudo_frame, bg='white')
+                tabela_frame.pack(side='left', fill='both', expand=True)
+                
+                # Cria a Treeview com as colunas solicitadas
+                colunas = ("ID", "Empresa", "Vendedor", "Telefone", "Email")
+                self.tree_fornecedores = ttk.Treeview(
+                    tabela_frame,
+                    columns=colunas,
+                    show='headings',
+                    selectmode='browse'
+                )
+                
+                # Configura as colunas
+                for col in colunas:
+                    self.tree_fornecedores.heading(col, text=col)
+                    self.tree_fornecedores.column(col, width=100, anchor='w')
+                
+                # Ajusta largura das colunas
+                self.tree_fornecedores.column('ID', width=50, anchor='center')
+                self.tree_fornecedores.column('Empresa', width=200)
+                self.tree_fornecedores.column('Vendedor', width=150)
+                self.tree_fornecedores.column('Telefone', width=120)
+                
+                # Barra de rolagem
+                scrollbar = ttk.Scrollbar(tabela_frame, orient='vertical', command=self.tree_fornecedores.yview)
+                self.tree_fornecedores.configure(yscrollcommand=scrollbar.set)
+                
+                # Posiciona os widgets
+                self.tree_fornecedores.pack(side='left', fill='both', expand=True)
+                scrollbar.pack(side='right', fill='y')
+                
+                # Preenche a tabela com dados
+                for fornecedor in self.lista_fornecedores:
+                    self.tree_fornecedores.insert('', 'end', values=(
+                        fornecedor['id'],
+                        fornecedor['empresa'],
+                        fornecedor['vendedor'],
+                        fornecedor['telefone'],
+                        fornecedor['email']
+                    ))
+                
+                # Evento de seleção na tabela
+                self.tree_fornecedores.bind('<<TreeviewSelect>>', self.atualizar_botoes_fornecedores)
+                
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao listar fornecedores: {str(e)}")
-            
+            messagebox.showerror("Erro", f"Erro ao carregar fornecedores: {str(e)}")
+
+    def atualizar_botoes_fornecedores(self, event=None):
+        """Atualiza o estado dos botões com base na seleção"""
+        selecionado = bool(self.tree_fornecedores.selection())
+        state = 'normal' if selecionado else 'disabled'
+        self.btn_editar_forn.config(state=state)
+        self.btn_excluir_forn.config(state=state)
+    
     def get_opcoes(self):
         """
         Retorna a lista de opções para a barra lateral.
@@ -1098,64 +1600,7 @@ class CadastroModule(BaseModule):
             self.acoes[acao]()
         else:
             messagebox.showwarning("Aviso", f"Ação '{acao}' não encontrada")
-        
-    def carregar_tema(self):
-        """Carrega as configurações de tema do controlador principal"""
-        if hasattr(self.controller, 'cores'):
-            self.cores = self.controller.cores
-        else:
-            # Cores padrão caso o controlador não tenha as cores definidas
-            self.cores = {
-                'fundo': '#f0f2f5',
-                'fundo_conteudo': '#ffffff',
-                'primaria': '#4a6fa5',
-                'secundaria': '#28b5f4',
-                'terciaria': '#333f50',
-                'texto': '#333333',
-                'texto_claro': '#ffffff',
-                'destaque': '#4caf50',
-                'alerta': '#f44336',
-                'borda': '#e0e0e0'
-            }
-    
-    def atualizar_tema(self, event=None):
-        """Atualiza as cores da interface quando o tema é alterado"""
-        self.carregar_tema()
-        
-        # Atualiza as cores do frame principal
-        if hasattr(self, 'frame') and self.frame.winfo_exists():
-            self.frame.config(style='TFrame')
-            
-        # Atualiza a view atual se existir
-        if hasattr(self, 'current_view') and self.current_view and self.current_view.winfo_exists():
-            self._aplicar_tema_view(self.current_view)
-    
-    def _aplicar_tema_view(self, frame):
-        """Aplica o tema a todos os widgets de um frame"""
-        try:
-            # Configura o estilo do frame
-            if isinstance(frame, (tk.Frame, ttk.Frame)):
-                frame.config(style='TFrame')
-                
-            # Itera por todos os widgets do frame
-            for widget in frame.winfo_children():
-                if isinstance(widget, (tk.Frame, ttk.Frame)):
-                    widget.config(style='TFrame')
-                    self._aplicar_tema_view(widget)
-                elif isinstance(widget, ttk.Label):
-                    widget.config(style='TLabel')
-                elif isinstance(widget, ttk.Button):
-                    widget.config(style='TButton')
-                elif isinstance(widget, ttk.Entry):
-                    widget.config(style='TEntry')
-                elif isinstance(widget, ttk.Combobox):
-                    widget.config(style='TCombobox')
-                # Adicione outros tipos de widgets conforme necessário
-                
-        except Exception as e:
-            # Ignora erros de widgets que não podem ser estilizados
-            pass
-        
+
 
         
     def mostrar_tela(self, acao=None):
@@ -1265,3 +1710,266 @@ class CadastroModule(BaseModule):
     def cancelar_edicao(self):
         """Cancela a edição e volta para a tela inicial do módulo"""
         self.mostrar_inicio()
+
+    def novo_fornecedor(self):
+        """Abre formulário para novo fornecedor"""
+        self._criar_formulario_fornecedor("Novo Fornecedor")
+    
+    def editar_fornecedor(self):
+        """Abre formulário para editar fornecedor"""
+        selecionado = self.tree_fornecedores.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um fornecedor")
+            return
+            
+        fornecedor_id = self.tree_fornecedores.item(selecionado[0])['values'][0]
+        self._criar_formulario_fornecedor("Editar Fornecedor", fornecedor_id)
+    
+    def excluir_fornecedor(self):
+        """Exclui fornecedor selecionado"""
+        selecionado = self.tree_fornecedores.selection()
+        if not selecionado:
+            return
+            
+        fornecedor_id = self.tree_fornecedores.item(selecionado[0])['values'][0]
+        nome = self.tree_fornecedores.item(selecionado[0])['values'][1]
+        
+        if messagebox.askyesno("Confirmar", f"Excluir {nome}?"):
+            try:
+                if self.db.excluir_fornecedor(fornecedor_id):
+                    self.tree_fornecedores.delete(selecionado[0])
+                    messagebox.showinfo("Sucesso", "Fornecedor excluído")
+            except Exception as e:
+                messagebox.showerror("Erro", f"Falha ao excluir: {str(e)}")
+    
+    def _criar_formulario_fornecedor(self, titulo, fornecedor_id=None):
+        """Cria formulário completo para cadastro/edição de fornecedor"""
+        self.limpar_conteudo()
+        
+        # Dados do fornecedor (se edição)
+        self.fornecedor_atual = None
+        if fornecedor_id and self.db:
+            self.fornecedor_atual = self.db.obter_fornecedor(fornecedor_id)
+        
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame)
+        main_frame.pack(fill='both', expand=True, padx=20, pady=10)
+        
+        # Título
+        tk.Label(main_frame, text=titulo, font=('Arial', 14, 'bold')).pack(pady=10)
+        
+        # Frame do formulário
+        form_frame = tk.Frame(main_frame)
+        form_frame.pack(fill='both', expand=True)
+        
+        # Campos do formulário
+        campos = [
+            ('Empresa:', 'empresa', 0),
+            ('Vendedor:', 'vendedor', 1),
+            ('Telefone:', 'telefone', 2),
+            ('Email:', 'email', 3),
+            ('Produtos:', 'produtos', 4)
+        ]
+        
+        self.entries = {}
+        for label, field, row in campos:
+            # Label
+            tk.Label(form_frame, text=label, font=('Arial', 10)).grid(row=row, column=0, sticky='e', padx=5, pady=5)
+            
+            # Entry
+            entry = tk.Entry(form_frame, font=('Arial', 10), width=40)
+            entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+            
+            # Preenche com dados existentes se estiver editando
+            if self.fornecedor_atual and field in self.fornecedor_atual:
+                entry.insert(0, self.fornecedor_atual[field])
+            
+            self.entries[field] = entry
+        
+        # Campo de produtos como Text (para múltiplas linhas)
+        self.txt_produtos = tk.Text(form_frame, height=5, width=40, font=('Arial', 10))
+        self.txt_produtos.grid(row=4, column=1, sticky='w', padx=5, pady=5)
+        if self.fornecedor_atual and 'produtos' in self.fornecedor_atual:
+            self.txt_produtos.insert('1.0', self.fornecedor_atual['produtos'])
+        
+        # Botões de ação
+        botoes_frame = tk.Frame(main_frame)
+        botoes_frame.pack(fill='x', pady=10)
+        
+        tk.Button(
+            botoes_frame, 
+            text="Salvar", 
+            command=lambda: self._salvar_fornecedor(fornecedor_id),
+            font=('Arial', 10, 'bold'),
+            bg='#4a6fa5',
+            fg='white',
+            padx=15,
+            pady=5
+        ).pack(side='left', padx=10)
+        
+        tk.Button(
+            botoes_frame, 
+            text="Cancelar", 
+            command=self.mostrar_fornecedores,
+            font=('Arial', 10, 'bold'),
+            bg='#f44336',
+            fg='white',
+            padx=15,
+            pady=5
+        ).pack(side='left', padx=10)
+    
+    def _salvar_fornecedor(self, fornecedor_id=None):
+        """Salva os dados do fornecedor no banco de dados"""
+        dados = {
+            'empresa': self.entries['empresa'].get(),
+            'vendedor': self.entries['vendedor'].get(),
+            'telefone': self.entries['telefone'].get(),
+            'email': self.entries['email'].get(),
+            'produtos': self.txt_produtos.get('1.0', 'end-1c')
+        }
+        
+        try:
+            if fornecedor_id:
+                # Edição
+                if self.db.atualizar_fornecedor(fornecedor_id, **dados):
+                    messagebox.showinfo("Sucesso", "Fornecedor atualizado!")
+            else:
+                # Novo
+                if self.db.inserir_fornecedor(**dados):
+                    messagebox.showinfo("Sucesso", "Fornecedor cadastrado!")
+            
+            self.mostrar_fornecedores()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao salvar: {str(e)}")
+
+    def novo_cliente(self):
+        """Abre formulário para novo cliente pendura"""
+        self._criar_formulario_cliente("Novo Cliente Pendura")
+    
+    def editar_cliente(self):
+        """Abre formulário para editar cliente pendura"""
+        selecionado = self.tree_clientes.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um cliente")
+            return
+            
+        cliente_id = self.tree_clientes.item(selecionado[0])['values'][0]
+        self._criar_formulario_cliente("Editar Cliente Pendura", cliente_id)
+    
+    def excluir_cliente(self):
+        """Exclui cliente pendura selecionado"""
+        selecionado = self.tree_clientes.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um cliente")
+            return
+            
+        cliente_id = self.tree_clientes.item(selecionado[0])['values'][0]
+        nome = self.tree_clientes.item(selecionado[0])['values'][1]
+        
+        if messagebox.askyesno("Confirmar", f"Excluir cliente {nome}?"):
+            try:
+                if self.db.excluir_cliente(cliente_id):
+                    self.tree_clientes.delete(selecionado[0])
+                    messagebox.showinfo("Sucesso", "Cliente excluído")
+            except Exception as e:
+                messagebox.showerror("Erro", f"Falha ao excluir: {str(e)}")
+    
+    def _criar_formulario_cliente(self, titulo, cliente_id=None):
+        """Cria formulário para cadastro/edição de cliente pendura"""
+        self.limpar_conteudo()
+        
+        # Dados do cliente (se edição)
+        self.cliente_atual = None
+        if cliente_id and self.db:
+            self.cliente_atual = self.db.obter_cliente(cliente_id)
+        
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame)
+        main_frame.pack(fill='both', expand=True, padx=20, pady=10)
+        
+        # Título
+        tk.Label(main_frame, text=titulo, font=('Arial', 14, 'bold')).pack(pady=10)
+        
+        # Frame do formulário
+        form_frame = tk.Frame(main_frame)
+        form_frame.pack(fill='both', expand=True)
+        
+        # Campos do formulário
+        campos = [
+            ('Nome:', 'nome', 0),
+            ('Telefone:', 'telefone', 1),
+            ('CPF:', 'cpf', 2),
+            ('Endereço:', 'endereco', 3),
+            ('Observações:', 'observacoes', 4)
+        ]
+        
+        self.entries = {}
+        for label, field, row in campos:
+            # Label
+            tk.Label(form_frame, text=label, font=('Arial', 10)).grid(row=row, column=0, sticky='e', padx=5, pady=5)
+            
+            # Entry
+            entry = tk.Entry(form_frame, font=('Arial', 10), width=40)
+            entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+            
+            # Preenche com dados existentes se estiver editando
+            if self.cliente_atual and field in self.cliente_atual:
+                entry.insert(0, self.cliente_atual[field])
+            
+            self.entries[field] = entry
+        
+        # Campo de observações como Text (para múltiplas linhas)
+        self.txt_observacoes = tk.Text(form_frame, height=5, width=40, font=('Arial', 10))
+        self.txt_observacoes.grid(row=4, column=1, sticky='w', padx=5, pady=5)
+        if self.cliente_atual and 'observacoes' in self.cliente_atual:
+            self.txt_observacoes.insert('1.0', self.cliente_atual['observacoes'])
+        
+        # Botões de ação
+        botoes_frame = tk.Frame(main_frame)
+        botoes_frame.pack(fill='x', pady=10)
+        
+        tk.Button(
+            botoes_frame, 
+            text="Salvar", 
+            command=lambda: self._salvar_cliente(cliente_id),
+            font=('Arial', 10, 'bold'),
+            bg='#4a6fa5',
+            fg='white',
+            padx=15,
+            pady=5
+        ).pack(side='left', padx=10)
+        
+        tk.Button(
+            botoes_frame, 
+            text="Cancelar", 
+            command=self.mostrar_clientes,
+            font=('Arial', 10, 'bold'),
+            bg='#f44336',
+            fg='white',
+            padx=15,
+            pady=5
+        ).pack(side='left', padx=10)
+    
+    def _salvar_cliente(self, cliente_id=None):
+        """Salva os dados do cliente no banco de dados"""
+        dados = {
+            'nome': self.entries['nome'].get(),
+            'telefone': self.entries['telefone'].get(),
+            'cpf': self.entries['cpf'].get(),
+            'endereco': self.entries['endereco'].get(),
+            'observacoes': self.txt_observacoes.get('1.0', 'end-1c')
+        }
+        
+        try:
+            if cliente_id:
+                # Edição
+                if self.db.atualizar_cliente(cliente_id, **dados):
+                    messagebox.showinfo("Sucesso", "Cliente atualizado!")
+            else:
+                # Novo
+                if self.db.inserir_cliente(**dados):
+                    messagebox.showinfo("Sucesso", "Cliente cadastrado!")
+            
+            self.mostrar_clientes()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao salvar: {str(e)}")
