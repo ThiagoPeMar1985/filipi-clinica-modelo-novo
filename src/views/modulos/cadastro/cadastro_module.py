@@ -585,10 +585,12 @@ class CadastroModule(BaseModule):
             
             if messagebox.askyesno("Confirmar Exclusão", 
                                  f"Tem certeza que deseja excluir o usuário '{nome}'?"):
-                # Implementar a lógica para excluir o usuário
-                # self.db.excluir_usuario(usuario_id)
-                self.tree_usuarios.delete(selecionado[0])
-                messagebox.showinfo("Sucesso", "Usuário excluído com sucesso!")
+                sucesso, mensagem = self.db.excluir_usuario(usuario_id)
+                if sucesso:
+                    self.tree_usuarios.delete(selecionado[0])
+                    messagebox.showinfo("Sucesso", mensagem)
+                else:
+                    messagebox.showerror("Erro", mensagem)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao excluir usuário: {str(e)}")
             import traceback
@@ -882,7 +884,7 @@ class CadastroModule(BaseModule):
             btn_frame,
             text="Salvar",
             font=('Arial', 10, 'bold'),
-            bg='#4CAF50',
+            bg='#4a6fa5',
             fg='white',
             bd=0,
             padx=20,
@@ -1216,7 +1218,7 @@ class CadastroModule(BaseModule):
                 tabela_frame.pack(side='left', fill='both', expand=True)
                 
                 # Cria a Treeview
-                colunas = ("ID", "Nome", "Descrição", "Preço", "Unidade", "Estoque Mínimo")
+                colunas = ("ID", "Nome", "Tipo", "Descrição", "Preço", "Unidade", "Estoque Mínimo")
                 self.tree_produtos = ttk.Treeview(
                     tabela_frame,
                     columns=colunas,
@@ -1232,6 +1234,7 @@ class CadastroModule(BaseModule):
                 # Ajusta largura das colunas
                 self.tree_produtos.column('ID', width=50, anchor='center')
                 self.tree_produtos.column('Nome', width=200)
+                self.tree_produtos.column('Tipo', width=100)
                 self.tree_produtos.column('Descrição', width=250)
                 self.tree_produtos.column('Preço', width=100, anchor='e')
                 
@@ -1248,6 +1251,7 @@ class CadastroModule(BaseModule):
                     self.tree_produtos.insert('', 'end', values=(
                         produto.get('id', ''),
                         produto.get('nome', ''),
+                        produto.get('tipo', ''),
                         produto.get('descricao', ''),
                         f"R$ {produto.get('preco_venda', 0):.2f}",
                         produto.get('unidade_medida', 'UN'),
@@ -1293,11 +1297,14 @@ class CadastroModule(BaseModule):
         form_frame = tk.Frame(main_frame)
         form_frame.pack(fill='both', expand=True)
         
+        # Tipos de produtos
+        tipos_produtos = ['Cozinha', 'Bar', 'Sobremesas', 'Outros']
+        
         # Campos do formulário
         campos = [
             ('Nome:', 'nome', 0),
-            ('Descrição:', 'descricao', 1),
-            ('Tipo:', 'tipo', 2),
+            ('Tipo:', 'tipo', 1),
+            ('Descrição:', 'descricao', 2),
             ('Preço Venda:', 'preco_venda', 3),
             ('Unidade Medida:', 'unidade_medida', 4),
             ('Quantidade Mínima:', 'quantidade_minima', 5)
@@ -1308,26 +1315,32 @@ class CadastroModule(BaseModule):
             # Label
             tk.Label(form_frame, text=label, font=('Arial', 10)).grid(row=row, column=0, sticky='e', padx=5, pady=5)
             
-            # Entry
-            entry = tk.Entry(form_frame, font=('Arial', 10), width=40)
-            entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+            # Field
+            if field == 'tipo':
+                # Combobox para tipo de produto
+                tipo_var = tk.StringVar()
+                combo = ttk.Combobox(form_frame, textvariable=tipo_var, values=tipos_produtos, state='readonly', width=37)
+                combo.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+                self.entries[field] = combo
+            elif field == 'descricao':
+                # Text widget para descrição
+                descricao = tk.Text(form_frame, font=('Arial', 10), width=40, height=4)
+                descricao.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+                self.entries[field] = descricao
+            else:
+                # Entry padrão
+                entry = tk.Entry(form_frame, font=('Arial', 10), width=40)
+                entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+                self.entries[field] = entry
             
             # Preenche com dados existentes se estiver editando
             if self.produto_atual and field in self.produto_atual:
-                entry.insert(0, str(self.produto_atual[field]))
-            
-            self.entries[field] = entry
-        
-        # Garantir que a descrição seja um Text widget
-        if 'descricao' in self.entries and isinstance(self.entries['descricao'], tk.Entry):
-            # Converter Entry para Text se necessário
-            descricao_value = self.entries['descricao'].get()
-            self.entries['descricao'].destroy()
-            
-            descricao = tk.Text(form_frame, font=('Arial', 10), width=40, height=4)
-            descricao.grid(row=1, column=1, sticky='w', padx=5, pady=5)
-            descricao.insert('1.0', descricao_value)
-            self.entries['descricao'] = descricao
+                if field == 'tipo':
+                    self.entries[field].set(self.produto_atual[field])
+                elif field == 'descricao':
+                    self.entries[field].insert('1.0', self.produto_atual[field])
+                else:
+                    self.entries[field].insert(0, str(self.produto_atual[field]))
         
         # Botões de ação
         botoes_frame = tk.Frame(main_frame)
@@ -1391,11 +1404,11 @@ class CadastroModule(BaseModule):
             
             dados = {
                 'nome': nome.strip(),
-                'descricao': descricao.strip(),
                 'tipo': self.entries['tipo'].get().strip(),
+                'descricao': descricao.strip(),
                 'preco_venda': preco,
                 'unidade_medida': self.entries['unidade_medida'].get().strip(),
-                'quantidade_minima': int(self.entries['quantidade_minima'].get() or 0)
+                'quantidade_minima': float(self.entries['quantidade_minima'].get() or 0)
             }
 
             # Operação no banco
