@@ -117,16 +117,17 @@ class SistemaPDV:
         # Botão de sair
         sair_button = tk.Button(
             user_frame,
-            text="Sair",
+            text="🚪 Sair",
             command=self.sair,
-            bg=self.cores["terciaria"],
+            bg=self.cores["alerta"],
             fg=self.cores["texto_claro"],
-            font=("Arial", 11),
+            font=("Arial", 11, "bold"),
             relief="flat",
             padx=15,
             pady=5,
-            activebackground=self.cores["alerta"],
-            activeforeground=self.cores["texto_claro"]
+            activebackground="#d32f2f",
+            activeforeground=self.cores["texto_claro"],
+            cursor="hand2"
         )
         sair_button.pack(side="left", padx=10)
         
@@ -217,15 +218,32 @@ class SistemaPDV:
             {"nome": "🏭 Fornecedores", "metodo": "mostrar_fornecedores"}
         ]
 
+    def _get_opcoes_configuracao(self):
+        """Retorna as opções do módulo de configuração"""
+        return [
+            {"nome": "📄 NF-e", "metodo": "nfe"},
+            {"nome": "💾 Backup", "metodo": "backup"},
+            {"nome": "🖨 Impressoras", "metodo": "impressoras"},
+            {"nome": "💿 Banco de Dados", "metodo": "banco_dados"},
+            {"nome": "🔌 Integrações", "metodo": "integracoes"},
+            {"nome": "🔒 Segurança", "metodo": "seguranca"}
+        ]
+
     def configurar_modulos(self):
         """Configura os módulos do sistema"""
         # Obtém as opções do módulo de cadastro
         opcoes_cadastro = self._get_opcoes_cadastro()
+        opcoes_configuracao = self._get_opcoes_configuracao()
         
-        # Configura os comandos para cada opção
+        # Configura os comandos para cada opção do cadastro
         for opcao in opcoes_cadastro:
             metodo = opcao["metodo"]
             opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('cadastro', m)
+        
+        # Configura os comandos para cada opção de configuração
+        for opcao in opcoes_configuracao:
+            metodo = opcao["metodo"]
+            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('configuracao', m)
         
         # Configura os módulos disponíveis
         self.modulos = {
@@ -257,7 +275,7 @@ class SistemaPDV:
             "configuracao": {
                 "nome": "CONFIGURAÇÃO",
                 "icone": "⚙️",
-                "opcoes": []
+                "opcoes": opcoes_configuracao
             }
         }
         
@@ -327,6 +345,12 @@ class SistemaPDV:
                     )
                 else:
                     print("Erro: Conexão com o banco de dados não está disponível")
+            # Adiciona o módulo de configuração
+            elif modulo_id == 'configuracao':
+                from views.modulos.configuracao.configuracao_module import ConfiguracaoModule
+                self.modulo_manager.adicionar_modulo('configuracao', 
+                    lambda parent, controller: ConfiguracaoModule(parent, controller)
+                )
             
             # Mostra o módulo
             self.modulo_manager.mostrar_modulo(modulo_id)
@@ -378,9 +402,33 @@ class SistemaPDV:
                     metodo()
                 else:
                     modulo.mostrar_inicio()
+            
+            elif modulo_id == 'configuracao':
+                # Cria um frame para o módulo que ocupa todo o espaço
+                modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
+                modulo_frame.pack(fill='both', expand=True)
+                
+                # Importa o módulo de configuração
+                from views.modulos.configuracao.configuracao_module import ConfiguracaoModule
+                
+                # Cria a instância do módulo
+                modulo = ConfiguracaoModule(modulo_frame, self)
+                
+                # Configura o frame do módulo para ocupar todo o espaço
+                modulo.frame.pack(fill='both', expand=True, padx=10, pady=10)
+                
+                # Se for uma ação específica (como 'impressoras'), chama diretamente o método correspondente
+                if metodo_nome and metodo_nome != 'mostrar_inicio':
+                    if hasattr(modulo, f'_show_{metodo_nome}'):
+                        metodo = getattr(modulo, f'_show_{metodo_nome}')
+                        metodo()
+                    else:
+                        modulo.show(metodo_nome)
+                else:
+                    modulo.show()
                     
-                # Força a atualização da interface
-                self.content_frame.update_idletasks()
+            # Força a atualização da interface
+            self.content_frame.update_idletasks()
                 
         except Exception as e:
             error_label = tk.Label(
