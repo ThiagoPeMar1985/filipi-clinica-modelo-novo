@@ -26,8 +26,8 @@ class CadastroModule(BaseModule):
         self.frame.pack_propagate(False)
         
         # Frame para o conteúdo
-        self.conteudo_frame = tk.Frame(self.frame)
-        self.conteudo_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.conteudo_frame = ttk.Frame(self.frame)
+        self.conteudo_frame.pack(fill=tk.BOTH, expand=True)
         
         # Dados em memória
         self.dados_empresa = {}
@@ -56,11 +56,11 @@ class CadastroModule(BaseModule):
         self.limpar_conteudo()
         
         # Adiciona uma mensagem de boas-vindas
-        tk.Label(
-            self.conteudo_frame,
-            text="Selecione uma opção no menu lateral para começar.",
+        ttk.Label(
+            self.conteudo_frame, 
+            text="Selecione uma opção no menu lateral para começar.", 
             font=('Arial', 12)
-        ).pack(pady=50)
+        ).pack(pady=20)
     
     def mostrar_empresa(self):
         """Mostra a tela de cadastro da empresa"""
@@ -1329,9 +1329,6 @@ class CadastroModule(BaseModule):
         for widget in self.conteudo_frame.winfo_children():
             widget.destroy()
             
-        # Garante que o frame de conteúdo está visível e configurado corretamente
-        self.conteudo_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
         # Se houver uma view atual, limpa também
         if hasattr(self, 'current_view') and self.current_view:
             self.current_view.destroy()
