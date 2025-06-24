@@ -3,8 +3,13 @@ Controlador para o módulo de Configuração.
 """
 import json
 import os
+import re
+import sys
 from pathlib import Path
 from tkinter import messagebox
+
+# Adiciona o diretório raiz do projeto ao path para importar módulos
+sys.path.append(str(Path(__file__).parent.parent))
 
 class ConfigController:
     """Controlador para operações do módulo de Configuração."""
@@ -14,6 +19,7 @@ class ConfigController:
         self.view = view
         self.config_dir = Path.home() / '.pdv_aquarius'
         self.config_file = self.config_dir / 'config.json'
+        self.db_config_file = Path(__file__).parent.parent / 'db' / 'config.py'
         self._criar_estrutura_padrao()
     
     def configurar_view(self, view):
@@ -67,8 +73,61 @@ class ConfigController:
         return self._salvar_config('impressoras', dados)
     
     def salvar_config_banco_dados(self, dados):
-        """Salva as configurações do banco de dados."""
-        return self._salvar_config('banco_dados', dados)
+        """Salva as configurações do banco de dados no arquivo config.py."""
+        try:
+            # Atualiza o arquivo config.py com as novas configurações
+            with open(self.db_config_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Atualiza as configurações do DB_CONFIG
+            db_config_str = f"""DB_CONFIG = {{
+    'host': '{dados.get('host', '127.0.0.1')}',
+    'user': '{dados.get('usuario', 'root')}',
+    'password': '{dados.get('senha', '')}',
+    'database': '{dados.get('nome_bd', 'pdv_bar')}',
+    'port': {dados.get('porta', 3306)},
+    'raise_on_warnings': True,
+    'use_pure': True,
+    'autocommit': True,
+    'charset': 'utf8mb4',
+    'collation': 'utf8mb4_unicode_ci',
+    'connection_timeout': 30
+}}"""
+            
+            # Atualiza o conteúdo do arquivo
+            content = re.sub(
+                r'DB_CONFIG\s*=\s*\{.*?\}(?=\s*(?:#|$|\n\w))',
+                db_config_str,
+                content,
+                flags=re.DOTALL
+            )
+            
+            # Atualiza as configurações de desenvolvimento
+            dev_config_str = f"""DEV_CONFIG = {{
+    **DB_CONFIG,
+    'host': '{dados.get('host', '127.0.0.1')}',
+    'connect_timeout': 30
+}}"""
+            
+            content = re.sub(
+                r'DEV_CONFIG\s*=\s*\{.*?\}(?=\s*(?:#|$|\n\w))',
+                dev_config_str,
+                content,
+                flags=re.DOTALL
+            )
+            
+            # Salva as alterações no arquivo
+            with open(self.db_config_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # Atualiza também o arquivo de configuração JSON para manter a compatibilidade
+            self._salvar_config('banco_dados', dados)
+            
+            return True
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao salvar configurações do banco de dados: {e}")
+            return False
     
     def salvar_config_nfe(self, dados):
         """Salva as configurações de NF-e."""
@@ -95,8 +154,50 @@ class ConfigController:
         return self.obter_config('integracoes', {})
 
     def carregar_config_banco_dados(self):
-        """Carrega as configurações do banco de dados salvas."""
-        return self.obter_config('banco_dados', {})
+        """Carrega as configurações do banco de dados do arquivo config.py."""
+        try:
+            # Tenta carregar do arquivo config.py
+            with open(self.db_config_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Extrai as configurações usando expressões regulares
+            db_config_match = re.search(
+                r"DB_CONFIG\s*=\s*\{\s*[\s\S]*?\}",
+                content
+            )
+            
+            if db_config_match:
+                db_config_str = db_config_match.group(0)
+                # Converte o dicionário em string para um dicionário Python
+                db_config = {}
+                for key in ['host', 'user', 'password', 'database', 'port']:
+                    match = re.search(f"'{key}'\s*:\s*'([^']*)'", db_config_str)
+                    if match:
+                        db_config[key] = match.group(1)
+                    else:
+                        match = re.search(f"'{key}'\s*:\s*(\\d+)", db_config_str)
+                        if match:
+                            db_config[key] = int(match.group(1))
+                
+                # Formata no formato esperado pela interface
+                return {
+                    'host': db_config.get('host', '127.0.0.1'),
+                    'porta': str(db_config.get('port', 3306)),
+                    'usuario': db_config.get('user', 'root'),
+                    'senha': db_config.get('password', ''),
+                    'nome_bd': db_config.get('database', 'pdv_bar')
+                }
+        except Exception as e:
+            print(f"Erro ao carregar configurações do banco de dados: {e}")
+        
+        # Se não conseguir carregar do config.py, tenta do arquivo JSON
+        return self.obter_config('banco_dados', {
+            'host': '127.0.0.1',
+            'porta': '3306',
+            'usuario': 'root',
+            'senha': '',
+            'nome_bd': 'pdv_bar'
+        })
         
     def carregar_config_impressoras(self):
         """
@@ -430,13 +531,87 @@ class ConfigController:
             return False
     
     def testar_conexao_banco_dados(self, host, porta, usuario, senha, banco):
-        """Testa a conexão com o banco de dados."""
+        """Testa a conexão com o banco de dados.
+        
+        Args:
+            host (str): Endereço do servidor do banco de dados
+            porta (str): Porta do servidor do banco de dados
+            usuario (str): Nome de usuário para autenticação
+            senha (str): Senha para autenticação
+            banco (str): Nome do banco de dados
+            
+        Returns:
+            bool: True se a conexão for bem-sucedida, False caso contrário
+        """
+        import mysql.connector
+        from mysql.connector import Error
+        import socket
+        
+        # Configuração da conexão com timeout reduzido
+        config = {
+            'host': host,
+            'port': int(porta) if porta else 3306,
+            'user': usuario,
+            'password': senha,
+            'database': banco,
+            'connection_timeout': 3,  # Reduzido para 3 segundos
+            'connect_timeout': 3,     # Timeout específico para conexão
+            'raise_on_warnings': True,
+            'autocommit': True,       # Garante que as consultas são confirmadas automaticamente
+            'buffered': True          # Evita o erro "unread result"
+        }
+        
+        conn = None
+        cursor = None
         try:
-            # Implementar lógica de teste de conexão
-            return True
+            # Tenta resolver o host primeiro com timeout
+            socket.setdefaulttimeout(3)
+            try:
+                socket.gethostbyname(host)
+            except (socket.gaierror, socket.timeout):
+                raise Exception(f"Não foi possível resolver o endereço do servidor: {host}")
+            
+            # Tenta conectar ao banco de dados com timeout
+            try:
+                conn = mysql.connector.connect(**config)
+                if conn.is_connected():
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT 1")
+                    # Consome todos os resultados
+                    cursor.fetchall()
+                    cursor.close()
+                    cursor = None
+                    return True
+                return False
+                
+            except mysql.connector.Error as e:
+                error_msg = str(e).lower()
+                if "access denied" in error_msg:
+                    raise Exception("Acesso negado. Verifique o usuário e senha.")
+                elif "unknown database" in error_msg:
+                    raise Exception(f"Banco de dados '{banco}' não encontrado.")
+                elif "can't connect to mysql server" in error_msg:
+                    raise Exception(f"Não foi possível conectar ao servidor {host}:{porta}")
+                else:
+                    raise Exception(f"Falha na conexão com o banco de dados: {e}")
+            
         except Exception as e:
-            messagebox.showerror("Erro", f"Falha na conexão com o banco de dados: {e}")
-            return False
+            raise Exception(f"Erro ao conectar ao banco de dados: {e}")
+            
+        finally:
+            # Fecha o cursor se ainda estiver aberto
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except:
+                    pass
+            
+            # Fecha a conexão se ainda estiver aberta
+            if conn is not None and conn.is_connected():
+                try:
+                    conn.close()
+                except:
+                    pass
     
     def fazer_backup_banco_dados(self, pasta_destino):
         """

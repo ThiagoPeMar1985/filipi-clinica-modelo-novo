@@ -6,6 +6,14 @@ from tkinter import messagebox
 import mysql.connector
 import json
 import os
+import sys
+from pathlib import Path
+
+# Adiciona o diretório raiz do projeto ao path para importar módulos
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
+# Importa as configurações do banco de dados
+from db.config import get_db_config
 
 # Caminho para o arquivo de configuração
 CONFIG_FILE = "login_config.json"
@@ -26,13 +34,11 @@ class TelaLogin:
         self.root = root
         self.on_login_sucesso = on_login_sucesso
         
-        # Configuração do banco de dados
-        self.db_config = {
-            'host': '127.0.0.1',
-            'user': 'root',
-            'password': 'Beer1234@',
-            'database': 'pdv_bar'
-        }
+        # Configuração do banco de dados a partir do config.py
+        self.db_config = get_db_config()
+        # Remove chaves que não são necessárias para a conexão
+        for key in ['raise_on_warnings', 'use_pure', 'autocommit', 'charset', 'collation', 'connection_timeout', 'connect_timeout']:
+            self.db_config.pop(key, None)
         
         # Configura a janela
         self.root.title("Login - PDV")
@@ -155,13 +161,11 @@ class TelaLogin:
             
             resultado = cursor.fetchone()
             
-            cursor.close()
-            conn.close()
-            
             if resultado:
                 usuario = Usuario(resultado.get('id'), resultado.get('nome'), resultado.get('login'), resultado.get('senha'), resultado.get('nivel'))
-                # Adiciona a conexão ao objeto de usuário
-                usuario.db_connection = conn
+                # Fecha a conexão após obter os dados
+                cursor.close()
+                conn.close()
                 return usuario
             else:
                 cursor.close()

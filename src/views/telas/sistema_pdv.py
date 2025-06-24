@@ -327,48 +327,8 @@ class SistemaPDV:
         # Atualiza o módulo atual
         self.modulo_atual = modulo_id
         
-        try:
-            # Limpa o conteúdo atual
-            for widget in self.content_frame.winfo_children():
-                widget.destroy()
-            
-            # Cria uma nova instância do gerenciador de módulos
-            self.modulo_manager = ModuloManager(self.content_frame, self)
-            
-            # Adiciona o módulo de cadastro se for o caso
-            if modulo_id == 'cadastro':
-                from views.modulos.cadastro.cadastro_module import CadastroModule
-                # Passa a conexão do banco de dados para o módulo de cadastro
-                if hasattr(self, 'db_connection') and self.db_connection is not None:
-                    self.modulo_manager.adicionar_modulo('cadastro', 
-                        lambda parent, controller: CadastroModule(parent, controller, self.db_connection)
-                    )
-                else:
-                    print("Erro: Conexão com o banco de dados não está disponível")
-            # Adiciona o módulo de configuração
-            elif modulo_id == 'configuracao':
-                from views.modulos.configuracao.configuracao_module import ConfiguracaoModule
-                self.modulo_manager.adicionar_modulo('configuracao', 
-                    lambda parent, controller: ConfiguracaoModule(parent, controller)
-                )
-            
-            # Mostra o módulo
-            self.modulo_manager.mostrar_modulo(modulo_id)
-        except Exception as e:
-            # Em caso de erro, exibe a mensagem de erro
-            for widget in self.content_frame.winfo_children():
-                widget.destroy()
-                
-            error_label = tk.Label(
-                self.content_frame,
-                text=f"Erro ao carregar o módulo: {str(e)}",
-                font=("Arial", 11),
-                bg=self.cores["fundo"],
-                fg=self.cores["alerta"],
-                wraplength=500,
-                justify="left"
-            )
-            error_label.pack(pady=20, padx=20, anchor="w")
+        # Chama o método mostrar_conteudo_modulo com o módulo selecionado
+        self.mostrar_conteudo_modulo(modulo_id)
             
 
     def mostrar_conteudo_modulo(self, modulo_id, metodo_nome='mostrar_inicio'):

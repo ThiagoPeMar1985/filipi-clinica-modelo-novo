@@ -8,16 +8,16 @@ usando MySQL Connector/Python em modo puro Python.
 # Configurações do banco de dados
 DB_CONFIG = {
     'host': '127.0.0.1',
-    'user': 'root',         # Usuário do MySQL
-    'password': 'Beer1234@', # Senha do MySQL
-    'database': 'pdv_bar',  # Nome do banco de dados
-    'port': 3306,           # Porta padrão do MySQL
+    'user': 'root',
+    'password': 'Beer1234@',
+    'database': 'pdv_bar',
+    'port': 3306,
     'raise_on_warnings': True,
-    'use_pure': True,      # Força o uso da implementação pura em Python
-    'autocommit': True,    # Habilita autocommit por padrão
-    'charset': 'utf8mb4',  # Suporte a caracteres especiais e emojis
-    'collation': 'utf8mb4_unicode_ci',  # Collation para suporte a caracteres especiais
-    'connection_timeout': 30  # Timeout de conexão em segundos
+    'use_pure': True,
+    'autocommit': True,
+    'charset': 'utf8mb4',
+    'collation': 'utf8mb4_unicode_ci',
+    'connection_timeout': 30
 }
 
 # Configurações adicionais para desenvolvimento

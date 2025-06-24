@@ -9,9 +9,120 @@ import tkinter as tk
 from tkinter import messagebox
 import sys
 import os
+import mysql.connector
+from pathlib import Path
 
 # Adiciona o diretório raiz ao path para garantir que os imports funcionem
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Importa as configurações do banco de dados
+from src.db.config import get_db_config
+
+def _conectar_banco_dados():
+    """Função interna para testar a conexão com o banco de dados."""
+    # Obtém as configurações do banco de dados
+    db_config = get_db_config()
+    
+    # Remove chaves que não são necessárias para a conexão
+    for key in ['raise_on_warnings', 'use_pure', 'autocommit', 'charset', 'collation', 'connection_timeout', 'connect_timeout']:
+        db_config.pop(key, None)
+    
+    # Configura timeout reduzido para a conexão
+    db_config['connection_timeout'] = 3
+    db_config['connect_timeout'] = 3
+    
+    # Tenta conectar ao banco de dados
+    try:
+        conn = mysql.connector.connect(**db_config)
+        if conn.is_connected():
+            conn.close()
+            return True, "Conexão com o banco de dados estabelecida com sucesso!"
+        return False, "Falha ao conectar ao banco de dados."
+    except Exception as e:
+        return False, f"Erro ao conectar ao banco de dados: {str(e)}"
+
+def testar_conexao_banco_dados(root=None):
+    """Testa a conexão com o banco de dados.
+    
+    Args:
+        root: Janela raiz do Tkinter (opcional, mantido para compatibilidade)
+        
+    Returns:
+        tuple: (sucesso, mensagem) indicando o resultado da conexão
+    """
+    return _conectar_banco_dados()
+
+def mostrar_tela_banco_dados(root):
+    """Mostra a tela de configuração do banco de dados"""
+    from src.views.modulos.configuracao.configuracao_module import ConfiguracaoModule
+    
+    # Configura a janela
+    janela = tk.Toplevel(root)
+    janela.title("Configuração do Banco de Dados")
+    janela.geometry("800x600")
+    janela.resizable(True, True)
+    
+    # Centraliza a janela
+    window_width = 800
+    window_height = 600
+    screen_width = janela.winfo_screenwidth()
+    screen_height = janela.winfo_screenheight()
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+    janela.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    
+    # Cria o módulo de configuração
+    config_module = ConfiguracaoModule(janela, None)
+    config_module.show('banco_dados')
+    
+    # Variável para controlar se o salvamento foi bem-sucedido
+    salvamento_ok = False
+    
+    # Sobrescreve o método de salvar do módulo de configuração
+    def salvar_banco_dados_original():
+        nonlocal salvamento_ok
+        # Chama o método original de salvar
+        if config_module._salvar_banco_dados():
+            salvamento_ok = True
+    
+    # Substitui o método de salvar
+    if hasattr(config_module, '_salvar_banco_dados'):
+        config_module._salvar_banco_dados_original = config_module._salvar_banco_dados
+        config_module._salvar_banco_dados = salvar_banco_dados_original
+    
+    # Configura o que acontece ao fechar a janela
+    def on_closing():
+        # Se o salvamento foi bem-sucedido, apenas fecha a janela e volta para o login
+        if salvamento_ok:
+            janela.destroy()
+            mostrar_tela_login(root)
+            return
+            
+        # Se não foi um salvamento, pergunta se deseja sair sem salvar
+        if messagebox.askyesno(
+            "Sair sem salvar", 
+            "Deseja sair sem salvar as alterações?"
+        ):
+            janela.destroy()
+            mostrar_tela_login(root)
+    
+    # Configura o protocolo de fechamento da janela
+    janela.protocol("WM_DELETE_WINDOW", on_closing)
+    
+    # Mantém a janela modal
+    janela.grab_set()
+    janela.focus_force()
+    janela.wait_window()
+
+def mostrar_tela_login(root):
+    """Mostra a tela de login"""
+    # Limpa a janela
+    for widget in root.winfo_children():
+        widget.destroy()
+    
+    # Cria a tela de login
+    from src.views.telas.login import TelaLogin
+    TelaLogin(root, mostrar_sistema_pdv)
 
 def mostrar_sistema_pdv(usuario, login_window):
     """Mostra a tela principal do sistema após o login"""
@@ -38,23 +149,54 @@ def mostrar_sistema_pdv(usuario, login_window):
 def main():
     """Função principal que inicia a aplicação"""
     try:
-        # Cria a janela de login
+        # Cria a janela principal
         root = tk.Tk()
+        root.withdraw()  # Esconde a janela principal inicialmente
         
-        # Importa aqui para evitar erros circulares
-        from src.views.telas.login import TelaLogin
+        # Testa a conexão com o banco de dados, mostrando a tela de carregamento
+        try:
+            sucesso, mensagem = testar_conexao_banco_dados(root)
+            
+            if sucesso:
+                # Se a conexão for bem-sucedida, mostra a tela de login
+                mostrar_tela_login(root)
+            else:
+                # Se a conexão falhar, pergunta ao usuário o que deseja fazer
+                resposta = messagebox.askyesno(
+                    "Erro de Conexão",
+                    f"{mensagem}\n\nDeseja configurar o banco de dados agora?\n\n"
+                    "Clique em 'Sim' para configurar ou 'Não' para sair do sistema."
+                )
+                
+                if resposta:
+                    # Se o usuário clicar em 'Sim' (Configurar)
+                    mostrar_tela_banco_dados(root)
+                else:
+                    # Se o usuário clicar em 'Não' (Finalizar)
+                    root.quit()
+                    return
+                    
+        except Exception as e:
+            # Em caso de erro inesperado, mostra mensagem e encerra
+            messagebox.showerror("Erro", f"Erro inesperado: {str(e)}")
+            root.quit()
+            return
         
-        # Cria a tela de login
-        login = TelaLogin(root, mostrar_sistema_pdv)
+        # Configura o que acontece ao fechar a janela principal
+        def on_closing():
+            if messagebox.askokcancel("Sair", "Deseja realmente sair do sistema?"):
+                root.destroy()
         
-        # Inicia o loop principal da interface
+        root.protocol("WM_DELETE_WINDOW", on_closing)
+        
+        # Mostra a janela principal e inicia o loop
+        root.deiconify()
         root.mainloop()
         
     except Exception as e:
-        print(f"Erro ao iniciar o sistema: {e}")
-        import traceback
-        traceback.print_exc()
-        input("Pressione Enter para sair...")
+        messagebox.showerror("Erro", f"Erro ao iniciar o sistema: {str(e)}")
+        print(f"Erro: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

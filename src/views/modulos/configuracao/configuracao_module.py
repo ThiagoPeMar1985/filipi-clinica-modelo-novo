@@ -772,14 +772,41 @@ class ConfiguracaoModule:
     
     def _testar_conexao_db(self):
         """Testa a conexão com o banco de dados"""
-        if self.ctrl.testar_conexao_banco_dados(
-            self.db_host.get(),
-            self.db_porta.get(),
-            self.db_usuario.get(),
-            self.db_senha.get(),
-            self.db_nome.get()
-        ):
-            messagebox.showinfo("Sucesso", "Conexão com o banco de dados realizada com sucesso!")
+        # Obtém os valores dos campos
+        host = self.db_host.get().strip()
+        porta = self.db_porta.get().strip()
+        usuario = self.db_usuario.get().strip()
+        senha = self.db_senha.get()
+        banco = self.db_nome.get().strip()
+        
+        # Atualiza o botão para mostrar que está testando
+        for widget in self.frame.winfo_children():
+            if isinstance(widget, tk.Button) and 'Testar' in widget['text']:
+                widget.config(state=tk.DISABLED, text="Testando...")
+                break
+        
+        try:
+            # Atualiza a interface para o usuário
+            self.frame.update_idletasks()
+            
+            # Testa a conexão diretamente (sem thread)
+            sucesso = self.ctrl.testar_conexao_banco_dados(
+                host, porta, usuario, senha, banco
+            )
+            
+            if sucesso:
+                messagebox.showinfo("Sucesso", "✅ Conexão com o banco de dados realizada com sucesso!")
+            else:
+                messagebox.showerror("Erro", "Falha ao conectar ao banco de dados.")
+                
+        except Exception as error:
+            messagebox.showerror("Erro", f"Erro ao testar conexão: {str(error)}")
+        finally:
+            # Restaura o botão
+            for widget in self.frame.winfo_children():
+                if isinstance(widget, tk.Button) and 'Testar' in widget['text']:
+                    widget.config(state=tk.NORMAL, text="Testar Conexão")
+                    break
     
     def _fazer_backup_db(self):
         """Inicia o backup do banco de dados"""
