@@ -26,7 +26,7 @@ class CadastroModule(BaseModule):
         self.frame.pack_propagate(False)
         
         # Frame para o conteúdo
-        self.conteudo_frame = ttk.Frame(self.frame)
+        self.conteudo_frame = tk.Frame(self.frame, bg='#f0f2f5')
         self.conteudo_frame.pack(fill=tk.BOTH, expand=True)
         
         # Dados em memória
@@ -56,10 +56,11 @@ class CadastroModule(BaseModule):
         self.limpar_conteudo()
         
         # Adiciona uma mensagem de boas-vindas
-        ttk.Label(
+        tk.Label(
             self.conteudo_frame, 
             text="Selecione uma opção no menu lateral para começar.", 
-            font=('Arial', 12)
+            font=('Arial', 12),
+            bg='#f0f2f5'
         ).pack(pady=20)
     
     def mostrar_empresa(self):
@@ -91,15 +92,15 @@ class CadastroModule(BaseModule):
             ).pack(side='left')
             
             # Frame do formulário
-            form_frame = tk.Frame(main_frame, bg='white', padx=20, pady=20, bd=1, relief='groove')
+            form_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=20, pady=20)
             form_frame.pack(fill='both', expand=True)
             
             # Estilo dos labels e campos
-            label_style = {'font': ('Arial', 10, 'bold'), 'bg': 'white', 'anchor': 'w'}
-            entry_style = {'font': ('Arial', 10), 'bd': 1, 'relief': 'solid', 'width': 40}
+            label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w'}
+            entry_style = {'font': ('Arial', 10), 'bd': 0, 'relief': 'flat', 'width': 40, 'bg': 'white'}
             
             # Dados da Empresa
-            tk.Label(form_frame, text="Dados da Empresa", font=('Arial', 12, 'bold'), bg='white').grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
+            tk.Label(form_frame, text="Dados da Empresa", font=('Arial', 12, 'bold'), bg='#f0f2f5').grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
             
             # Nome Fantasia (obrigatório)
             tk.Label(form_frame, text="Nome Fantasia*:", **label_style).grid(row=1, column=0, padx=10, pady=5, sticky='w')
@@ -128,7 +129,7 @@ class CadastroModule(BaseModule):
             
             # Endereço (texto livre)
             tk.Label(form_frame, text="Endereço Completo:", **label_style).grid(row=6, column=0, padx=10, pady=5, sticky='nw')
-            self.empresa_endereco = tk.Text(form_frame, width=40, height=5, font=('Arial', 10), bd=1, relief='solid')
+            self.empresa_endereco = tk.Text(form_frame, width=40, height=5, font=('Arial', 10), bd=0, relief='flat', bg='white')
             self.empresa_endereco.grid(row=6, column=1, padx=10, pady=5, sticky='w')
             
             # Frame para os botões
@@ -1333,6 +1334,9 @@ class CadastroModule(BaseModule):
         if hasattr(self, 'current_view') and self.current_view:
             self.current_view.destroy()
             self.current_view = None
+            
+        # Garante que a cor de fundo seja mantida
+        self.conteudo_frame.configure(bg='#f0f2f5')
             
     def executar_acao(self, acao):
         """Executa a ação correspondente ao botão clicado na barra lateral"""

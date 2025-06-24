@@ -455,26 +455,16 @@ class ConfiguracaoModule:
         # Limpa o frame atual
         for widget in self.frame.winfo_children():
             widget.destroy()
-        
-        # Frame principal
-        main_frame = ttk.Frame(self.frame, padding=10)
-        main_frame.pack(fill='both', expand=True)
-        
-        # Título
-        ttk.Label(
-            main_frame, 
-            text="🖨️ Configuração de Impressoras", 
-            font=('Arial', 14, 'bold')
-        ).pack(anchor='w', pady=(0, 15))
+            
+        frame = ttk.Frame(self.frame, padding=10)
         
         try:
-            # Frame para a lista de impressoras disponíveis
-            list_frame = ttk.LabelFrame(
-                main_frame,
-                text="Impressoras Disponíveis no Sistema",
-                padding=10
-            )
-            list_frame.pack(fill='both', expand=True, pady=(0, 15))
+            # Título
+            ttk.Label(
+                frame, 
+                text="Configuração de Impressoras", 
+                font=('Arial', 14, 'bold')
+            ).grid(row=0, column=0, columnspan=3, pady=10, sticky='w')
             
             # Obtém a lista de impressoras disponíveis
             impressoras = self.ctrl.listar_impressoras()
@@ -482,20 +472,24 @@ class ConfiguracaoModule:
             # Verifica se a lista de impressoras está vazia
             if not impressoras or (len(impressoras) == 1 and impressoras[0].startswith("Erro")):
                 ttk.Label(
-                    list_frame,
+                    frame,
                     text=impressoras[0] if impressoras else "Nenhuma impressora encontrada",
                     foreground="red" if impressoras and impressoras[0].startswith("Erro") else "black"
-                ).pack(pady=10)
+                ).grid(row=1, column=0, columnspan=3, pady=10, sticky='w')
                 impressoras = ["Nenhuma impressora disponível"]
             else:
                 # Exibe a lista de impressoras encontradas
                 ttk.Label(
-                    list_frame,
+                    frame,
                     text=f"Foram encontradas {len(impressoras)} impressoras no sistema:",
-                    font=('Arial', 9)
-                ).pack(anchor='w', pady=(0, 10))
+                    font=('Arial', 10)
+                ).grid(row=1, column=0, columnspan=3, pady=(10, 5), sticky='w')
                 
-                # Lista de impressoras
+                # Lista de impressoras em um frame
+                list_frame = ttk.Frame(frame)
+                list_frame.grid(row=2, column=0, columnspan=3, pady=(0, 15), sticky='ew')
+                
+                # Cria um texto para mostrar as impressoras
                 printer_list = tk.Text(
                     list_frame,
                     height=6,
@@ -513,66 +507,63 @@ class ConfiguracaoModule:
                 printer_list.config(state='disabled')
                 printer_list.pack(fill='both', expand=True)
             
-            # Frame para configuração das impressoras por finalidade
-            config_frame = ttk.LabelFrame(
-                main_frame,
-                text="Configurar Impressoras por Finalidade",
-                padding=10
-            )
-            config_frame.pack(fill='x', pady=(0, 15))
-            
             # Carrega as configurações salvas
             config_salva = self.ctrl.carregar_config_impressoras()
             
             # Impressora de Cupom Fiscal
+            row_start = 3
+            ttk.Label(frame, text="Configurar Impressoras por Finalidade", font=('Arial', 10, 'bold')).grid(
+                row=row_start, column=0, columnspan=3, pady=(15, 10), sticky='w'
+            )
+            
             valor_cupom = config_salva.get('cupom_fiscal', '')
             self.imp_cupom = self.criar_linha_impressora(
-                config_frame, "Cupom Fiscal:", 0, impressoras,
+                frame, "Cupom Fiscal:", row_start+1, impressoras,
                 valor_cupom
             )
             
             # Impressora da Cozinha
             self.imp_cozinha = self.criar_linha_impressora(
-                config_frame, "Cozinha:", 1, impressoras,
+                frame, "Cozinha:", row_start+2, impressoras,
                 config_salva.get('cozinha', '')
             )
             
             # Impressora do Bar
             self.imp_bar = self.criar_linha_impressora(
-                config_frame, "Bar:", 2, impressoras,
+                frame, "Bar:", row_start+3, impressoras,
                 config_salva.get('bar', '')
             )
             
             # Impressora de Sobremesas
             self.imp_sobremesas = self.criar_linha_impressora(
-                config_frame, "Sobremesas:", 3, impressoras,
+                frame, "Sobremesas:", row_start+4, impressoras,
                 config_salva.get('sobremesas', '')
             )
             
             # Impressora de Delivery
             self.imp_delivery = self.criar_linha_impressora(
-                config_frame, "Delivery:", 4, impressoras,
+                frame, "Delivery:", row_start+5, impressoras,
                 config_salva.get('delivery', '')
             )
             
             # Configura o tamanho da fonte
             ttk.Label(
-                config_frame,
+                frame,
                 text="Tamanho da Fonte:",
                 font=('Arial', 9, 'bold')
-            ).grid(row=5, column=0, sticky='w', padx=5, pady=(15, 5))
+            ).grid(row=row_start+6, column=0, sticky='w', padx=5, pady=(15, 5))
             
             # Define o valor padrão para o tamanho da fonte
             tamanho_padrao = str(config_salva.get('tamanho_fonte', '12'))
             
             self.imp_tamanho_fonte = ttk.Combobox(
-                config_frame,
+                frame,
                 values=["8", "9", "10", "11", "12", "14", "16", "18", "20", "22", "24"],
                 state='readonly',
                 width=10,
                 font=('Arial', 9)
             )
-            self.imp_tamanho_fonte.grid(row=5, column=1, sticky='w', padx=5, pady=(15, 5))
+            self.imp_tamanho_fonte.grid(row=row_start+6, column=1, sticky='w', padx=5, pady=(15, 5))
             
             # Define o valor salvo ou o padrão
             if tamanho_padrao in self.imp_tamanho_fonte['values']:
@@ -580,31 +571,27 @@ class ConfiguracaoModule:
             else:
                 self.imp_tamanho_fonte.set("12")
             
-            # Configura a expansão das colunas
-            config_frame.columnconfigure(1, weight=1)
-            
-            # Frame para os botões
-            btn_frame = tk.Frame(main_frame, bg='#f0f2f5')
-            btn_frame.pack(fill='x', pady=(15, 0))
-            
             # Label para exibir status
             self.status_label = tk.Label(
-                main_frame,
+                frame,
                 text="",
                 font=('Arial', 9),
-                foreground="black",
-                bg='white'
+                foreground="black"
             )
-            self.status_label.pack(pady=(5, 0), anchor='w')
+            self.status_label.grid(row=row_start+7, column=0, columnspan=3, pady=(5, 0), sticky='w')
             
-            # Frame para botões da esquerda
+            # Frame para os botões
+            btn_frame = tk.Frame(frame, bg='#f0f2f5', pady=20)
+            btn_frame.grid(row=row_start+8, column=0, columnspan=3, sticky='ew')
+            
+            # Frame para os botões à esquerda
             left_btns = tk.Frame(btn_frame, bg='#f0f2f5')
             left_btns.pack(side='left')
             
             # Botão para testar impressão - Azul padrão
             btn_testar = tk.Button(
                 left_btns,
-                text="🖨️ Testar Impressão",
+                text="Testar Impressão",
                 font=('Arial', 10, 'bold'),
                 bg='#4a6fa5',
                 fg='white',
@@ -617,30 +604,10 @@ class ConfiguracaoModule:
             )
             btn_testar.pack(side='left', padx=5)
             
-            # Frame para botões da direita
-            right_btns = tk.Frame(btn_frame, bg='#f0f2f5')
-            right_btns.pack(side='right')
-            
-            # Botão para salvar configurações - Verde
-            btn_salvar = tk.Button(
-                right_btns,
-                text="💾 Salvar Configurações",
-                font=('Arial', 10, 'bold'),
-                bg='#4CAF50',
-                fg='white',
-                bd=0,
-                padx=15,
-                pady=8,
-                relief='flat',
-                cursor='hand2',
-                command=self._salvar_impressoras
-            )
-            btn_salvar.pack(side='right', padx=5)
-            
             # Botão para atualizar a lista de impressoras - Cinza
             btn_atualizar = tk.Button(
-                right_btns,
-                text="🔄 Atualizar Lista",
+                left_btns,
+                text="Atualizar Lista",
                 font=('Arial', 10, 'bold'),
                 bg='#757575',
                 fg='white',
@@ -651,16 +618,38 @@ class ConfiguracaoModule:
                 cursor='hand2',
                 command=self._show_impressoras
             )
-            btn_atualizar.pack(side='right', padx=5)
+            btn_atualizar.pack(side='left', padx=5)
+            
+            # Frame para o botão à direita
+            right_btns = tk.Frame(btn_frame, bg='#f0f2f5')
+            right_btns.pack(side='right')
+            
+            # Botão para salvar configurações - Verde
+            btn_salvar = tk.Button(
+                right_btns,
+                text="Salvar Configurações",
+                font=('Arial', 10, 'bold'),
+                bg='#4CAF50',
+                fg='white',
+                bd=0,
+                padx=20,
+                pady=8,
+                relief='flat',
+                cursor='hand2',
+                command=self._salvar_impressoras
+            )
+            btn_salvar.pack(side='right', padx=5)
             
         except Exception as e:
+            print(f"Erro ao carregar configurações de impressoras: {e}")
             ttk.Label(
-                main_frame,
+                frame,
                 text=f"Erro ao carregar as configurações de impressão: {str(e)}",
                 foreground="red"
             ).pack(pady=20)
         
-        self.current_view = main_frame
+        frame.pack(fill='both', expand=True, padx=20, pady=10)
+        self.current_view = frame
     
     def _testar_impressao(self, impressora_selecionada=None):
         """
