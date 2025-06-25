@@ -16,7 +16,6 @@ import os
 # Adiciona o diretório raiz ao path para garantir que os imports funcionem
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from views.modulos.modulo_manager import ModuloManager
 from views.modulos.cadastro.cadastro_module import CadastroModule
 from src.controllers.permission_controller import PermissionController
 
@@ -53,12 +52,12 @@ class SistemaPDV:
             "secundaria": "#28b5f4",
             "terciaria": "#333f50",
             "fundo": "#f0f2f5",
-            "fundo_conteudo": "#ffffff",
+            "fundo_conteudo": "#f0f2f5",  # Mesma cor do fundo para remover a borda branca
             "texto": "#333333",
             "texto_claro": "#ffffff",
             "destaque": "#4caf50",
             "alerta": "#f44336",
-            "borda": "#e0e0e0"
+            "borda": "#f0f2f5"  # Mesma cor do fundo para remover a borda
         }
         
         # Configuração de fundo
@@ -159,7 +158,7 @@ class SistemaPDV:
         self.sidebar_options.pack(fill="both", expand=True, padx=5, pady=5)
         
         # Área de conteúdo
-        self.content_frame = tk.Frame(self.container, bg=self.cores["fundo"])
+        self.content_frame = tk.Frame(self.container, bg=self.cores["fundo_conteudo"])
         self.content_frame.pack(side="right", fill="both", expand=True)
         
         # Mensagem de boas-vindas
@@ -167,7 +166,7 @@ class SistemaPDV:
             self.content_frame,
             text=f"Bem-vindo, {self.usuario.nome}!",
             font=("Arial", 28, "bold"),
-            bg=self.cores["fundo"],
+            bg=self.cores["fundo_conteudo"],
             fg=self.cores["texto"]
         )
         welcome_label.pack(pady=50)
@@ -178,7 +177,7 @@ class SistemaPDV:
             self.content_frame,
             text=data_formatada,
             font=("Arial", 20),
-            bg=self.cores["fundo"],
+            bg=self.cores["fundo_conteudo"],
             fg=self.cores["texto"]
         )
         date_label.pack()
@@ -188,7 +187,7 @@ class SistemaPDV:
             self.content_frame,
             text="Software produzido por Thiago Periard Martins",
             font=("Arial", 14),
-            bg=self.cores["fundo"],
+            bg=self.cores["fundo_conteudo"],
             fg=self.cores["texto"]
         )
         credits_label.pack(side="bottom", pady=50)

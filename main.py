@@ -114,6 +114,40 @@ def mostrar_tela_banco_dados(root):
     janela.focus_force()
     janela.wait_window()
 
+def mostrar_tela_conexao_db(root):
+    """Mostra a tela de configuração de conexão com o banco de dados"""
+    # Limpa a janela
+    for widget in root.winfo_children():
+        widget.destroy()
+    
+    # Configura a janela
+    root.title("Configuração do Banco de Dados")
+    root.geometry("800x600")
+    root.resizable(True, True)
+    
+    # Centraliza a janela
+    window_width = 800
+    window_height = 600
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+    root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    
+    # Cria a tela de conexão com o banco de dados
+    from src.views.telas.conexao_db import TelaConexaoDB
+    
+    # Define o callback para quando a conexão for bem-sucedida
+    def on_conexao_sucesso():
+        # Mostra a tela de login
+        mostrar_tela_login(root)
+    
+    # Cria a tela de conexão
+    TelaConexaoDB(root, callback_sucesso=on_conexao_sucesso)
+    
+    # Mostra a janela
+    root.deiconify()
+
 def mostrar_tela_login(root):
     """Mostra a tela de login"""
     # Limpa a janela
@@ -153,34 +187,21 @@ def main():
         root = tk.Tk()
         root.withdraw()  # Esconde a janela principal inicialmente
         
-        # Testa a conexão com o banco de dados, mostrando a tela de carregamento
+        # Testa a conexão com o banco de dados
         try:
-            sucesso, mensagem = testar_conexao_banco_dados(root)
+            sucesso, mensagem = testar_conexao_banco_dados()
             
             if sucesso:
                 # Se a conexão for bem-sucedida, mostra a tela de login
                 mostrar_tela_login(root)
             else:
-                # Se a conexão falhar, pergunta ao usuário o que deseja fazer
-                resposta = messagebox.askyesno(
-                    "Erro de Conexão",
-                    f"{mensagem}\n\nDeseja configurar o banco de dados agora?\n\n"
-                    "Clique em 'Sim' para configurar ou 'Não' para sair do sistema."
-                )
-                
-                if resposta:
-                    # Se o usuário clicar em 'Sim' (Configurar)
-                    mostrar_tela_banco_dados(root)
-                else:
-                    # Se o usuário clicar em 'Não' (Finalizar)
-                    root.quit()
-                    return
+                # Se a conexão falhar, mostra a tela de configuração do banco de dados
+                mostrar_tela_conexao_db(root)
                     
         except Exception as e:
-            # Em caso de erro inesperado, mostra mensagem e encerra
-            messagebox.showerror("Erro", f"Erro inesperado: {str(e)}")
-            root.quit()
-            return
+            # Em caso de erro inesperado, mostra a tela de configuração do banco
+            print(f"Erro ao conectar ao banco de dados: {str(e)}")
+            mostrar_tela_conexao_db(root)
         
         # Configura o que acontece ao fechar a janela principal
         def on_closing():

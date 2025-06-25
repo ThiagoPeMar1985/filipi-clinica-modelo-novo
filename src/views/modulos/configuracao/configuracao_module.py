@@ -1,7 +1,14 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+import os
+import sys
 
-class ConfiguracaoModule:
+# Adicione o diretório raiz ao path para permitir importações absolutas
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+
+from ..base_module import BaseModule
+
+class ConfiguracaoModule(BaseModule):
     def _criar_campo(self, frame, label_text, row, value='', width=30):
         ttk.Label(frame, text=label_text).grid(row=row, column=0, sticky='w', pady=2, padx=5)
         entry = ttk.Entry(frame, width=width)
@@ -35,11 +42,14 @@ class ConfiguracaoModule:
     
     def __init__(self, parent, controller):
         """Inicializa o módulo de configuração."""
-        self.parent = parent
-        self.controller = controller
-        self.frame = ttk.Frame(parent)
-        self.frame.pack(fill='both', expand=True)  # Adicionando empacotamento do frame
-        self.current_view = None
+        super().__init__(parent, controller)
+        
+        # Configura o frame principal
+        self.frame.pack_propagate(False)
+        
+        # Frame para o conteúdo
+        self.conteudo_frame = tk.Frame(self.frame, bg='#f0f2f5')
+        self.conteudo_frame.pack(fill=tk.BOTH, expand=True)
         
         # Inicializa o controlador de configuração
         from src.controllers.config_controller import ConfigController
@@ -56,6 +66,9 @@ class ConfiguracaoModule:
             {"nome": "Segurança", "acao": "seguranca"}
         ]
         
+        # Mostra a tela inicial
+        self._show_default()
+        
     def get_opcoes(self):
         """Retorna a lista de opções para a barra lateral"""
         return self.opcoes
@@ -67,10 +80,6 @@ class ConfiguracaoModule:
                 self.current_view.destroy()
             except tk.TclError:
                 pass  # Ignora erros de widget já destruído
-        
-        # Garante que self.frame existe e está configurado corretamente
-        if not hasattr(self, 'frame') or not self.frame.winfo_exists():
-            self.frame = ttk.Frame(self.parent)
         
         # Cria a view solicitada ou a view padrão
         if acao == 'nfe':
@@ -90,75 +99,116 @@ class ConfiguracaoModule:
         else:
             self._show_default()
         
-        # Empacota o frame principal
-        self.frame.pack(fill='both', expand=True)
         return self.frame
     
     def _show_default(self):
         # Tela inicial do módulo de configuração
-        label = ttk.Label(
-            self.frame, 
+        if hasattr(self, 'current_view') and self.current_view:
+            self.current_view.destroy()
+            
+        self.current_view = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+        self.current_view.pack(fill='both', expand=True)
+        
+        label = tk.Label(
+            self.current_view, 
             text="Selecione uma opção de configuração no menu lateral", 
-            font=('Arial', 12)
+            font=('Arial', 12),
+            bg='#f0f2f5'
         )
-        label.pack(pady=20)
+        label.place(relx=0.5, rely=0.5, anchor='center')
     
     def _show_nfe(self):
         # Tela de configuração de NF-e
-        if not hasattr(self, 'frame') or not self.frame.winfo_exists():
-            self.frame = ttk.Frame(self.parent)
-        
-        # Limpa o frame atual
-        for widget in self.frame.winfo_children():
-            widget.destroy()
+        if hasattr(self, 'current_view') and self.current_view:
+            self.current_view.destroy()
             
-        frame = ttk.Frame(self.frame, padding=10)
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
         
-        # Título
-        ttk.Label(
-            frame, 
-            text="Configurações de NF-e", 
-            font=('Arial', 14, 'bold')
-        ).grid(row=0, column=0, columnspan=3, pady=10, sticky='w')
+        # Frame do título
+        title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+        title_frame.pack(fill='x', pady=(0, 20))
         
-        # Campos do formulário
-        self.nfe_serie = self._criar_campo(frame, "Série:", 1, "1")
+        tk.Label(
+            title_frame, 
+            text="CONFIGURAÇÕES DE NOTA FISCAL ELETRÔNICA", 
+            font=('Arial', 16, 'bold'),
+            bg='#f0f2f5',
+            fg='#333333'
+        ).pack(side='left')
         
-        self.nfe_ambiente = self._criar_combobox(
-            frame, "Ambiente:", 2, 
-            ["Homologação", "Produção"], "Homologação"
+        # Frame do formulário com padding maior nas laterais para centralizar
+        form_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=200, pady=20)
+        form_frame.pack(fill='both', expand=True)
+        
+        # Estilo dos labels e campos
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        entry_style = {'font': ('Arial', 10), 'width': 30, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
+        
+        # Frame para o conteúdo
+        content_frame = tk.Frame(form_frame, bg='#f0f2f5')
+        content_frame.pack(fill='both', expand=True)
+        
+        # Configura o grid
+        content_frame.columnconfigure(1, weight=1, minsize=300)  # Coluna dos campos
+        
+        # Dados da NF-e
+        tk.Label(content_frame, text="Dados da NF-e", font=('Arial', 12, 'bold'), 
+                bg='#f0f2f5').grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
+        
+        # Série
+        tk.Label(content_frame, text="Série:", **label_style).grid(row=1, column=0, padx=10, pady=5, sticky='w')
+        self.nfe_serie = tk.Entry(content_frame, **entry_style)
+        self.nfe_serie.grid(row=1, column=1, padx=10, pady=5, sticky='ew')
+        
+        # Ambiente
+        tk.Label(content_frame, text="Ambiente:", **label_style).grid(row=2, column=0, padx=10, pady=5, sticky='w')
+        
+        self.ambiente_var = tk.StringVar(value="Homologação")
+        self.nfe_ambiente = ttk.Combobox(
+            content_frame,
+            textvariable=self.ambiente_var,
+            values=["Homologação", "Produção"],
+            state='readonly',
+            width=27
         )
+        self.nfe_ambiente.grid(row=2, column=1, padx=10, pady=5, sticky='w')
         
-        # Frame para o campo de certificado com botão de procurar
-        cert_frame = tk.Frame(frame, bg='#f0f2f5')
-        cert_frame.grid(row=3, column=1, sticky='ew')
-        ttk.Label(frame, text="Certificado:").grid(row=3, column=0, sticky='w', pady=2, padx=5)
+        # Certificado Digital
+        tk.Label(content_frame, text="Certificado:", **label_style).grid(row=3, column=0, padx=10, pady=5, sticky='w')
         
-        self.nfe_certificado = ttk.Entry(cert_frame, width=40)
+        # Frame para o campo de certificado e botão
+        cert_frame = tk.Frame(content_frame, bg='#f0f2f5')
+        cert_frame.grid(row=3, column=1, padx=10, pady=5, sticky='ew')
+        
+        self.nfe_certificado = tk.Entry(cert_frame, **entry_style)
         self.nfe_certificado.pack(side='left', fill='x', expand=True)
         
         btn_procurar = tk.Button(
             cert_frame, 
             text="...", 
-            font=('Arial', 8, 'bold'),
+            font=('Arial', 9, 'bold'),
             bg='#4a6fa5',
             fg='white',
             bd=0,
             width=3,
             relief='flat',
             cursor='hand2',
+            activebackground='#3b5a7f',
+            activeforeground='white',
             command=lambda: self._selecionar_arquivo(self.nfe_certificado)
         )
-        btn_procurar.pack(side='left', padx=(5, 0))
+        btn_procurar.pack(side='right', padx=(5, 0))
         
-        self.nfe_senha = self._criar_campo(
-            frame, "Senha do Certificado:", 4, "", 30
-        )
-        self.nfe_senha.config(show="*")
+        # Senha do Certificado
+        tk.Label(content_frame, text="Senha do Certificado:", **label_style).grid(row=4, column=0, padx=10, pady=5, sticky='w')
+        self.nfe_senha = tk.Entry(content_frame, show="*", **entry_style)
+        self.nfe_senha.grid(row=4, column=1, padx=10, pady=5, sticky='ew')
         
-        # Frame para o botão Salvar
-        btn_frame = tk.Frame(frame, bg='#f0f2f5')
-        btn_frame.grid(row=5, column=0, columnspan=3, pady=15, sticky='e')
+        # Frame para os botões
+        btn_frame = tk.Frame(content_frame, bg='#f0f2f5', pady=20)
+        btn_frame.grid(row=5, column=0, columnspan=2, sticky='e')
         
         # Botão Salvar - Verde
         btn_salvar = tk.Button(
@@ -172,156 +222,226 @@ class ConfiguracaoModule:
             pady=8,
             relief='flat',
             cursor='hand2',
+            activebackground='#43a047',
+            activeforeground='white',
             command=self._salvar_nfe
         )
         btn_salvar.pack(side='right', padx=5)
         
-        frame.pack(fill='both', expand=True, padx=20, pady=10)
-        self.current_view = frame
+        # Botão Cancelar - Vermelho
+        btn_cancelar = tk.Button(
+            btn_frame,
+            text="Cancelar",
+            font=('Arial', 10, 'bold'),
+            bg='#f44336',
+            fg='white',
+            bd=0,
+            padx=20,
+            pady=8,
+            relief='flat',
+            cursor='hand2',
+            activebackground='#d32f2f',
+            activeforeground='white',
+            command=self._show_default
+        )
+        btn_cancelar.pack(side='right')
+        
+        # Ajusta o grid para expandir corretamente
+        form_frame.columnconfigure(1, weight=1)
     
     def _salvar_nfe(self):
         """Salva as configurações de NF-e"""
-        dados = {
-            'serie': self.nfe_serie.get(),
-            'ambiente': self.nfe_ambiente.get().lower(),
-            'certificado': self.nfe_certificado.get(),
-            'senha': self.nfe_senha.get()
-        }
-        if self.ctrl.salvar_config_nfe(dados):
-            messagebox.showinfo("Sucesso", "Configurações de NF-e salvas com sucesso!")
+        try:
+            # Obter os valores dos campos
+            serie = self.nfe_serie.get().strip()
+            ambiente = self.ambiente_var.get()
+            certificado = self.nfe_certificado.get().strip()
+            senha = self.nfe_senha.get()
+            
+            # Validações básicas
+            if not serie:
+                messagebox.showwarning("Atenção", "O campo Série é obrigatório!")
+                self.nfe_serie.focus_set()
+                return
+                
+            if not certificado:
+                messagebox.showwarning("Atenção", "O campo Certificado Digital é obrigatório!")
+                self.nfe_certificado.focus_set()
+                return
+                
+            try:
+                # Prepara os dados para salvar
+                dados = {
+                    'serie': serie,
+                    'ambiente': ambiente.lower(),
+                    'certificado': certificado,
+                    'senha': senha
+                }
+                
+                # Salva as configurações
+                if self.ctrl.salvar_config_nfe(dados):
+                    messagebox.showinfo("Sucesso", "Configurações de NF-e salvas com sucesso!")
+                else:
+                    messagebox.showerror("Erro", "Não foi possível salvar as configurações.")
+                
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao salvar as configurações: {str(e)}")
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro inesperado: {str(e)}")
     
     def _show_backup(self):
-        # Tela de configuração de Backup
-        if not hasattr(self, 'frame') or not self.frame.winfo_exists():
-            self.frame = ttk.Frame(self.parent)
-        
         # Limpa o frame atual
-        for widget in self.frame.winfo_children():
+        for widget in self.conteudo_frame.winfo_children():
             widget.destroy()
             
-        frame = ttk.Frame(self.frame, padding=10)
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
         
-        try:
-            # Título
-            ttk.Label(
-                frame, 
-                text="Configurações de Backup", 
-                font=('Arial', 14, 'bold')
-            ).grid(row=0, column=0, columnspan=3, pady=10, sticky='w')
-            
-            # Carrega as configurações salvas
-            config_backup = self.ctrl.carregar_config_backup()
-            
-            # Frame para o campo de pasta de backup
-            backup_frame = ttk.Frame(frame)
-            backup_frame.grid(row=1, column=1, sticky='ew')
-            ttk.Label(frame, text="Pasta de Backup:").grid(row=1, column=0, sticky='w', pady=2, padx=5)
-            
-            self.backup_pasta = ttk.Entry(backup_frame, width=40)
-            self.backup_pasta.pack(side='left', fill='x', expand=True)
-            
-            # Preenche com a pasta salva, se existir
-            if config_backup and 'pasta' in config_backup:
-                self.backup_pasta.insert(0, config_backup['pasta'])
-            
-            btn_selecionar = tk.Button(
-                backup_frame, 
-                text="...", 
-                font=('Arial', 8, 'bold'),
-                bg='#4a6fa5',
-                fg='white',
-                bd=0,
-                width=3,
-                relief='flat',
-                cursor='hand2',
-                command=lambda: self._selecionar_pasta(self.backup_pasta)
-            )
-            btn_selecionar.pack(side='left', padx=(5, 0))
-            
-            # Frequência de backup
-            freq_padrao = config_backup.get('frequencia', 'Diário').capitalize()
-            self.backup_frequencia = self._criar_combobox(
-                frame, "Frequência:", 2,
-                ["Diário", "Semanal", "Mensal"], 
-                freq_padrao
-            )
-            
-            # Manter últimos X backups
-            manter_padrao = config_backup.get('manter_ultimos', '30')
-            self.backup_manter = self._criar_campo(
-                frame, "Manter últimos (dias):", 3, manter_padrao
-            )
-            
-            # Frame para os botões
-            btn_frame = tk.Frame(frame, bg='#f0f2f5')
-            btn_frame.grid(row=4, column=0, columnspan=3, pady=15, sticky='ew')
-            
-            # Frame para botões da esquerda
-            left_btns = tk.Frame(btn_frame, bg='#f0f2f5')
-            left_btns.pack(side='left')
-            
-            # Botão Criar Arquivo - Azul padrão
-            btn_executar = tk.Button(
-                left_btns,
-                text="Criar Arquivo",
-                font=('Arial', 10, 'bold'),
-                bg='#4a6fa5',
-                fg='white',
-                bd=0,
-                padx=15,
-                pady=8,
-                relief='flat',
-                cursor='hand2',
-                command=self._executar_backup
-            )
-            btn_executar.pack(side='left', padx=5)
-            
-            # Botão Restaurar Backup - Laranja
-            btn_restaurar = tk.Button(
-                left_btns,
-                text="Restaurar Backup",
-                font=('Arial', 10, 'bold'),
-                bg='#ff8c00',
-                fg='white',
-                bd=0,
-                padx=15,
-                pady=8,
-                relief='flat',
-                cursor='hand2',
-                command=self._restaurar_backup
-            )
-            btn_restaurar.pack(side='left', padx=5)
-            
-            # Frame para botões da direita
-            right_btns = tk.Frame(btn_frame, bg='#f0f2f5')
-            right_btns.pack(side='right')
-            
-            # Botão Salvar - Verde
-            btn_salvar = tk.Button(
-                right_btns,
-                text="Salvar Configurações",
-                font=('Arial', 10, 'bold'),
-                bg='#4CAF50',
-                fg='white',
-                bd=0,
-                padx=20,
-                pady=8,
-                relief='flat',
-                cursor='hand2',
-                command=self._salvar_backup
-            )
-            btn_salvar.pack(side='right', padx=5)
-            
-        except Exception as e:
-            print(f"Erro ao carregar configurações de backup: {e}")
-            ttk.Label(
-                frame,
-                text=f"Erro ao carregar as configurações de backup: {str(e)}",
-                foreground="red"
-            ).pack(pady=20)
+        # Frame do título
+        title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+        title_frame.pack(fill='x', pady=(0, 20))
         
-        frame.pack(fill='both', expand=True, padx=20, pady=10)
-        self.current_view = frame
+        tk.Label(
+            title_frame, 
+            text="CONFIGURAÇÕES DE BACKUP", 
+            font=('Arial', 16, 'bold'),
+            bg='#f0f2f5',
+            fg='#333333'
+        ).pack(side='left')
+        
+        # Frame do formulário
+        form_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=120, pady=20)
+        form_frame.pack(fill='both', expand=True)
+        
+        # Configura o grid para expandir
+        form_frame.columnconfigure(1, weight=1)
+        
+        # Carrega as configurações salvas
+        config_backup = self.ctrl.carregar_config_backup()
+        
+        # Estilo dos labels e campos
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        entry_style = {'font': ('Arial', 10), 'width': 30, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
+        
+        # Pasta de Backup
+        tk.Label(form_frame, text="Pasta de Backup:", **label_style).grid(row=0, column=0, sticky='w', pady=5)
+        
+        # Frame para o campo de pasta
+        pasta_frame = tk.Frame(form_frame, bg='#f0f2f5')
+        pasta_frame.grid(row=0, column=1, sticky='ew', pady=5)
+        pasta_frame.columnconfigure(0, weight=1)
+        
+        self.backup_pasta = tk.Entry(pasta_frame, **entry_style)
+        self.backup_pasta.pack(side='left', fill='x', expand=True)
+        
+        # Preenche com a pasta salva, se existir
+        if config_backup and 'pasta' in config_backup:
+            self.backup_pasta.insert(0, config_backup['pasta'])
+        
+        # Botão para selecionar pasta
+        btn_pasta = tk.Button(
+            pasta_frame,
+            text="...",
+            font=('Arial', 10, 'bold'),
+            bg='#4a6fa5',
+            fg='white',
+            bd=0,
+            width=3,
+            relief='flat',
+            cursor='hand2',
+            command=lambda: self._selecionar_pasta(self.backup_pasta)
+        )
+        btn_pasta.pack(side='right', padx=(5, 0))
+        
+        # Frequência de backup
+        tk.Label(form_frame, text="Frequência:", **label_style).grid(row=1, column=0, sticky='w', pady=5)
+        
+        # Frame para o combobox
+        freq_frame = tk.Frame(form_frame, bg='#f0f2f5')
+        freq_frame.grid(row=1, column=1, sticky='w', pady=5)
+        
+        freq_padrao = config_backup.get('frequencia', 'Diário').capitalize()
+        self.backup_frequencia = ttk.Combobox(
+            freq_frame,
+            values=["Diário", "Semanal", "Mensal"],
+            state='readonly',
+            width=22
+        )
+        self.backup_frequencia.set(freq_padrao)
+        self.backup_frequencia.pack()
+        
+        # Manter últimos X backups
+        tk.Label(form_frame, text="Manter últimos (dias):", **label_style).grid(row=2, column=0, sticky='w', pady=5)
+        
+        # Frame para o campo de dias
+        dias_frame = tk.Frame(form_frame, bg='#f0f2f5')
+        dias_frame.grid(row=2, column=1, sticky='ew', pady=5)
+        dias_frame.columnconfigure(0, weight=1)
+        
+        manter_padrao = config_backup.get('manter_ultimos', '30')
+        self.backup_manter = tk.Entry(dias_frame, **entry_style)
+        self.backup_manter.insert(0, manter_padrao)
+        self.backup_manter.pack(fill='x', expand=True)
+        
+        # Frame para os botões
+        btn_frame = tk.Frame(form_frame, bg='#f0f2f5', pady=20)
+        btn_frame.grid(row=3, column=0, columnspan=2, sticky='e', pady=(30, 0))
+        
+        # Botão Criar Arquivo - Azul padrão
+        btn_executar = tk.Button(
+            btn_frame,
+            text="Criar Arquivo",
+            font=('Arial', 10, 'bold'),
+            bg='#4a6fa5',
+            fg='white',
+            bd=0,
+            padx=15,
+            pady=8,
+            relief='flat',
+            cursor='hand2',
+            command=self._executar_backup
+        )
+        btn_executar.pack(side='right', padx=5)
+        
+        # Botão Restaurar Backup - Laranja
+        btn_restaurar = tk.Button(
+            btn_frame,
+            text="Restaurar Backup",
+            font=('Arial', 10, 'bold'),
+            bg='#ff8c00',
+            fg='white',
+            bd=0,
+            padx=15,
+            pady=8,
+            relief='flat',
+            cursor='hand2',
+            command=self._restaurar_backup
+        )
+        btn_restaurar.pack(side='right', padx=5)
+        
+        # Botão Salvar - Verde
+        btn_salvar = tk.Button(
+            btn_frame,
+            text="Salvar Configurações",
+            font=('Arial', 10, 'bold'),
+            bg='#4CAF50',
+            fg='white',
+            bd=0,
+            padx=20,
+            pady=8,
+            relief='flat',
+            cursor='hand2',
+            command=self._salvar_backup
+        )
+        btn_salvar.pack(side='right', padx=5)
+        
+        # Configura o grid para expandir corretamente
+        form_frame.columnconfigure(1, weight=1)
+        
+        # Define a visualização atual
+        self.current_view = main_frame
     
     def _executar_backup(self):
         """Executa o backup imediatamente após confirmação"""
@@ -409,7 +529,8 @@ class ConfiguracaoModule:
         ttk.Label(
             parent,
             text=label_text,
-            font=('Arial', 9, 'bold')
+            font=('Arial', 9, 'bold'),
+            background='#f0f2f5'
         ).grid(row=row, column=0, sticky='w', padx=5, pady=2)
         
         # Cria um nome único para a variável de controle
@@ -419,14 +540,38 @@ class ConfiguracaoModule:
         setattr(self, var_name, tk.StringVar(value=valor_padrao))
         var = getattr(self, var_name)
         
+        style = ttk.Style()
+        style.theme_use('default')
+        
+        # Configura o estilo do combobox
+        style.configure('TCombobox',
+                      fieldbackground='white',
+                      background='white',
+                      foreground='black',
+                      selectbackground='white',
+                      selectforeground='black')
+        
+        # Configura o estilo do dropdown
+        style.map('TCombobox',
+                 fieldbackground=[('readonly', 'white')],
+                 selectbackground=[('readonly', 'white')],
+                 selectforeground=[('readonly', 'black')],
+                 background=[('readonly', 'white')],
+                 foreground=[('readonly', 'black')])
+        
+        # Cria o combobox
         combobox = ttk.Combobox(
             parent,
             textvariable=var,
             values=impressoras,
             state='readonly',
             width=50,
-            font=('Arial', 9)
+            font=('Arial', 9),
+            style='TCombobox'
         )
+        
+        # Aplica o estilo ao dropdown
+        combobox['style'] = 'TCombobox'
         combobox.grid(row=row, column=1, sticky='ew', padx=5, pady=2)
         
         # Se não houver valor padrão e houver impressoras disponíveis, define a primeira
@@ -458,21 +603,41 @@ class ConfiguracaoModule:
     
     def _show_impressoras(self):
         """Exibe a tela de configuração de impressoras"""
-        if not hasattr(self, 'frame') or not self.frame.winfo_exists():
-            self.frame = ttk.Frame(self.parent)
-        
-        # Limpa o frame atual
-        for widget in self.frame.winfo_children():
+        # Limpa o frame de conteúdo
+        for widget in self.conteudo_frame.winfo_children():
             widget.destroy()
             
-        frame = ttk.Frame(self.frame, padding=10)
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        # Frame do título
+        title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+        title_frame.pack(fill='x', pady=(0, 20))
+        
+        tk.Label(
+            title_frame, 
+            text="CONFIGURAÇÕES DE IMPRESSORAS", 
+            font=('Arial', 16, 'bold'),
+            bg='#f0f2f5',
+            fg='#333333'
+        ).pack(side='left')
+        
+        # Frame do formulário
+        frame = tk.Frame(main_frame, bg='#f0f2f5', padx=120, pady=20)
+        frame.pack(fill='both', expand=True)
+        
+        # Configura o grid para expandir
+        frame.columnconfigure(1, weight=1)
         
         try:
-            # Título
-            ttk.Label(
+            # Título da seção
+            tk.Label(
                 frame, 
-                text="Configuração de Impressoras", 
-                font=('Arial', 14, 'bold')
+                text="Configuração de Impressoras",
+                font=('Arial', 12, 'bold'),
+                bg='#f0f2f5',
+                fg='#333333'
             ).grid(row=0, column=0, columnspan=3, pady=10, sticky='w')
             
             # Obtém a lista de impressoras disponíveis
@@ -480,34 +645,40 @@ class ConfiguracaoModule:
             
             # Verifica se a lista de impressoras está vazia
             if not impressoras or (len(impressoras) == 1 and impressoras[0].startswith("Erro")):
-                ttk.Label(
+                tk.Label(
                     frame,
                     text=impressoras[0] if impressoras else "Nenhuma impressora encontrada",
-                    foreground="red" if impressoras and impressoras[0].startswith("Erro") else "black"
+                    font=('Arial', 10),
+                    bg='#f0f2f5',
+                    fg='#dc3545' if impressoras and impressoras[0].startswith("Erro") else '#6c757d'
                 ).grid(row=1, column=0, columnspan=3, pady=10, sticky='w')
                 impressoras = ["Nenhuma impressora disponível"]
             else:
                 # Exibe a lista de impressoras encontradas
-                ttk.Label(
+                tk.Label(
                     frame,
                     text=f"Foram encontradas {len(impressoras)} impressoras no sistema:",
-                    font=('Arial', 10)
+                    font=('Arial', 10),
+                    bg='#f0f2f5',
+                    fg='#000000'  # Texto preto
                 ).grid(row=1, column=0, columnspan=3, pady=(10, 5), sticky='w')
                 
-                # Lista de impressoras em um frame
-                list_frame = ttk.Frame(frame)
-                list_frame.grid(row=2, column=0, columnspan=3, pady=(0, 15), sticky='ew')
+                # Lista de impressoras em um frame sem bordas
+                list_frame = tk.Frame(frame, bg='white', bd=0)
+                list_frame.grid(row=2, column=0, columnspan=3, pady=(0, 15), sticky='nsew')
                 
-                # Cria um texto para mostrar as impressoras
+                # Cria um texto para mostrar as impressoras com fundo branco e sem bordas
                 printer_list = tk.Text(
                     list_frame,
                     height=6,
                     wrap=tk.WORD,
                     font=('Arial', 9),
-                    padx=5,
-                    pady=5,
-                    bg='#f9f9f9',
-                    relief='flat'
+                    padx=10,
+                    pady=10,
+                    bg='white',
+                    fg='#000000',
+                    bd=0,
+                    highlightthickness=0
                 )
                 
                 for i, impressora in enumerate(impressoras, 1):
@@ -521,8 +692,12 @@ class ConfiguracaoModule:
             
             # Impressora de Cupom Fiscal
             row_start = 3
-            ttk.Label(frame, text="Configurar Impressoras por Finalidade", font=('Arial', 10, 'bold')).grid(
-                row=row_start, column=0, columnspan=3, pady=(15, 10), sticky='w'
+            tk.Label(frame, 
+                    text="Configurar Impressoras por Finalidade", 
+                    font=('Arial', 12, 'bold'),
+                    bg='#f0f2f5',
+                    fg='#333333').grid(
+                row=row_start, column=0, columnspan=3, pady=(30, 15), sticky='w'
             )
             
             valor_cupom = config_salva.get('cupom_fiscal', '')
@@ -556,10 +731,12 @@ class ConfiguracaoModule:
             )
             
             # Configura o tamanho da fonte
-            ttk.Label(
+            tk.Label(
                 frame,
                 text="Tamanho da Fonte:",
-                font=('Arial', 9, 'bold')
+                font=('Arial', 9, 'bold'),
+                bg='#f0f2f5',
+                fg='#333333'
             ).grid(row=row_start+6, column=0, sticky='w', padx=5, pady=(15, 5))
             
             # Define o valor padrão para o tamanho da fonte
@@ -591,7 +768,7 @@ class ConfiguracaoModule:
             
             # Frame para os botões
             btn_frame = tk.Frame(frame, bg='#f0f2f5', pady=20)
-            btn_frame.grid(row=row_start+8, column=0, columnspan=3, sticky='ew')
+            btn_frame.grid(row=row_start+8, column=0, columnspan=3, sticky='e')
             
             # Frame para os botões à esquerda
             left_btns = tk.Frame(btn_frame, bg='#f0f2f5')
@@ -609,6 +786,8 @@ class ConfiguracaoModule:
                 pady=8,
                 relief='flat',
                 cursor='hand2',
+                activebackground='#3b5a7f',
+                activeforeground='white',
                 command=self._testar_impressao
             )
             btn_testar.pack(side='left', padx=5)
@@ -618,13 +797,15 @@ class ConfiguracaoModule:
                 left_btns,
                 text="Atualizar Lista",
                 font=('Arial', 10, 'bold'),
-                bg='#757575',
+                bg='#6c757d',
                 fg='white',
                 bd=0,
                 padx=15,
                 pady=8,
                 relief='flat',
                 cursor='hand2',
+                activebackground='#5a6268',
+                activeforeground='white',
                 command=self._show_impressoras
             )
             btn_atualizar.pack(side='left', padx=5)
@@ -638,13 +819,15 @@ class ConfiguracaoModule:
                 right_btns,
                 text="Salvar Configurações",
                 font=('Arial', 10, 'bold'),
-                bg='#4CAF50',
+                bg='#28a745',
                 fg='white',
                 bd=0,
                 padx=20,
                 pady=8,
                 relief='flat',
                 cursor='hand2',
+                activebackground='#218838',
+                activeforeground='white',
                 command=self._salvar_impressoras
             )
             btn_salvar.pack(side='right', padx=5)
@@ -835,50 +1018,86 @@ class ConfiguracaoModule:
         
     def _show_banco_dados(self):
         # Tela de configuração do Banco de Dados
-        if not hasattr(self, 'frame') or not self.frame.winfo_exists():
-            self.frame = ttk.Frame(self.parent)
-        
-        # Limpa o frame atual
-        for widget in self.frame.winfo_children():
-            widget.destroy()
+        if hasattr(self, 'current_view') and self.current_view:
+            self.current_view.destroy()
             
-        frame = ttk.Frame(self.frame, padding=10)
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        # Frame do título
+        title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+        title_frame.pack(fill='x', pady=(0, 20))
+        
+        tk.Label(
+            title_frame, 
+            text="CONFIGURAÇÕES DO BANCO DE DADOS", 
+            font=('Arial', 16, 'bold'),
+            bg='#f0f2f5',
+            fg='#333333'
+        ).pack(side='left')
+        
+        # Frame do formulário com padding maior nas laterais para centralizar
+        form_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=200, pady=20)
+        form_frame.pack(fill='both', expand=True)
+        
+        # Estilo dos labels e campos
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        entry_style = {'font': ('Arial', 10), 'width': 30, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
+        
+        # Frame para o conteúdo
+        content_frame = tk.Frame(form_frame, bg='#f0f2f5')
+        content_frame.pack(fill='both', expand=True)
+        
+        # Configura o grid
+        content_frame.columnconfigure(1, weight=1, minsize=300)  # Coluna dos campos
         
         try:
-            # Título
-            ttk.Label(
-                frame, 
-                text="Configurações do Banco de Dados", 
-                font=('Arial', 14, 'bold')
-            ).grid(row=0, column=0, columnspan=3, pady=10, sticky='w')
-            
             # Carrega as configurações atuais do banco de dados
             config = self.ctrl.carregar_config_banco_dados()
             
-            # Campos de conexão
-            self.db_host = self._criar_campo(frame, "Servidor:", 1, config.get('host', 'localhost'))
-            self.db_porta = self._criar_campo(frame, "Porta:", 2, str(config.get('porta', '3306')))
-            self.db_usuario = self._criar_campo(frame, "Usuário:", 3, config.get('usuario', 'postgres'))
+            # Título da seção
+            tk.Label(content_frame, text="Conexão com o Banco de Dados", 
+                    font=('Arial', 12, 'bold'), 
+                    bg='#f0f2f5').grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
+            
+            # Servidor
+            tk.Label(content_frame, text="Servidor:", **label_style).grid(row=1, column=0, padx=10, pady=5, sticky='w')
+            self.db_host = tk.Entry(content_frame, **entry_style)
+            self.db_host.grid(row=1, column=1, padx=10, pady=5, sticky='ew')
+            self.db_host.insert(0, config.get('host', 'localhost'))
+            
+            # Porta
+            tk.Label(content_frame, text="Porta:", **label_style).grid(row=2, column=0, padx=10, pady=5, sticky='w')
+            self.db_porta = tk.Entry(content_frame, **entry_style)
+            self.db_porta.grid(row=2, column=1, padx=10, pady=5, sticky='ew')
+            self.db_porta.insert(0, str(config.get('porta', '3306')))
+            
+            # Usuário
+            tk.Label(content_frame, text="Usuário:", **label_style).grid(row=3, column=0, padx=10, pady=5, sticky='w')
+            self.db_usuario = tk.Entry(content_frame, **entry_style)
+            self.db_usuario.grid(row=3, column=1, padx=10, pady=5, sticky='ew')
+            self.db_usuario.insert(0, config.get('usuario', 'postgres'))
             
             # Senha
-            ttk.Label(frame, text="Senha:").grid(row=4, column=0, sticky='w', pady=2, padx=5)
-            self.db_senha = ttk.Entry(frame, show="*", width=30)
-            self.db_senha.grid(row=4, column=1, sticky='ew', pady=2)
+            tk.Label(content_frame, text="Senha:", **label_style).grid(row=4, column=0, padx=10, pady=5, sticky='w')
+            self.db_senha = tk.Entry(content_frame, show="*", **entry_style)
+            self.db_senha.grid(row=4, column=1, padx=10, pady=5, sticky='ew')
             self.db_senha.insert(0, config.get('senha', ''))
             
-            self.db_nome = self._criar_campo(frame, "Nome do Banco:", 5, config.get('nome_bd', 'pdv_aquarius'))
+            # Nome do Banco
+            tk.Label(content_frame, text="Nome do Banco:", **label_style).grid(row=5, column=0, padx=10, pady=5, sticky='w')
+            self.db_nome = tk.Entry(content_frame, **entry_style)
+            self.db_nome.grid(row=5, column=1, padx=10, pady=5, sticky='ew')
+            self.db_nome.insert(0, config.get('nome_bd', 'pdv_aquarius'))
             
             # Frame para os botões
-            btn_frame = tk.Frame(frame, bg='#f0f2f5', pady=20)
-            btn_frame.grid(row=6, column=0, columnspan=3, sticky='ew')
+            btn_frame = tk.Frame(content_frame, bg='#f0f2f5', pady=20)
+            btn_frame.grid(row=6, column=0, columnspan=2, sticky='e')
             
-            # Frame para os botões à esquerda
-            left_btns = tk.Frame(btn_frame, bg='#f0f2f5')
-            left_btns.pack(side='left')
-            
-            # Botão Testar Conexão - Azul padrão
+            # Botão Testar Conexão - Azul
             btn_teste = tk.Button(
-                left_btns,
+                btn_frame,
                 text="Testar Conexão",
                 font=('Arial', 10, 'bold'),
                 bg='#4a6fa5',
@@ -888,112 +1107,11 @@ class ConfiguracaoModule:
                 pady=8,
                 relief='flat',
                 cursor='hand2',
+                activebackground='#3b5a7f',
+                activeforeground='white',
                 command=self._testar_conexao_db
             )
             btn_teste.pack(side='left', padx=5)
-            
-            # Frame para o botão à direita
-            right_btns = tk.Frame(btn_frame, bg='#f0f2f5')
-            right_btns.pack(side='right')
-            
-            # Botão Salvar Configurações - Verde
-            btn_salvar = tk.Button(
-                right_btns,
-                text="Salvar Configurações",
-                font=('Arial', 10, 'bold'),
-                bg='#4CAF50',
-                fg='white',
-                bd=0,
-                padx=20,
-                pady=8,
-                relief='flat',
-                cursor='hand2',
-                command=self._salvar_banco_dados
-            )
-            btn_salvar.pack(side='right', padx=5)
-            
-        except Exception as e:
-            print(f"Erro ao carregar configurações do banco de dados: {e}")
-            ttk.Label(
-                frame,
-                text=f"Erro ao carregar as configurações do banco de dados: {str(e)}",
-                foreground="red"
-            ).pack(pady=20)
-        
-        frame.pack(fill='both', expand=True, padx=20, pady=10)
-        self.current_view = frame
-    
-    def _show_integracoes(self):
-        # Tela de configuração de Integrações
-        if not hasattr(self, 'frame') or not self.frame.winfo_exists():
-            self.frame = ttk.Frame(self.parent)
-        
-        # Limpa o frame atual
-        for widget in self.frame.winfo_children():
-            widget.destroy()
-            
-        frame = ttk.Frame(self.frame, padding=10)
-        
-        try:
-            # Título
-            ttk.Label(
-                frame, 
-                text="Configurações de Integrações", 
-                font=('Arial', 14, 'bold')
-            ).grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
-            
-            # Carrega as configurações atuais das integrações
-            config = self.ctrl.carregar_config_integracoes()
-            
-            # Integração com ERP
-            ttk.Label(
-                frame, 
-                text="Sistema ERP", 
-                font=('Arial', 10, 'bold')
-            ).grid(row=1, column=0, columnspan=2, pady=(5,2), sticky='w')
-            
-            self.erp_ativo = tk.BooleanVar(value=config.get('erp', {}).get('ativo', False))
-            ttk.Checkbutton(
-                frame, text="Ativar integração com ERP",
-                variable=self.erp_ativo
-            ).grid(row=2, column=0, columnspan=2, sticky='w')
-            
-            self.erp_url = self._criar_campo(
-                frame, "URL do ERP:", 3, 
-                config.get('erp', {}).get('url', 'https://erp.empresa.com.br/api')
-            )
-            
-            self.erp_token = self._criar_campo(
-                frame, "Token de Acesso:", 4, 
-                config.get('erp', {}).get('token', '')
-            )
-            
-            # Integração com E-commerce
-            ttk.Label(
-                frame, 
-                text="E-commerce", 
-                font=('Arial', 10, 'bold')
-            ).grid(row=5, column=0, columnspan=2, pady=(15,2), sticky='w')
-            
-            self.ecommerce_ativo = tk.BooleanVar(value=config.get('ecommerce', {}).get('ativo', False))
-            ttk.Checkbutton(
-                frame, text="Ativar integração com E-commerce",
-                variable=self.ecommerce_ativo
-            ).grid(row=6, column=0, columnspan=2, sticky='w')
-            
-            plataformas = ["Nenhuma", "Loja Integrada", "Nuvemshop", "Outra"]
-            plataforma_atual = config.get('ecommerce', {}).get('plataforma', 'Nenhuma')
-            if plataforma_atual not in plataformas:
-                plataformas.append(plataforma_atual)
-                
-            self.ecommerce_plataforma = self._criar_combobox(
-                frame, "Plataforma:", 7,
-                plataformas, plataforma_atual
-            )
-            
-            # Frame para os botões
-            btn_frame = tk.Frame(frame, bg='#f0f2f5')
-            btn_frame.grid(row=8, column=0, columnspan=2, pady=15, sticky='e')
             
             # Botão Salvar Configurações - Verde
             btn_salvar = tk.Button(
@@ -1007,20 +1125,168 @@ class ConfiguracaoModule:
                 pady=8,
                 relief='flat',
                 cursor='hand2',
+                activebackground='#43a047',
+                activeforeground='white',
+                command=self._salvar_banco_dados
+            )
+            btn_salvar.pack(side='left', padx=5)
+            
+            # Atualiza a visualização atual
+            self.current_view = main_frame
+            
+        except Exception as e:
+            print(f"Erro ao carregar configurações do banco de dados: {e}")
+            tk.Label(
+                main_frame,
+                text=f"Erro ao carregar as configurações do banco de dados: {str(e)}",
+                fg='red',
+                bg='#f0f2f5',
+                font=('Arial', 10)
+            ).pack(pady=20)
+    
+    def _show_integracoes(self):
+        # Tela de configuração de Integrações
+        if hasattr(self, 'current_view') and self.current_view:
+            self.current_view.destroy()
+            
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        # Frame do título
+        title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+        title_frame.pack(fill='x', pady=(0, 20))
+        
+        tk.Label(
+            title_frame, 
+            text="CONFIGURAÇÕES DE INTEGRAÇÕES", 
+            font=('Arial', 16, 'bold'),
+            bg='#f0f2f5',
+            fg='#333333'
+        ).pack(side='left')
+        
+        # Frame do formulário com padding maior nas laterais para centralizar
+        form_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=200, pady=20)
+        form_frame.pack(fill='both', expand=True)
+        
+        # Estilo dos labels e campos
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        entry_style = {'font': ('Arial', 10), 'width': 30, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
+        
+        # Frame para o conteúdo
+        content_frame = tk.Frame(form_frame, bg='#f0f2f5')
+        content_frame.pack(fill='both', expand=True)
+        
+        # Configura o grid
+        content_frame.columnconfigure(1, weight=1, minsize=300)  # Coluna dos campos
+        
+        try:
+            # Carrega as configurações atuais das integrações
+            config = self.ctrl.carregar_config_integracoes()
+            
+            # Seção de Integração com ERP
+            tk.Label(content_frame, text="Sistema ERP", 
+                    font=('Arial', 12, 'bold'), 
+                    bg='#f0f2f5').grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky='w')
+            
+            # Checkbox Ativar ERP
+            self.erp_ativo = tk.BooleanVar(value=config.get('erp', {}).get('ativo', False))
+            chk_erp = tk.Checkbutton(
+                content_frame, 
+                text="Ativar integração com ERP",
+                variable=self.erp_ativo,
+                font=('Arial', 10),
+                bg='#f0f2f5',
+                activebackground='#f0f2f5',
+                selectcolor='#f0f2f5'
+            )
+            chk_erp.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+            
+            # URL do ERP
+            tk.Label(content_frame, text="URL do ERP:", **label_style).grid(row=2, column=0, padx=10, pady=5, sticky='w')
+            self.erp_url = tk.Entry(content_frame, **entry_style)
+            self.erp_url.grid(row=2, column=1, padx=10, pady=5, sticky='ew')
+            self.erp_url.insert(0, config.get('erp', {}).get('url', 'https://erp.empresa.com.br/api'))
+            
+            # Token de Acesso
+            tk.Label(content_frame, text="Token de Acesso:", **label_style).grid(row=3, column=0, padx=10, pady=5, sticky='w')
+            self.erp_token = tk.Entry(content_frame, **entry_style)
+            self.erp_token.grid(row=3, column=1, padx=10, pady=5, sticky='ew')
+            self.erp_token.insert(0, config.get('erp', {}).get('token', ''))
+            
+            # Separador
+            ttk.Separator(content_frame, orient='horizontal').grid(row=4, column=0, columnspan=2, pady=20, sticky='ew')
+            
+            # Seção de E-commerce
+            tk.Label(content_frame, text="E-commerce", 
+                    font=('Arial', 12, 'bold'), 
+                    bg='#f0f2f5').grid(row=5, column=0, columnspan=2, pady=(0, 10), sticky='w')
+            
+            # Checkbox Ativar E-commerce
+            self.ecommerce_ativo = tk.BooleanVar(value=config.get('ecommerce', {}).get('ativo', False))
+            chk_ecommerce = tk.Checkbutton(
+                content_frame, 
+                text="Ativar integração com E-commerce",
+                variable=self.ecommerce_ativo,
+                font=('Arial', 10),
+                bg='#f0f2f5',
+                activebackground='#f0f2f5',
+                selectcolor='#f0f2f5'
+            )
+            chk_ecommerce.grid(row=6, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+            
+            # Plataforma
+            tk.Label(content_frame, text="Plataforma:", **label_style).grid(row=7, column=0, padx=10, pady=5, sticky='w')
+            
+            plataformas = ["Nenhuma", "Loja Integrada", "Nuvemshop", "Outra"]
+            plataforma_atual = config.get('ecommerce', {}).get('plataforma', 'Nenhuma')
+            if plataforma_atual not in plataformas:
+                plataformas.append(plataforma_atual)
+                
+            self.ecommerce_plataforma = ttk.Combobox(
+                content_frame,
+                values=plataformas,
+                state='readonly',
+                font=('Arial', 10),
+                width=27
+            )
+            self.ecommerce_plataforma.set(plataforma_atual)
+            self.ecommerce_plataforma.grid(row=7, column=1, padx=10, pady=5, sticky='w')
+            
+            # Frame para os botões
+            btn_frame = tk.Frame(content_frame, bg='#f0f2f5', pady=20)
+            btn_frame.grid(row=8, column=0, columnspan=2, sticky='e')
+            
+            # Botão Salvar Configurações - Verde
+            btn_salvar = tk.Button(
+                btn_frame,
+                text="Salvar Configurações",
+                font=('Arial', 10, 'bold'),
+                bg='#4CAF50',
+                fg='white',
+                bd=0,
+                padx=20,
+                pady=8,
+                relief='flat',
+                cursor='hand2',
+                activebackground='#43a047',
+                activeforeground='white',
                 command=self._salvar_integracoes
             )
-            btn_salvar.grid(row=0, column=0, padx=5)
+            btn_salvar.pack(side='right', padx=5)
+            
+            # Atualiza a visualização atual
+            self.current_view = main_frame
             
         except Exception as e:
             print(f"Erro ao carregar configurações de integrações: {e}")
-            ttk.Label(
-                frame,
+            tk.Label(
+                main_frame,
                 text=f"Erro ao carregar as configurações de integrações: {str(e)}",
-                foreground="red"
-            ).grid(row=0, column=0, pady=20, padx=10)
-        
-        frame.pack(fill='both', expand=True, padx=20, pady=10)
-        self.current_view = frame
+                fg='red',
+                bg='#f0f2f5',
+                font=('Arial', 10)
+            ).pack(pady=20)
     
     def _salvar_integracoes(self):
         """Salva as configurações de integrações"""
