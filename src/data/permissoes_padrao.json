@@ -1,0 +1,90 @@
+{
+  "modulos": {
+    "cadastro": {
+      "nome": "Cadastro",
+      "botoes": {
+        "mostrar_empresa": {
+          "nome": "Empresa",
+          "basico": true,
+          "master": true
+        },
+        "mostrar_usuarios": {
+          "nome": "Usuários",
+          "basico": false,
+          "master": true
+        },
+        "mostrar_funcionarios": {
+          "nome": "Funcionários",
+          "basico": false,
+          "master": true
+        },
+        "mostrar_clientes": {
+          "nome": "Clientes",
+          "basico": true,
+          "master": true
+        },
+        "mostrar_produtos": {
+          "nome": "Produtos",
+          "basico": true,
+          "master": true
+        },
+        "mostrar_fornecedores": {
+          "nome": "Fornecedores",
+          "basico": true,
+          "master": true
+        }
+      }
+    },
+    "vendas": {
+      "nome": "Vendas",
+      "botoes": {}
+    },
+    "mesas": {
+      "nome": "Mesas",
+      "botoes": {}
+    },
+    "financeiro": {
+      "nome": "Financeiro",
+      "botoes": {}
+    },
+    "estoque": {
+      "nome": "Estoque",
+      "botoes": {}
+    },
+    "configuracao": {
+      "nome": "Configuração",
+      "botoes": {
+        "nfe": {
+          "nome": "NF-e",
+          "basico": true,
+          "master": true
+        },
+        "backup": {
+          "nome": "Backup",
+          "basico": true,
+          "master": true
+        },
+        "impressoras": {
+          "nome": "Impressoras",
+          "basico": true,
+          "master": true
+        },
+        "banco_dados": {
+          "nome": "Banco de Dados",
+          "basico": false,
+          "master": false
+        },
+        "integracoes": {
+          "nome": "Integrações",
+          "basico": true,
+          "master": true
+        },
+        "seguranca": {
+          "nome": "Segurança",
+          "basico": false,
+          "master": true
+        }
+      }
+    }
+  }
+}

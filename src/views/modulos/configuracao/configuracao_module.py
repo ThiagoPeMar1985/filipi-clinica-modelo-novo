@@ -163,7 +163,7 @@ class ConfiguracaoModule:
         # Botão Salvar - Verde
         btn_salvar = tk.Button(
             btn_frame,
-            text="💾 Salvar Configurações",
+            text="Salvar Configurações",
             font=('Arial', 10, 'bold'),
             bg='#4CAF50',
             fg='white',
@@ -201,115 +201,124 @@ class ConfiguracaoModule:
             
         frame = ttk.Frame(self.frame, padding=10)
         
-        # Título
-        ttk.Label(
-            frame, 
-            text="Configurações de Backup", 
-            font=('Arial', 14, 'bold')
-        ).grid(row=0, column=0, columnspan=3, pady=10, sticky='w')
-        
-        # Carrega as configurações salvas
-        config_backup = self.ctrl.carregar_config_backup()
-        
-        # Frame para o campo de pasta de backup
-        backup_frame = ttk.Frame(frame)
-        backup_frame.grid(row=1, column=1, sticky='ew')
-        ttk.Label(frame, text="Pasta de Backup:").grid(row=1, column=0, sticky='w', pady=2, padx=5)
-        
-        self.backup_pasta = ttk.Entry(backup_frame, width=40)
-        self.backup_pasta.pack(side='left', fill='x', expand=True)
-        
-        # Preenche com a pasta salva, se existir
-        if config_backup and 'pasta' in config_backup:
-            self.backup_pasta.insert(0, config_backup['pasta'])
-        
-        btn_selecionar = tk.Button(
-            backup_frame, 
-            text="...", 
-            font=('Arial', 8, 'bold'),
-            bg='#4a6fa5',
-            fg='white',
-            bd=0,
-            width=3,
-            relief='flat',
-            cursor='hand2',
-            command=lambda: self._selecionar_pasta(self.backup_pasta)
-        )
-        btn_selecionar.pack(side='left', padx=(5, 0))
-        
-        # Frequência de backup
-        freq_padrao = config_backup.get('frequencia', 'Diário').capitalize()
-        self.backup_frequencia = self._criar_combobox(
-            frame, "Frequência:", 2,
-            ["Diário", "Semanal", "Mensal"], 
-            freq_padrao
-        )
-        
-        # Manter últimos X backups
-        manter_padrao = config_backup.get('manter_ultimos', '30')
-        self.backup_manter = self._criar_campo(
-            frame, "Manter últimos (dias):", 3, manter_padrao
-        )
-        
-        # Frame para os botões
-        btn_frame = tk.Frame(frame, bg='#f0f2f5')
-        btn_frame.grid(row=4, column=0, columnspan=3, pady=15, sticky='ew')
-        
-        # Frame para botões da esquerda
-        left_btns = tk.Frame(btn_frame, bg='#f0f2f5')
-        left_btns.pack(side='left')
-        
-        # Botão Criar Arquivo - Azul padrão
-        btn_executar = tk.Button(
-            left_btns,
-            text="📄 Criar Arquivo",
-            font=('Arial', 10, 'bold'),
-            bg='#4a6fa5',
-            fg='white',
-            bd=0,
-            padx=15,
-            pady=8,
-            relief='flat',
-            cursor='hand2',
-            command=self._executar_backup
-        )
-        btn_executar.pack(side='left', padx=5)
-        
-        # Botão Restaurar Backup - Laranja
-        btn_restaurar = tk.Button(
-            left_btns,
-            text="🔄 Restaurar Backup",
-            font=('Arial', 10, 'bold'),
-            bg='#ff8c00',
-            fg='white',
-            bd=0,
-            padx=15,
-            pady=8,
-            relief='flat',
-            cursor='hand2',
-            command=self._restaurar_backup
-        )
-        btn_restaurar.pack(side='left', padx=5)
-        
-        # Frame para botões da direita
-        right_btns = tk.Frame(btn_frame, bg='#f0f2f5')
-        right_btns.pack(side='right')
-        
-        # Botão Salvar - Verde
-        btn_salvar = tk.Button(
-            right_btns,
-            text="💾 Salvar Configurações",
-            font=('Arial', 10, 'bold'),
-            bg='#2e7d32',
-            fg='white',
-            bd=0,
-            padx=15,
-            pady=8,
-            relief='flat',
-            cursor='hand2',
-            command=self._salvar_backup
-        )
-        btn_salvar.pack(side='right', padx=5)
+        try:
+            # Título
+            ttk.Label(
+                frame, 
+                text="Configurações de Backup", 
+                font=('Arial', 14, 'bold')
+            ).grid(row=0, column=0, columnspan=3, pady=10, sticky='w')
+            
+            # Carrega as configurações salvas
+            config_backup = self.ctrl.carregar_config_backup()
+            
+            # Frame para o campo de pasta de backup
+            backup_frame = ttk.Frame(frame)
+            backup_frame.grid(row=1, column=1, sticky='ew')
+            ttk.Label(frame, text="Pasta de Backup:").grid(row=1, column=0, sticky='w', pady=2, padx=5)
+            
+            self.backup_pasta = ttk.Entry(backup_frame, width=40)
+            self.backup_pasta.pack(side='left', fill='x', expand=True)
+            
+            # Preenche com a pasta salva, se existir
+            if config_backup and 'pasta' in config_backup:
+                self.backup_pasta.insert(0, config_backup['pasta'])
+            
+            btn_selecionar = tk.Button(
+                backup_frame, 
+                text="...", 
+                font=('Arial', 8, 'bold'),
+                bg='#4a6fa5',
+                fg='white',
+                bd=0,
+                width=3,
+                relief='flat',
+                cursor='hand2',
+                command=lambda: self._selecionar_pasta(self.backup_pasta)
+            )
+            btn_selecionar.pack(side='left', padx=(5, 0))
+            
+            # Frequência de backup
+            freq_padrao = config_backup.get('frequencia', 'Diário').capitalize()
+            self.backup_frequencia = self._criar_combobox(
+                frame, "Frequência:", 2,
+                ["Diário", "Semanal", "Mensal"], 
+                freq_padrao
+            )
+            
+            # Manter últimos X backups
+            manter_padrao = config_backup.get('manter_ultimos', '30')
+            self.backup_manter = self._criar_campo(
+                frame, "Manter últimos (dias):", 3, manter_padrao
+            )
+            
+            # Frame para os botões
+            btn_frame = tk.Frame(frame, bg='#f0f2f5')
+            btn_frame.grid(row=4, column=0, columnspan=3, pady=15, sticky='ew')
+            
+            # Frame para botões da esquerda
+            left_btns = tk.Frame(btn_frame, bg='#f0f2f5')
+            left_btns.pack(side='left')
+            
+            # Botão Criar Arquivo - Azul padrão
+            btn_executar = tk.Button(
+                left_btns,
+                text="Criar Arquivo",
+                font=('Arial', 10, 'bold'),
+                bg='#4a6fa5',
+                fg='white',
+                bd=0,
+                padx=15,
+                pady=8,
+                relief='flat',
+                cursor='hand2',
+                command=self._executar_backup
+            )
+            btn_executar.pack(side='left', padx=5)
+            
+            # Botão Restaurar Backup - Laranja
+            btn_restaurar = tk.Button(
+                left_btns,
+                text="Restaurar Backup",
+                font=('Arial', 10, 'bold'),
+                bg='#ff8c00',
+                fg='white',
+                bd=0,
+                padx=15,
+                pady=8,
+                relief='flat',
+                cursor='hand2',
+                command=self._restaurar_backup
+            )
+            btn_restaurar.pack(side='left', padx=5)
+            
+            # Frame para botões da direita
+            right_btns = tk.Frame(btn_frame, bg='#f0f2f5')
+            right_btns.pack(side='right')
+            
+            # Botão Salvar - Verde
+            btn_salvar = tk.Button(
+                right_btns,
+                text="Salvar Configurações",
+                font=('Arial', 10, 'bold'),
+                bg='#4CAF50',
+                fg='white',
+                bd=0,
+                padx=20,
+                pady=8,
+                relief='flat',
+                cursor='hand2',
+                command=self._salvar_backup
+            )
+            btn_salvar.pack(side='right', padx=5)
+            
+        except Exception as e:
+            print(f"Erro ao carregar configurações de backup: {e}")
+            ttk.Label(
+                frame,
+                text=f"Erro ao carregar as configurações de backup: {str(e)}",
+                foreground="red"
+            ).pack(pady=20)
         
         frame.pack(fill='both', expand=True, padx=20, pady=10)
         self.current_view = frame
@@ -806,7 +815,7 @@ class ConfiguracaoModule:
     def _restaurar_backup_db(self):
         """Restaura um backup do banco de dados"""
         filename = filedialog.askopenfilename(
-            title="Selecionar Arquivo de Backup",
+            title="Selecione Arquivo de Backup",
             filetypes=[("Arquivos de Backup", "*.sql *.backup")]
         )
         if filename and self.ctrl.restaurar_backup_banco_dados(filename):
@@ -887,7 +896,7 @@ class ConfiguracaoModule:
             right_btns = tk.Frame(btn_frame, bg='#f0f2f5')
             right_btns.pack(side='right')
             
-            # Botão Salvar Configurações
+            # Botão Salvar Configurações - Verde
             btn_salvar = tk.Button(
                 right_btns,
                 text="Salvar Configurações",
@@ -989,7 +998,7 @@ class ConfiguracaoModule:
             # Botão Salvar Configurações - Verde
             btn_salvar = tk.Button(
                 btn_frame,
-                text="💾 Salvar Configurações",
+                text="Salvar Configurações",
                 font=('Arial', 10, 'bold'),
                 bg='#4CAF50',
                 fg='white',
@@ -1029,6 +1038,52 @@ class ConfiguracaoModule:
         if self.ctrl.salvar_config_integracoes(dados):
             messagebox.showinfo("Sucesso", "Configurações de integrações salvas com sucesso!")
     
+    def _salvar_permissoes(self):
+        """Salva as permissões alteradas"""
+        try:
+            # Cria uma cópia das permissões sem as variáveis Tkinter
+            permissoes_para_salvar = {
+                'modulos': {}
+            }
+            
+            # Atualiza as permissões no gerenciador
+            for modulo_id, modulo_data in self.permissoes['modulos'].items():
+                permissoes_para_salvar['modulos'][modulo_id] = {
+                    'nome': modulo_data['nome'],
+                    'botoes': {}
+                }
+                
+                for botao_id, botao_data in modulo_data['botoes'].items():
+                    # Verifica se existem variáveis para este botão
+                    if 'variaveis' in modulo_data and botao_id in modulo_data['variaveis']:
+                        # Usa os valores das variáveis Tkinter
+                        permissoes_para_salvar['modulos'][modulo_id]['botoes'][botao_id] = {
+                            'nome': botao_data['nome'],
+                            'basico': modulo_data['variaveis'][botao_id]['basico'].get(),
+                            'master': modulo_data['variaveis'][botao_id]['master'].get()
+                        }
+                    else:
+                        # Usa os valores padrão se não houver variáveis
+                        permissoes_para_salvar['modulos'][modulo_id]['botoes'][botao_id] = {
+                            'nome': botao_data['nome'],
+                            'basico': botao_data.get('basico', False),
+                            'master': botao_data.get('master', True)
+                        }
+            
+            # Salva as permissões
+            if self.gerenciador_permissoes.salvar_todas_permissoes(permissoes_para_salvar):
+                # Mostra mensagem de sucesso
+                messagebox.showinfo("Sucesso", "Permissões salvas com sucesso!")
+                
+                # Recarrega a tela de segurança para garantir que os checkboxes estejam corretos
+                self._show_seguranca()
+            else:
+                messagebox.showerror("Erro", "Não foi possível salvar as permissões.")
+                
+        except Exception as e:
+            print(f"Erro ao salvar permissões: {e}")
+            messagebox.showerror("Erro", f"Erro ao salvar permissões: {str(e)}")
+    
     def _show_seguranca(self):
         # Tela de configuração de Segurança
         if not hasattr(self, 'frame') or not self.frame.winfo_exists():
@@ -1038,30 +1093,167 @@ class ConfiguracaoModule:
         for widget in self.frame.winfo_children():
             widget.destroy()
             
-        frame = ttk.Frame(self.frame, padding=10)
+        # Cria o frame principal com scrollbar
+        main_frame = ttk.Frame(self.frame)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Cria um canvas com barra de rolagem
+        canvas = tk.Canvas(main_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        # Configura o canvas para rolagem
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        # Cria uma janela no canvas para o frame rolável
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Empacota o canvas e a scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         
         try:
+            # Importa o gerenciador de permissões
+            from src.utils.gerenciador_permissoes import GerenciadorPermissoes
+            self.gerenciador_permissoes = GerenciadorPermissoes()
+            self.permissoes = self.gerenciador_permissoes.obter_todas_permissoes()
+            
             # Título
             ttk.Label(
-                frame, 
-                text="Configurações de Segurança", 
+                scrollable_frame, 
+                text="Gerenciamento de Permissões", 
                 font=('Arial', 14, 'bold')
-            ).grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
+            ).grid(row=0, column=0, columnspan=4, pady=10, sticky='w')
             
-            # Mensagem informativa
+            # Cabeçalho
             ttk.Label(
-                frame,
-                text="As configurações de segurança são gerenciadas pelo administrador do sistema.",
-                font=('Arial', 10)
-            ).grid(row=1, column=0, columnspan=2, pady=20, sticky='w')
+                scrollable_frame,
+                text="Módulo",
+                font=('Arial', 10, 'bold'),
+                padding=5
+            ).grid(row=1, column=0, sticky='w')
+            
+            ttk.Label(
+                scrollable_frame,
+                text="Botão",
+                font=('Arial', 10, 'bold'),
+                padding=5
+            ).grid(row=1, column=1, sticky='w')
+            
+            ttk.Label(
+                scrollable_frame,
+                text="Usuário Básico",
+                font=('Arial', 10, 'bold'),
+                padding=5
+            ).grid(row=1, column=2, sticky='w')
+            
+            ttk.Label(
+                scrollable_frame,
+                text="Usuário Master",
+                font=('Arial', 10, 'bold'),
+                padding=5
+            ).grid(row=1, column=3, sticky='w')
+            
+            # Linha separadora
+            ttk.Separator(scrollable_frame, orient='horizontal').grid(
+                row=2, column=0, columnspan=4, sticky='ew', pady=5
+            )
+            
+            # Variáveis para armazenar os estados dos checkboxes
+            row = 3
+            for modulo_id, modulo_data in self.permissoes['modulos'].items():
+                # Inicializa o dicionário de variáveis para este módulo
+                if 'variaveis' not in modulo_data:
+                    modulo_data['variaveis'] = {}
+                
+                # Adiciona o nome do módulo
+                ttk.Label(
+                    scrollable_frame,
+                    text=modulo_data['nome'],
+                    font=('Arial', 10, 'bold'),
+                    padding=5
+                ).grid(row=row, column=0, sticky='w')
+                
+                # Adiciona os botões do módulo
+                for botao_id, botao_data in modulo_data['botoes'].items():
+                    # Garante que os valores sejam booleanos
+                    valor_basico = bool(botao_data.get('basico', False))
+                    valor_master = bool(botao_data.get('master', True))
+                    
+                    # Cria as variáveis para os checkboxes com os valores corretos
+                    var_basico = tk.BooleanVar(value=valor_basico)
+                    var_master = tk.BooleanVar(value=valor_master)
+                    
+                    # Armazena as variáveis para uso posterior
+                    if 'variaveis' not in modulo_data:
+                        modulo_data['variaveis'] = {}
+                    
+                    modulo_data['variaveis'][botao_id] = {
+                        'basico': var_basico,
+                        'master': var_master
+                    }
+                    
+                    # Nome do botão
+                    ttk.Label(
+                        scrollable_frame,
+                        text=botao_data['nome'],
+                        padding=(20, 5, 5, 5)
+                    ).grid(row=row, column=1, sticky='w')
+                    
+                    # Checkbox para usuário básico
+                    ttk.Checkbutton(
+                        scrollable_frame,
+                        variable=var_basico
+                    ).grid(row=row, column=2, sticky='w', padx=5)
+                    
+                    # Checkbox para usuário master
+                    ttk.Checkbutton(
+                        scrollable_frame,
+                        variable=var_master
+                    ).grid(row=row, column=3, sticky='w', padx=5)
+                    
+                    row += 1
+                
+                # Adiciona um pequeno espaço entre os módulos
+                row += 1
+            
+            # Botão para salvar as alterações
+            btn_frame = ttk.Frame(scrollable_frame)
+            btn_frame.grid(row=row, column=0, columnspan=4, pady=20)
+            
+            tk.Button(
+                btn_frame,
+                text="Salvar Permissões",
+                font=('Arial', 10, 'bold'),
+                bg='#4CAF50',
+                fg='white',
+                bd=0,
+                padx=15,
+                pady=8,
+                relief='flat',
+                cursor='hand2',
+                command=self._salvar_permissoes
+            ).pack(side='right', padx=5)
             
         except Exception as e:
-            print(f"Erro ao carregar tela de segurança: {e}")
+            print(f"Erro ao carregar tela de permissões: {e}")
             ttk.Label(
-                frame,
-                text=f"Erro ao carregar as configurações de segurança: {str(e)}",
+                scrollable_frame,
+                text=f"Erro ao carregar as configurações de permissões: {str(e)}",
                 foreground="red"
-            ).pack(pady=20)
+            ).grid(row=0, column=0, columnspan=4, pady=20, padx=10)
         
-        frame.pack(fill='both', expand=True, padx=20, pady=10)
-        self.current_view = frame
+        # Configura o frame rolável para se ajustar ao tamanho do conteúdo
+        scrollable_frame.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+        
+        # Configura o canvas para rolagem com o mouse
+        canvas.bind_all("<MouseWheel>", 
+            lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units")
+        )
+        
+        self.current_view = main_frame

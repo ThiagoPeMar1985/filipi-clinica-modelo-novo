@@ -18,6 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from views.modulos.modulo_manager import ModuloManager
 from views.modulos.cadastro.cadastro_module import CadastroModule
+from src.controllers.permission_controller import PermissionController
 
 class SistemaPDV:
     def __init__(self, root, usuario):
@@ -68,6 +69,9 @@ class SistemaPDV:
         
         # Criar layout principal
         self.criar_layout()
+        
+        # Inicializa o controlador de permissões
+        self.permission_controller = PermissionController()
         
         # Configurar módulos
         self.configurar_modulos()
@@ -238,11 +242,15 @@ class SistemaPDV:
         # Configura os comandos para cada opção do cadastro
         for opcao in opcoes_cadastro:
             metodo = opcao["metodo"]
+            opcao["modulo"] = 'cadastro'
+            opcao["acao"] = metodo
             opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('cadastro', m)
         
         # Configura os comandos para cada opção de configuração
         for opcao in opcoes_configuracao:
             metodo = opcao["metodo"]
+            opcao["modulo"] = 'configuracao'
+            opcao["acao"] = metodo
             opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('configuracao', m)
         
         # Configura os módulos disponíveis
@@ -308,21 +316,29 @@ class SistemaPDV:
         
         # Adiciona as opções do módulo na barra lateral
         for opcao in modulo.get("opcoes", []):
-            btn = tk.Button(
-                self.sidebar_options,
-                text=opcao["nome"],
-                command=opcao["comando"],
-                bg=self.cores["terciaria"],
-                fg=self.cores["texto_claro"],
-                font=("Arial", 11),
-                relief="flat",
-                anchor="w",
-                padx=15,
-                pady=8,
-                activebackground=self.cores["secundaria"],
-                activeforeground=self.cores["texto_claro"]
+            # Verifica se o usuário tem permissão para ver esta opção
+            tem_permissao = self.permission_controller.verificar_permissao(
+                self.usuario, 
+                opcao.get("modulo", ""), 
+                opcao.get("acao", "")
             )
-            btn.pack(fill="x", pady=2)
+            
+            if tem_permissao:
+                btn = tk.Button(
+                    self.sidebar_options,
+                    text=opcao["nome"],
+                    command=opcao["comando"],
+                    bg=self.cores["terciaria"],
+                    fg=self.cores["texto_claro"],
+                    font=("Arial", 11),
+                    relief="flat",
+                    anchor="w",
+                    padx=15,
+                    pady=8,
+                    activebackground=self.cores["secundaria"],
+                    activeforeground=self.cores["texto_claro"]
+                )
+                btn.pack(fill="x", pady=2)
         
         # Atualiza o módulo atual
         self.modulo_atual = modulo_id
