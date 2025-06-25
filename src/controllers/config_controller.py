@@ -171,11 +171,11 @@ class ConfigController:
                 # Converte o dicionário em string para um dicionário Python
                 db_config = {}
                 for key in ['host', 'user', 'password', 'database', 'port']:
-                    match = re.search(f"'{key}'\s*:\s*'([^']*)'", db_config_str)
+                    match = re.search(rf"'{key}'\s*:\s*'([^']*)'", db_config_str)
                     if match:
                         db_config[key] = match.group(1)
                     else:
-                        match = re.search(f"'{key}'\s*:\s*(\\d+)", db_config_str)
+                        match = re.search(rf"'{key}'\s*:\s*(\d+)", db_config_str)
                         if match:
                             db_config[key] = int(match.group(1))
                 

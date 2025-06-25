@@ -1041,9 +1041,6 @@ class ConfiguracaoModule:
         frame = ttk.Frame(self.frame, padding=10)
         
         try:
-            # Carrega as configurações atuais de segurança
-            config = self.ctrl.carregar_config_seguranca()
-            
             # Título
             ttk.Label(
                 frame, 
@@ -1051,68 +1048,15 @@ class ConfiguracaoModule:
                 font=('Arial', 14, 'bold')
             ).grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
             
-            # Senha de administrador
+            # Mensagem informativa
             ttk.Label(
-                frame, 
-                text="Alterar Senha do Administrador", 
-                font=('Arial', 10, 'bold')
-            ).grid(row=1, column=0, columnspan=2, pady=(5,2), sticky='w')
-            
-            self.senha_atual = self._criar_campo(
-                frame, "Senha Atual:", 2, "", 30
-            )
-            self.senha_atual.config(show="*")
-            
-            self.nova_senha = self._criar_campo(
-                frame, "Nova Senha:", 3, "", 30
-            )
-            self.nova_senha.config(show="*")
-            
-            self.confirmar_senha = self._criar_campo(
-                frame, "Confirmar Nova Senha:", 4, "", 30
-            )
-            self.confirmar_senha.config(show="*")
-            
-            # Configurações de segurança
-            ttk.Label(
-                frame, 
-                text="Configurações de Segurança", 
-                font=('Arial', 10, 'bold')
-            ).grid(row=5, column=0, columnspan=2, pady=(15,2), sticky='w')
-            
-            self.bloquear_tela = tk.BooleanVar(value=config.get('bloquear_tela', True))
-            ttk.Checkbutton(
-                frame, text="Bloquear tela após inatividade",
-                variable=self.bloquear_tela
-            ).grid(row=6, column=0, columnspan=2, sticky='w')
-            
-            tempos = ["1", "5", "10", "15", "30", "60"]
-            tempo_atual = str(config.get('tempo_inatividade', '15'))
-            if tempo_atual not in tempos:
-                tempos.append(tempo_atual)
-                
-            self.tempo_inatividade = self._criar_combobox(
-                frame, "Tempo de inatividade (minutos):", 7,
-                tempos, tempo_atual
-            )
-            
-            # Botão Salvar
-            btn_frame = ttk.Frame(frame)
-            btn_frame.grid(row=8, column=0, columnspan=2, pady=15)
-            
-            ttk.Button(
-                btn_frame, text="Alterar Senha",
-                command=self._alterar_senha
-            ).pack(side='left', padx=5)
-            
-            ttk.Button(
-                btn_frame, text="Salvar Configurações",
-                command=self._salvar_seguranca,
-                style="Accent.TButton"
-            ).pack(side='right')
+                frame,
+                text="As configurações de segurança são gerenciadas pelo administrador do sistema.",
+                font=('Arial', 10)
+            ).grid(row=1, column=0, columnspan=2, pady=20, sticky='w')
             
         except Exception as e:
-            print(f"Erro ao carregar configurações de segurança: {e}")
+            print(f"Erro ao carregar tela de segurança: {e}")
             ttk.Label(
                 frame,
                 text=f"Erro ao carregar as configurações de segurança: {str(e)}",
@@ -1121,33 +1065,3 @@ class ConfiguracaoModule:
         
         frame.pack(fill='both', expand=True, padx=20, pady=10)
         self.current_view = frame
-    
-    def _alterar_senha(self):
-        """Altera a senha do usuário atual"""
-        senha_atual = self.senha_atual.get()
-        nova_senha = self.nova_senha.get()
-        confirmar_senha = self.confirmar_senha.get()
-        
-        if not senha_atual or not nova_senha or not confirmar_senha:
-            messagebox.showwarning("Atenção", "Preencha todos os campos de senha!")
-            return
-            
-        if nova_senha != confirmar_senha:
-            messagebox.showerror("Erro", "As senhas não conferem!")
-            return
-            
-        if self.ctrl.alterar_senha(senha_atual, nova_senha):
-            messagebox.showinfo("Sucesso", "Senha alterada com sucesso!")
-            # Limpa os campos de senha
-            self.senha_atual.delete(0, tk.END)
-            self.nova_senha.delete(0, tk.END)
-            self.confirmar_senha.delete(0, tk.END)
-    
-    def _salvar_seguranca(self):
-        """Salva as configurações de segurança"""
-        dados = {
-            'bloquear_tela': self.bloquear_tela.get(),
-            'tempo_inatividade': int(self.tempo_inatividade.get())
-        }
-        if self.ctrl.salvar_config_seguranca(dados):
-            messagebox.showinfo("Sucesso", "Configurações de segurança salvas com sucesso!")
