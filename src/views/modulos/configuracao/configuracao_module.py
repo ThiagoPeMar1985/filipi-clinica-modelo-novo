@@ -1356,31 +1356,34 @@ class ConfiguracaoModule(BaseModule):
             self.frame = ttk.Frame(self.parent)
         
         # Limpa o frame atual
-        for widget in self.frame.winfo_children():
+        for widget in self.conteudo_frame.winfo_children():
             widget.destroy()
             
-        # Cria o frame principal com scrollbar
-        main_frame = ttk.Frame(self.frame)
-        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
         
-        # Cria um canvas com barra de rolagem
-        canvas = tk.Canvas(main_frame, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
+        # Frame do título
+        title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+        title_frame.pack(fill='x', pady=(0, 20))
         
-        # Configura o canvas para rolagem
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
+        # Título centralizado
+        tk.Label(
+            title_frame, 
+            text="CONFIGURAÇÕES DE SEGURANÇA", 
+            font=('Arial', 16, 'bold'),
+            bg='#f0f2f5',
+            fg='#333333'
+        ).pack(side='top', fill='x')
         
-        # Cria uma janela no canvas para o frame rolável
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Empacota o canvas e a scrollbar
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # Subtítulo explicativo
+        tk.Label(
+            title_frame,
+            text="Defina as permissões de acesso para cada tipo de usuário do sistema",
+            font=('Arial', 10),
+            bg='#f0f2f5',
+            fg='#666666'
+        ).pack(side='top', fill='x', pady=(5, 0))
         
         try:
             # Importa o gerenciador de permissões
@@ -1388,63 +1391,133 @@ class ConfiguracaoModule(BaseModule):
             self.gerenciador_permissoes = GerenciadorPermissoes()
             self.permissoes = self.gerenciador_permissoes.obter_todas_permissoes()
             
-            # Título
-            ttk.Label(
-                scrollable_frame, 
-                text="Gerenciamento de Permissões", 
-                font=('Arial', 14, 'bold')
-            ).grid(row=0, column=0, columnspan=4, pady=10, sticky='w')
+            # Dicionário para armazenar o módulo atualmente selecionado
+            self.modulo_selecionado = None
             
-            # Cabeçalho
-            ttk.Label(
-                scrollable_frame,
-                text="Módulo",
-                font=('Arial', 10, 'bold'),
-                padding=5
-            ).grid(row=1, column=0, sticky='w')
+            # Container principal
+            content_frame = tk.Frame(main_frame, bg='#f0f2f5')
+            content_frame.pack(fill='both', expand=True, pady=10)
             
-            ttk.Label(
-                scrollable_frame,
-                text="Botão",
-                font=('Arial', 10, 'bold'),
-                padding=5
-            ).grid(row=1, column=1, sticky='w')
+            # Layout principal com dois frames lado a lado
+            main_layout = tk.Frame(content_frame, bg='#f0f2f5')
+            main_layout.pack(fill='both', expand=True)
             
-            ttk.Label(
-                scrollable_frame,
+            # Frame esquerdo para os botões de módulos (fundo cinza)
+            botoes_frame = tk.Frame(main_layout, bg='#f0f2f5', width=200)
+            botoes_frame.pack(side='left', fill='y', padx=(0, 10))
+            botoes_frame.pack_propagate(False)  # Mantém o tamanho fixo
+            
+            # Título dos módulos
+            tk.Label(
+                botoes_frame,
+                text="Módulos",
+                font=('Arial', 11, 'bold'),
+                bg='#f0f2f5',
+                fg='#333333',
+                pady=10
+            ).pack(fill='x', padx=5)
+            
+            # Frame direito para o conteúdo (container branco)
+            conteudo_container = tk.Frame(main_layout, bg='#f0f2f5')
+            conteudo_container.pack(side='right', fill='both', expand=True)
+            
+            # Container branco para exibir as permissões do módulo selecionado
+            container_frame = tk.Frame(conteudo_container, bg='white', bd=1, relief='solid')
+            container_frame.pack(fill='both', expand=True)
+            
+            # Frame principal para os cabeçalhos (não expansível)
+            header_frame = tk.Frame(container_frame, bg='white')
+            header_frame.pack(fill='x')
+            
+            # Frame interno para o conteúdo do cabeçalho
+            header_content = tk.Frame(header_frame, bg='white', padx=15, pady=8)
+            header_content.pack(fill='x')
+            
+            # Configuração fixa das colunas (sem weight)
+            header_content.columnconfigure(0, minsize=300)  # Nome do botão
+            header_content.columnconfigure(1, minsize=120)  # Usuário Master
+            header_content.columnconfigure(2, minsize=120)  # Usuário Básico
+            
+            # Título da coluna de permissões (esquerda)
+            tk.Label(
+                header_content,
+                text="Permissões",
+                font=('Arial', 11, 'bold'),
+                bg='white',
+                fg='#333333',
+                anchor='w',
+                padx=10
+            ).grid(row=0, column=0, sticky='w')
+            
+            # Cabeçalho Usuário Master (centralizado)
+            tk.Label(
+                header_content,
+                text="Usuário  Master",
+                font=('Arial', 11, 'bold'),
+                bg='white',
+                fg='#333333',
+                width=18,
+                anchor='center'
+            ).grid(row=0, column=1, padx=0)
+            
+            # Cabeçalho Usuário Básico (centralizado)
+            tk.Label(
+                header_content,
                 text="Usuário Básico",
-                font=('Arial', 10, 'bold'),
-                padding=5
-            ).grid(row=1, column=2, sticky='w')
+                font=('Arial', 11, 'bold'),
+                bg='white',
+                fg='#333333',
+                width=18,
+                anchor='center'
+            ).grid(row=0, column=2, padx=0)
             
-            ttk.Label(
-                scrollable_frame,
-                text="Usuário Master",
-                font=('Arial', 10, 'bold'),
-                padding=5
-            ).grid(row=1, column=3, sticky='w')
+            # Separador horizontal
+            ttk.Separator(container_frame, orient='horizontal').pack(fill='x', padx=10)
             
-            # Linha separadora
-            ttk.Separator(scrollable_frame, orient='horizontal').grid(
-                row=2, column=0, columnspan=4, sticky='ew', pady=5
+            # Cria um canvas com barra de rolagem para o container
+            canvas = tk.Canvas(container_frame, highlightthickness=0, bg='white')
+            scrollbar = ttk.Scrollbar(container_frame, orient="vertical", command=canvas.yview)
+            scrollable_frame = tk.Frame(canvas, bg='white')
+            
+            # Configura o canvas para rolagem
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
             )
             
-            # Variáveis para armazenar os estados dos checkboxes
-            row = 3
+            # Cria uma janela no canvas para o frame rolável
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            
+            # Empacota o canvas e a scrollbar
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            
+            # Dicionário para armazenar os frames de conteúdo de cada módulo
+            self.modulo_frames = {}
+            
+            # Função para mostrar o conteúdo de um módulo
+            def mostrar_modulo(modulo_id):
+                # Esconde todos os frames de módulos
+                for frame in self.modulo_frames.values():
+                    frame.pack_forget()
+                
+                # Mostra o frame do módulo selecionado
+                if modulo_id in self.modulo_frames:
+                    self.modulo_frames[modulo_id].pack(fill='both', expand=True, padx=10, pady=10)
+                    self.modulo_selecionado = modulo_id
+            
+            # Cria os frames de conteúdo para cada módulo (inicialmente ocultos)
             for modulo_id, modulo_data in self.permissoes['modulos'].items():
                 # Inicializa o dicionário de variáveis para este módulo
                 if 'variaveis' not in modulo_data:
                     modulo_data['variaveis'] = {}
                 
-                # Adiciona o nome do módulo
-                ttk.Label(
-                    scrollable_frame,
-                    text=modulo_data['nome'],
-                    font=('Arial', 10, 'bold'),
-                    padding=5
-                ).grid(row=row, column=0, sticky='w')
+                # Cria um frame para o conteúdo do módulo
+                modulo_frame = tk.Frame(scrollable_frame, bg='white')
+                self.modulo_frames[modulo_id] = modulo_frame
                 
-                # Adiciona os botões do módulo
+                # Adiciona os botões do módulo ao frame
                 for botao_id, botao_data in modulo_data['botoes'].items():
                     # Garante que os valores sejam booleanos
                     valor_basico = bool(botao_data.get('basico', False))
@@ -1455,55 +1528,146 @@ class ConfiguracaoModule(BaseModule):
                     var_master = tk.BooleanVar(value=valor_master)
                     
                     # Armazena as variáveis para uso posterior
-                    if 'variaveis' not in modulo_data:
-                        modulo_data['variaveis'] = {}
-                    
                     modulo_data['variaveis'][botao_id] = {
                         'basico': var_basico,
                         'master': var_master
                     }
                     
-                    # Nome do botão
-                    ttk.Label(
-                        scrollable_frame,
-                        text=botao_data['nome'],
-                        padding=(20, 5, 5, 5)
-                    ).grid(row=row, column=1, sticky='w')
+                    # Frame para a linha do botão
+                    botao_frame = tk.Frame(modulo_frame, bg='white')
+                    botao_frame.pack(fill='x', pady=5)
                     
-                    # Checkbox para usuário básico
-                    ttk.Checkbutton(
-                        scrollable_frame,
-                        variable=var_basico
-                    ).grid(row=row, column=2, sticky='w', padx=5)
+                    # Configuração do grid para os itens do botão
+                    botao_frame.columnconfigure(0, minsize=300)  # Nome do botão (largura fixa)
+                    botao_frame.columnconfigure(1, minsize=120, weight=1)  # Usuário Master
+                    botao_frame.columnconfigure(2, minsize=120, weight=1)  # Usuário Básico
+                    
+                    # Nome do botão
+                    tk.Label(
+                        botao_frame,
+                        text=botao_data['nome'],
+                        bg='white',
+                        fg='#333333',
+                        anchor='w',
+                        width=30,
+                        padx=10
+                    ).grid(row=0, column=0, sticky='w')
+                    
+                    # Frame para centralizar o checkbox do usuário master
+                    master_frame = tk.Frame(botao_frame, bg='white', width=180)
+                    master_frame.grid(row=0, column=1, sticky='nsew')
+                    master_frame.grid_propagate(False)
+                    master_frame.columnconfigure(0, weight=1)
                     
                     # Checkbox para usuário master
-                    ttk.Checkbutton(
-                        scrollable_frame,
-                        variable=var_master
-                    ).grid(row=row, column=3, sticky='w', padx=5)
+                    check_master = tk.Checkbutton(
+                        master_frame,
+                        variable=var_master,
+                        bg='white',
+                        activebackground='white',
+                        onvalue=True,
+                        offvalue=False,
+                        bd=0,
+                        highlightthickness=0
+                    )
+                    check_master.place(relx=0.5, rely=0.5, anchor='center')
                     
-                    row += 1
+                    # Frame para centralizar o checkbox do usuário básico
+                    basico_frame = tk.Frame(botao_frame, bg='white', width=180)
+                    basico_frame.grid(row=0, column=2, sticky='nsew')
+                    basico_frame.grid_propagate(False)
+                    basico_frame.columnconfigure(0, weight=1)
+                    
+                    # Checkbox para usuário básico
+                    check_basico = tk.Checkbutton(
+                        basico_frame,
+                        variable=var_basico,
+                        bg='white',
+                        activebackground='white',
+                        onvalue=True,
+                        offvalue=False,
+                        bd=0,
+                        highlightthickness=0
+                    )
+                    check_basico.place(relx=0.5, rely=0.5, anchor='center')
+            
+            # Dicionário para armazenar os botões de módulos
+            self.botoes_modulos = {}
+            
+            # Função para destacar o botão selecionado
+            def selecionar_modulo(modulo_id):
+                # Restaura a cor de todos os botões
+                for mid, botao in self.botoes_modulos.items():
+                    botao.config(bg='#2b579a')  # Cor azul igual ao botão "Criar arquivo" do backup
                 
-                # Adiciona um pequeno espaço entre os módulos
-                row += 1
+                # Destaca o botão selecionado com amarelo
+                if modulo_id in self.botoes_modulos:
+                    self.botoes_modulos[modulo_id].config(bg='#ffc000')  # Cor amarela do backup
+                
+                # Mostra o conteúdo do módulo
+                mostrar_modulo(modulo_id)
             
-            # Botão para salvar as alterações
-            btn_frame = ttk.Frame(scrollable_frame)
-            btn_frame.grid(row=row, column=0, columnspan=4, pady=20)
+            # Nomes corretos dos módulos na interface
+            nomes_modulos = {
+                'cadastro': 'Cadastro',
+                'vendas': 'Vendas',
+                'mesas': 'Mesas',
+                'financeiro': 'Financeiro',
+                'estoque': 'Estoque',
+                'configuracao': 'Configuração'
+            }
             
-            tk.Button(
+            # Cria os botões de módulos no frame esquerdo
+            for modulo_id, modulo_data in self.permissoes['modulos'].items():
+                # Usa o nome correto do módulo se estiver no dicionário, senão usa o nome original
+                nome_modulo = nomes_modulos.get(modulo_id, modulo_data['nome'])
+                
+                # Cria um botão para o módulo com fundo azul (cor igual ao botão "Criar arquivo" do backup)
+                botao_modulo = tk.Button(
+                    botoes_frame,
+                    text=nome_modulo,
+                    font=('Arial', 10),
+                    bg='#2b579a',  # Cor azul igual ao botão "Criar arquivo" do backup
+                    fg='white',
+                    activebackground='#ffc000',  # Cor amarela ao passar o mouse
+                    activeforeground='black',
+                    relief='flat',
+                    pady=8,
+                    width=20,
+                    cursor='hand2',
+                    command=lambda mid=modulo_id: selecionar_modulo(mid)
+                )
+                botao_modulo.pack(fill='x', padx=5, pady=2)
+                
+                # Armazena o botão para referência futura
+                self.botoes_modulos[modulo_id] = botao_modulo
+            
+            # Mostra o primeiro módulo por padrão (se houver algum)
+            if self.permissoes['modulos']:
+                primeiro_modulo = list(self.permissoes['modulos'].keys())[0]
+                selecionar_modulo(primeiro_modulo)
+            
+            # Frame para os botões
+            btn_frame = tk.Frame(main_frame, bg='#f0f2f5', pady=20)
+            btn_frame.pack(fill='x')
+            
+            # Botão Salvar - Verde
+            btn_salvar = tk.Button(
                 btn_frame,
                 text="Salvar Permissões",
                 font=('Arial', 10, 'bold'),
                 bg='#4CAF50',
                 fg='white',
                 bd=0,
-                padx=15,
+                padx=20,
                 pady=8,
                 relief='flat',
                 cursor='hand2',
+                activebackground='#43a047',
+                activeforeground='white',
                 command=self._salvar_permissoes
-            ).pack(side='right', padx=5)
+            )
+            btn_salvar.pack(side='right', padx=5)
             
         except Exception as e:
             print(f"Erro ao carregar tela de permissões: {e}")

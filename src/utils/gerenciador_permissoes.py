@@ -123,7 +123,7 @@ class GerenciadorPermissoes:
                 f.flush()  # Força a escrita no disco
                 os.fsync(f.fileno())  # Garante que os dados foram escritos
                 
-            print(f"Permissões salvas com sucesso em: {self.permissoes_file}")
+            # Mensagem de salvamento removida
             return True
             
         except Exception as e:
