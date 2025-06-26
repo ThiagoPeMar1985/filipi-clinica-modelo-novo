@@ -218,7 +218,8 @@ class SistemaPDV:
             {"nome": "👷 Funcionários", "metodo": "mostrar_funcionarios"},
             {"nome": "👤 Clientes", "metodo": "mostrar_clientes"},
             {"nome": "📦 Produtos", "metodo": "mostrar_produtos"},
-            {"nome": "🏭 Fornecedores", "metodo": "mostrar_fornecedores"}
+            {"nome": "🏭 Fornecedores", "metodo": "mostrar_fornecedores"},
+            {"nome": "➕ Opções", "metodo": "mostrar_opcoes"}
         ]
 
     def _get_opcoes_configuracao(self):

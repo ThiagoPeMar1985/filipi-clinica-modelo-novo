@@ -44,12 +44,31 @@ class CadastroModule(BaseModule):
             "funcionarios": self.mostrar_funcionarios,
             "clientes": self.mostrar_clientes,
             "produtos": self.mostrar_produtos,
-            "fornecedores": self.mostrar_fornecedores
+            "fornecedores": self.mostrar_fornecedores,
+            "opcoes": self.mostrar_opcoes
         }
         
         
         # Mostra a tela inicial
         self.mostrar_inicio()
+    
+    def mostrar_opcoes(self):
+        """Exibe o módulo de opções de produtos"""
+        # Limpa o conteúdo atual
+        self.limpar_conteudo()
+                
+        # Importa o módulo de opções
+        from views.modulos.opcoes.opcoes_module import OpcoesModule
+        
+        # Cria a instância do módulo de opções
+        self.opcoes_module = OpcoesModule(
+            self.conteudo_frame, 
+            self.controller,
+            self.db.conn if hasattr(self, 'db') and hasattr(self.db, 'conn') else None
+        )
+        
+        # Configura o frame do módulo de opções
+        self.opcoes_module.frame.pack(fill='both', expand=True, padx=10, pady=10)
     
     def mostrar_inicio(self):
         """Mostra a tela inicial do módulo de cadastro"""

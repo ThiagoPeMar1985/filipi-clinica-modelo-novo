@@ -32,6 +32,11 @@
           "nome": "Fornecedores",
           "basico": true,
           "master": true
+        },
+        "mostrar_opcoes": {
+          "nome": "Opções",
+          "basico": false,
+          "master": true
         }
       }
     },
