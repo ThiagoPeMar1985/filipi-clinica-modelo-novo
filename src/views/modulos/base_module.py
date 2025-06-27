@@ -31,20 +31,30 @@ class BaseModule:
         
         # Cores padrão
         self.cores = {
-            'fundo': '#f0f2f5',
-            'fundo_conteudo': '#ffffff',
-            'primaria': '#4a6fa5',
-            'secundaria': '#28b5f4',
+            'fundo': '#f0f2f5',          # Fundo principal
+            'fundo_conteudo': '#f0f2f5',  # Fundo dos painéis
+            'fundo_tabela': '#ffffff',    # Fundo das tabelas
+            'primaria': '#4a6fa5',        # Azul padrão
+            'secundaria': '#3b5a7f',      # Azul mais escuro (hover)
             'terciaria': '#333f50',
             'texto': '#333333',
             'texto_claro': '#ffffff',
-            'destaque': '#4caf50',
-            'alerta': '#f44336',
+            'texto_cabecalho': '#ffffff', # Texto do cabeçalho
+            'destaque': '#4CAF50',        # Verde
+            'destaque_hover': '#43a047',  # Verde mais escuro (hover)
+            'alerta': '#f44336',          # Vermelho
+            'alerta_hover': '#d32f2f',    # Vermelho mais escuro (hover)
             'borda': '#e0e0e0'
         }
         
         # Estilo para frames
-        style.configure('TFrame', background=self.cores['fundo_conteudo'])
+        style.configure('TFrame', background=self.cores['fundo'])
+        
+        # Estilo para frames de conteúdo
+        style.configure('Content.TFrame', 
+                      background=self.cores['fundo_conteudo'],
+                      borderwidth=1,
+                      relief='groove')
         
         # Estilo para labels
         style.configure('TLabel', 
@@ -52,36 +62,83 @@ class BaseModule:
                       foreground=self.cores['texto'],
                       font=('Arial', 10))
         
-        # Estilo para botões
+        # Estilo para botões padrão (azul)
         style.configure('TButton',
                       background=self.cores['primaria'],
                       foreground=self.cores['texto_claro'],
                       font=('Arial', 10, 'bold'),
-                      borderwidth=1)
+                      borderwidth=0,
+                      padding=5)
         style.map('TButton',
-                 background=[('active', self.cores['secundaria'])])
+                 background=[('active', self.cores['secundaria'])],
+                 foreground=[('active', self.cores['texto_claro'])])
+                 
+        # Estilo para botão de destaque (verde)
+        style.configure('Accent.TButton',
+                      background=self.cores['destaque'],
+                      foreground=self.cores['texto_claro'],
+                      font=('Arial', 10, 'bold'),
+                      borderwidth=0,
+                      padding=8)
+        style.map('Accent.TButton',
+                 background=[('active', self.cores['destaque_hover'])],
+                 foreground=[('active', self.cores['texto_claro'])])
+                 
+        # Estilo para botão de alerta (vermelho)
+        style.configure('Danger.TButton',
+                      background=self.cores['alerta'],
+                      foreground=self.cores['texto_claro'],
+                      font=('Arial', 10, 'bold'),
+                      borderwidth=0,
+                      padding=8)
+        style.map('Danger.TButton',
+                 background=[('active', self.cores['alerta_hover'])],
+                 foreground=[('active', self.cores['texto_claro'])])
         
         # Estilo para campos de entrada
         style.configure('TEntry',
-                      fieldbackground=self.cores['fundo_conteudo'],
+                      fieldbackground=self.cores['fundo_tabela'],
                       foreground=self.cores['texto'],
-                      borderwidth=1)
+                      borderwidth=1,
+                      relief='solid')
+        style.map('TEntry',
+                 fieldbackground=[('readonly', self.cores['fundo_conteudo'])])
         
         # Estilo para combobox
         style.configure('TCombobox',
-                      fieldbackground=self.cores['fundo_conteudo'],
+                      fieldbackground=self.cores['fundo_tabela'],
                       foreground=self.cores['texto'],
-                      borderwidth=1)
+                      borderwidth=1,
+                      relief='solid')
+        style.map('TCombobox',
+                 fieldbackground=[('readonly', self.cores['fundo_tabela'])])
         
         # Estilo para abas
         style.configure('TNotebook', background=self.cores['fundo'])
         style.configure('TNotebook.Tab', 
                        padding=[10, 5],
                        background=self.cores['fundo'],
-                       foreground=self.cores['texto'])
+                       foreground=self.cores['texto'],
+                       font=('Arial', 10, 'bold'))
         style.map('TNotebook.Tab',
                  background=[('selected', self.cores['fundo_conteudo'])],
                  foreground=[('selected', self.cores['primaria'])])
+                 
+        # Estilo para Treeview (tabelas)
+        style.configure('Treeview',
+                      background='white',
+                      foreground='black',
+                      fieldbackground='white',
+                      borderwidth=1,
+                      relief='solid')
+        style.configure('Treeview.Heading',
+                      background='#f0f0f0',
+                      foreground='black',
+                      font=('Arial', 9, 'bold'),
+                      relief='solid')
+        style.map('Treeview',
+                 background=[('selected', '#0078d7')],
+                 foreground=[('selected', 'white')])
     
     def aplicar_estilos(self):
         """Aplica os estilos aos widgets existentes"""

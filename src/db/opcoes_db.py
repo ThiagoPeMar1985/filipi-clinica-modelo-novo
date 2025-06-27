@@ -76,12 +76,15 @@ class OpcoesDB:
                 
             query += " ORDER BY nome"
             cursor.execute(query, params)
+            
             return cursor.fetchall()
+            
         except mysql.connector.Error as err:
             print(f"Erro ao listar grupos de opções: {err}")
             return []
         finally:
-            cursor.close()
+            if 'cursor' in locals() and cursor is not None:
+                cursor.close()
     
     def obter_grupo(self, grupo_id: int) -> Optional[Dict[str, Any]]:
         """Obtém um grupo de opções pelo ID."""
@@ -352,5 +355,51 @@ class OpcoesDB:
         except mysql.connector.Error as err:
             print(f"Erro ao listar opções do produto: {err}")
             return {}
+        finally:
+            cursor.close()
+    
+    def listar_produtos_por_grupo(self, grupo_id: int) -> List[Dict[str, Any]]:
+        """Lista todos os produtos vinculados a um grupo de opções."""
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT p.id, p.nome, po.obrigatorio
+                FROM produtos p
+                JOIN produto_opcoes po ON p.id = po.produto_id
+                WHERE po.grupo_id = %s
+                ORDER BY p.nome
+            """, (grupo_id,))
+            return cursor.fetchall()
+        except mysql.connector.Error as err:
+            print(f"Erro ao listar produtos do grupo: {err}")
+            return []
+        finally:
+            cursor.close()
+            
+    def listar_produtos_por_categoria(self, tipo_produto: str) -> List[Dict[str, Any]]:
+        """
+        Lista os produtos de uma categoria específica.
+        
+        Args:
+            tipo_produto: Tipo do produto (Bebidas, Comida, Sobremesa, Outros)
+            
+        Returns:
+            Lista de dicionários com os produtos da categoria
+        """
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT id, nome, preco 
+                FROM produtos 
+                WHERE ativo = TRUE 
+                AND tipo = %s
+                ORDER BY nome
+            """, (tipo_produto,))
+            
+            return cursor.fetchall()
+            
+        except mysql.connector.Error as err:
+            print(f"Erro ao listar produtos por tipo {tipo_produto}: {err}")
+            return []
         finally:
             cursor.close()

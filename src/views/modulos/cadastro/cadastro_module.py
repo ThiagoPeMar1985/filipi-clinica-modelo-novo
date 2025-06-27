@@ -56,19 +56,35 @@ class CadastroModule(BaseModule):
         """Exibe o módulo de opções de produtos"""
         # Limpa o conteúdo atual
         self.limpar_conteudo()
+        
+        # Obtém a conexão com o banco de dados
+        try:
+            from src.db.database import DatabaseConnection
+            db = DatabaseConnection()
+            db_connection = db.get_connection()
+            
+            # Verifica se a conexão está ativa
+            if not db_connection.is_connected():
+                db_connection.reconnect()
                 
-        # Importa o módulo de opções
-        from views.modulos.opcoes.opcoes_module import OpcoesModule
-        
-        # Cria a instância do módulo de opções
-        self.opcoes_module = OpcoesModule(
-            self.conteudo_frame, 
-            self.controller,
-            self.db.conn if hasattr(self, 'db') and hasattr(self.db, 'conn') else None
-        )
-        
-        # Configura o frame do módulo de opções
-        self.opcoes_module.frame.pack(fill='both', expand=True, padx=10, pady=10)
+            # Importa o módulo de opções
+            from views.modulos.opcoes.opcoes_module import OpcoesModule
+            
+            # Cria a instância do módulo de opções
+            self.opcoes_module = OpcoesModule(
+                self.conteudo_frame, 
+                self.controller,
+                db_connection
+            )
+            
+            # Configura o frame do módulo de opções
+            self.opcoes_module.frame.pack(fill='both', expand=True, padx=10, pady=10)
+            
+        except Exception as e:
+            import traceback
+            error_msg = f"Erro ao conectar ao banco de dados: {str(e)}\n\n{traceback.format_exc()}"
+            messagebox.showerror("Erro de Conexão", error_msg)
+            print(error_msg)  # Log adicional no console para depuração
     
     def mostrar_inicio(self):
         """Mostra a tela inicial do módulo de cadastro"""
@@ -107,7 +123,7 @@ class CadastroModule(BaseModule):
                 text="CADASTRO DA EMPRESA", 
                 font=('Arial', 16, 'bold'),
                 bg='#f0f2f5',
-                fg='#333333'
+                fg='#000000'
             ).pack(side='left')
             
             # Frame do formulário
@@ -151,25 +167,23 @@ class CadastroModule(BaseModule):
             self.empresa_endereco = tk.Text(form_frame, width=40, height=5, font=('Arial', 10), bd=0, relief='flat', bg='white')
             self.empresa_endereco.grid(row=6, column=1, padx=10, pady=5, sticky='w')
             
-            # Frame para os botões
-            btn_frame = tk.Frame(main_frame, bg='#f0f2f5', pady=20)
-            btn_frame.pack(fill='x')
+            # Frame para os botões (abaixo dos campos)
+            btn_frame = tk.Frame(form_frame, bg='#f0f2f5')
+            btn_frame.grid(row=7, column=0, columnspan=2, pady=(20, 10), sticky='w')
             
             # Botão Salvar
             btn_salvar = tk.Button(
                 btn_frame,
                 text="Salvar",
                 font=('Arial', 10, 'bold'),
-                bg='#4CAF50',
+                bg='#4a6fa5',
                 fg='white',
-                bd=0,
-                padx=20,
-                pady=8,
-                relief='flat',
-                cursor='hand2',
+                padx=15,
+                pady=5,
+                width=10,
                 command=self.salvar_empresa
             )
-            btn_salvar.pack(side='right', padx=10)
+            btn_salvar.pack(side='left', padx=5)
             
             # Botão Cancelar
             btn_cancelar = tk.Button(
@@ -178,14 +192,12 @@ class CadastroModule(BaseModule):
                 font=('Arial', 10, 'bold'),
                 bg='#f44336',
                 fg='white',
-                bd=0,
-                padx=20,
-                pady=8,
-                relief='flat',
-                cursor='hand2',
+                padx=15,
+                pady=5,
+                width=10,
                 command=self.cancelar_edicao
             )
-            btn_cancelar.pack(side='right')
+            btn_cancelar.pack(side='left', padx=5)
             
             # Ajusta o grid para expandir corretamente
             form_frame.columnconfigure(1, weight=1)
@@ -223,7 +235,7 @@ class CadastroModule(BaseModule):
                 text="LISTA DE USUÁRIOS", 
                 font=('Arial', 16, 'bold'),
                 bg='#f0f2f5',
-                fg='#333333'
+                fg='#000000'
             ).pack(side='left')
             
             # Frame para os botões (lado esquerdo)
@@ -302,7 +314,7 @@ class CadastroModule(BaseModule):
             style.configure("Treeview.Heading", 
                 font=('Arial', 10, 'bold'),
                 background='#4a6fa5',
-                foreground='black',
+                foreground='#000000',
                 relief='flat')
                 
             style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
@@ -409,11 +421,12 @@ class CadastroModule(BaseModule):
                     widget.delete(0, tk.END)
                     widget.insert(0, str(self.usuario_atual[field]))
         
-        # Botões de ação
-        botoes_frame = tk.Frame(main_frame)
-        botoes_frame.pack(fill='x', pady=10)
+        # Frame para os botões (abaixo dos campos)
+        botoes_frame = tk.Frame(form_frame)
+        botoes_frame.grid(row=5, column=0, columnspan=2, pady=(20, 10), sticky='w')
         
-        tk.Button(
+        # Botão Salvar
+        btn_salvar = tk.Button(
             botoes_frame, 
             text="Salvar", 
             command=lambda: self._salvar_usuario(usuario_id),
@@ -421,10 +434,13 @@ class CadastroModule(BaseModule):
             bg='#4a6fa5',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_salvar.pack(side='left', padx=5)
         
-        tk.Button(
+        # Botão Cancelar
+        btn_cancelar = tk.Button(
             botoes_frame, 
             text="Cancelar", 
             command=self.mostrar_usuarios,
@@ -432,8 +448,10 @@ class CadastroModule(BaseModule):
             bg='#f44336',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_cancelar.pack(side='left', padx=5)
 
     def novo_usuario(self):
         """Abre formulário para novo usuário"""
@@ -542,7 +560,7 @@ class CadastroModule(BaseModule):
                 text="LISTA DE FUNCIONÁRIOS", 
                 font=('Arial', 16, 'bold'),
                 bg='#f0f2f5',
-                fg='#333333'
+                fg='#000000'
             ).pack(side='left')
             
             # Frame para os botões (lado esquerdo)
@@ -621,7 +639,7 @@ class CadastroModule(BaseModule):
             style.configure("Treeview.Heading", 
                 font=('Arial', 10, 'bold'),
                 background='#4a6fa5',
-                foreground='black',
+                foreground='#000000',
                 relief='flat')
                 
             style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
@@ -744,11 +762,12 @@ class CadastroModule(BaseModule):
                         widget.delete(0, tk.END)
                         widget.insert(0, str(self.funcionario_atual[field]))
         
-        # Botões de ação
-        botoes_frame = tk.Frame(main_frame)
-        botoes_frame.pack(fill='x', pady=10)
+        # Frame para os botões (abaixo dos campos)
+        botoes_frame = tk.Frame(form_frame)
+        botoes_frame.grid(row=6, column=0, columnspan=2, pady=(20, 10), sticky='w')
         
-        tk.Button(
+        # Botão Salvar
+        btn_salvar = tk.Button(
             botoes_frame, 
             text="Salvar", 
             command=lambda: self._salvar_funcionario(funcionario_id),
@@ -756,10 +775,13 @@ class CadastroModule(BaseModule):
             bg='#4a6fa5',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_salvar.pack(side='left', padx=5)
         
-        tk.Button(
+        # Botão Cancelar
+        btn_cancelar = tk.Button(
             botoes_frame, 
             text="Cancelar", 
             command=self.mostrar_funcionarios,
@@ -767,8 +789,10 @@ class CadastroModule(BaseModule):
             bg='#f44336',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_cancelar.pack(side='left', padx=5)
     
     def novo_funcionario(self):
         """Abre formulário para novo funcionário"""
@@ -898,7 +922,7 @@ class CadastroModule(BaseModule):
                     text="LISTA DE PRODUTOS", 
                     font=('Arial', 16, 'bold'),
                     bg='#f0f2f5',
-                    fg='#333333'
+                    fg='#000000'
                 ).pack(side='left', padx=10)
                 
                 # Frame para conteúdo (botões + tabela)
@@ -966,6 +990,14 @@ class CadastroModule(BaseModule):
                     show='headings',
                     selectmode='browse'
                 )
+                
+                # Configura o estilo para os cabeçalhos
+                style = ttk.Style()
+                style.configure("Treeview.Heading", 
+                    font=('Arial', 10, 'bold'),
+                    background='#4a6fa5',
+                    foreground='#000000',
+                    relief='flat')
                 
                 # Configura as colunas
                 for col in colunas:
@@ -1082,11 +1114,12 @@ class CadastroModule(BaseModule):
                 else:
                     self.entries[field].insert(0, str(self.produto_atual[field]))
         
-        # Botões de ação
-        botoes_frame = tk.Frame(main_frame)
-        botoes_frame.pack(fill='x', pady=10)
+        # Frame para os botões de ação (abaixo dos campos)
+        botoes_frame = tk.Frame(form_frame)
+        botoes_frame.grid(row=6, column=0, columnspan=2, pady=(20, 10), sticky='w')
         
-        tk.Button(
+        # Botão Salvar
+        btn_salvar = tk.Button(
             botoes_frame, 
             text="Salvar", 
             command=lambda: self._salvar_produto(produto_id),
@@ -1094,10 +1127,13 @@ class CadastroModule(BaseModule):
             bg='#4a6fa5',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_salvar.pack(side='left', padx=5)
         
-        tk.Button(
+        # Botão Cancelar
+        btn_cancelar = tk.Button(
             botoes_frame, 
             text="Cancelar", 
             command=self.mostrar_produtos,
@@ -1105,8 +1141,10 @@ class CadastroModule(BaseModule):
             bg='#f44336',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_cancelar.pack(side='left', padx=5)
     
     def _salvar_produto(self, produto_id=None):
         """Salva os dados do produto com tratamento completo de erros"""
@@ -1216,7 +1254,7 @@ class CadastroModule(BaseModule):
                     text="LISTA DE FORNECEDORES", 
                     font=('Arial', 16, 'bold'),
                     bg='#f0f2f5',
-                    fg='#333333'
+                    fg='#000000'
                 ).pack(side='left', padx=10)
                 
                 # Frame para conteúdo (botões + tabela)
@@ -1275,6 +1313,14 @@ class CadastroModule(BaseModule):
                 # Frame da tabela (lado direito)
                 tabela_frame = tk.Frame(conteudo_frame, bg='white')
                 tabela_frame.pack(side='left', fill='both', expand=True)
+                
+                # Configura o estilo para os cabeçalhos
+                style = ttk.Style()
+                style.configure("Treeview.Heading", 
+                    font=('Arial', 10, 'bold'),
+                    background='#4a6fa5',
+                    foreground='#000000',
+                    relief='flat')
                 
                 # Cria a Treeview com as colunas solicitadas
                 colunas = ("ID", "Empresa", "Vendedor", "Telefone", "Email")
@@ -1555,11 +1601,12 @@ class CadastroModule(BaseModule):
         if self.fornecedor_atual and 'produtos' in self.fornecedor_atual:
             self.txt_produtos.insert('1.0', self.fornecedor_atual['produtos'])
         
-        # Botões de ação
-        botoes_frame = tk.Frame(main_frame)
-        botoes_frame.pack(fill='x', pady=10)
+        # Frame para os botões (abaixo dos campos)
+        botoes_frame = tk.Frame(form_frame)
+        botoes_frame.grid(row=5, column=0, columnspan=2, pady=(20, 10), sticky='w')
         
-        tk.Button(
+        # Botão Salvar
+        btn_salvar = tk.Button(
             botoes_frame, 
             text="Salvar", 
             command=lambda: self._salvar_fornecedor(fornecedor_id),
@@ -1567,10 +1614,13 @@ class CadastroModule(BaseModule):
             bg='#4a6fa5',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_salvar.pack(side='left', padx=5)
         
-        tk.Button(
+        # Botão Cancelar
+        btn_cancelar = tk.Button(
             botoes_frame, 
             text="Cancelar", 
             command=self.mostrar_fornecedores,
@@ -1578,8 +1628,10 @@ class CadastroModule(BaseModule):
             bg='#f44336',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_cancelar.pack(side='left', padx=5)
     
     def _salvar_fornecedor(self, fornecedor_id=None):
         """Salva os dados do fornecedor no banco de dados"""
@@ -1687,11 +1739,12 @@ class CadastroModule(BaseModule):
         if self.cliente_atual and 'observacoes' in self.cliente_atual:
             self.txt_observacoes.insert('1.0', self.cliente_atual['observacoes'])
         
-        # Botões de ação
-        botoes_frame = tk.Frame(main_frame)
-        botoes_frame.pack(fill='x', pady=10)
+        # Frame para os botões de ação (abaixo dos campos)
+        botoes_frame = tk.Frame(form_frame)
+        botoes_frame.grid(row=5, column=0, columnspan=2, pady=(20, 10), sticky='w')
         
-        tk.Button(
+        # Botão Salvar
+        btn_salvar = tk.Button(
             botoes_frame, 
             text="Salvar", 
             command=lambda: self._salvar_cliente(cliente_id),
@@ -1699,10 +1752,13 @@ class CadastroModule(BaseModule):
             bg='#4a6fa5',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_salvar.pack(side='left', padx=5)
         
-        tk.Button(
+        # Botão Cancelar
+        btn_cancelar = tk.Button(
             botoes_frame, 
             text="Cancelar", 
             command=self.mostrar_clientes,
@@ -1710,8 +1766,10 @@ class CadastroModule(BaseModule):
             bg='#f44336',
             fg='white',
             padx=15,
-            pady=5
-        ).pack(side='left', padx=10)
+            pady=5,
+            width=10
+        )
+        btn_cancelar.pack(side='left', padx=5)
     
     def _salvar_cliente(self, cliente_id=None):
         """Salva os dados do cliente no banco de dados"""
@@ -1758,7 +1816,7 @@ class CadastroModule(BaseModule):
                     text="LISTA DE CLIENTES", 
                     font=('Arial', 16, 'bold'),
                     bg='#f0f2f5',
-                    fg='#333333'
+                    fg='#000000'
                 ).pack(side='left', padx=10)
                 
                 # Frame para conteúdo (botões + tabela)
@@ -1817,6 +1875,14 @@ class CadastroModule(BaseModule):
                 # Frame da tabela (lado direito)
                 tabela_frame = tk.Frame(conteudo_frame, bg='white')
                 tabela_frame.pack(side='left', fill='both', expand=True)
+                
+                # Configura o estilo para os cabeçalhos
+                style = ttk.Style()
+                style.configure("Treeview.Heading", 
+                    font=('Arial', 10, 'bold'),
+                    background='#4a6fa5',
+                    foreground='#000000',
+                    relief='flat')
                 
                 # Cria a Treeview
                 colunas = ("ID", "Nome", "Telefone", "CPF", "Data Cadastro")

@@ -86,3 +86,173 @@ class OpcoesController:
         if not self.db:
             return {}
         return self.db.listar_opcoes_por_produto(produto_id)
+        
+    def listar_produtos_para_vinculo(self):
+        """Lista todos os produtos que podem ter opções vinculadas."""
+        if not self.db:
+            return []
+            
+        try:
+            cursor = self.db.db.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT id, nome, tipo 
+                FROM produtos 
+                WHERE ativo = TRUE 
+                ORDER BY nome
+            """)
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"Erro ao listar produtos para vínculo: {e}")
+            return []
+            
+    def listar_produtos_por_categoria(self, categoria):
+        """
+        Lista os produtos de uma categoria específica.
+        
+        Args:
+            categoria: Nome da categoria (bar, cozinha, sobremesa, outros)
+            
+        Returns:
+            Lista de dicionários com os produtos da categoria
+        """
+        if not self.db:
+            return []
+            
+        try:
+            cursor = self.db.db.cursor(dictionary=True)
+            
+            # Mapeia o nome da categoria para o valor no banco de dados
+            categoria_map = {
+                'bar': 'Bar',
+                'cozinha': 'Cozinha',
+                'sobremesa': 'Sobremesas',
+                'outros': 'Outros'
+            }
+            
+            tipo_produto = categoria_map.get(categoria.lower(), 'Outros')
+            
+            cursor.execute("""
+                SELECT id, nome, preco_venda as preco 
+                FROM produtos 
+                WHERE tipo = %s
+                ORDER BY nome
+            """, (tipo_produto,))
+            
+            return cursor.fetchall()
+            
+        except Exception as e:
+            print(f"Erro ao listar produtos por categoria {categoria}: {e}")
+            return []
+            
+    def listar_grupos_para_vinculo(self):
+        """Lista todos os grupos de opções disponíveis para vínculo."""
+        if not self.db:
+            return []
+            
+        try:
+            cursor = self.db.db.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT id, nome 
+                FROM opcoes_grupos 
+                WHERE ativo = TRUE 
+                ORDER BY nome
+            """)
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"Erro ao listar grupos para vínculo: {e}")
+            return []
+            
+    def listar_produtos_por_grupo(self, grupo_id):
+        """
+        Lista todos os produtos vinculados a um grupo de opções.
+        
+        Args:
+            grupo_id: ID do grupo de opções
+            
+        Returns:
+            Lista de dicionários com informações dos produtos
+        """
+        if not self.db:
+            return []
+            
+        try:
+            return self.db.listar_produtos_por_grupo(grupo_id)
+        except Exception as e:
+            print(f"Erro ao listar produtos do grupo: {e}")
+            return []
+    
+    def atualizar_status_vinculo(self, produto_id, grupo_id, obrigatorio):
+        """
+        Atualiza o status de obrigatório de um vínculo entre produto e grupo.
+        
+        Args:
+            produto_id: ID do produto
+            grupo_id: ID do grupo de opções
+            obrigatorio: Novo status de obrigatório (True/False)
+            
+        Returns:
+            bool: True se a atualização foi bem-sucedida, False caso contrário
+        """
+        if not self.db:
+            return False
+            
+        try:
+            cursor = self.db.db.cursor()
+            cursor.execute("""
+                UPDATE produto_opcoes 
+                SET obrigatorio = %s 
+                WHERE produto_id = %s AND grupo_id = %s
+            """, (obrigatorio, produto_id, grupo_id))
+            
+            if cursor.rowcount > 0:
+                self.db.db.commit()
+                return True
+            return False
+            
+        except Exception as e:
+            print(f"Erro ao atualizar status do vínculo: {e}")
+            self.db.db.rollback()
+            return False
+    
+    def salvar_vinculos_produto(self, produto_id, vinculos):
+        """
+        Salva os vínculos entre um produto e os grupos de opções.
+        
+        Args:
+            produto_id: ID do produto
+            vinculos: Lista de dicionários com as chaves 'grupo_id' e 'obrigatorio'
+            
+        Returns:
+            bool: True se a operação foi bem-sucedida, False caso contrário
+        """
+        if not self.db:
+            return False
+            
+        try:
+            cursor = self.db.db.cursor()
+            
+            # Remove todos os vínculos existentes para o produto
+            cursor.execute("""
+                DELETE FROM produto_opcoes 
+                WHERE produto_id = %s
+            """, (produto_id,))
+            
+            # Adiciona os novos vínculos
+            for vinculo in vinculos:
+                cursor.execute("""
+                    INSERT INTO produto_opcoes 
+                    (produto_id, grupo_id, obrigatorio) 
+                    VALUES (%s, %s, %s)
+                """, (
+                    produto_id,
+                    vinculo['grupo_id'],
+                    vinculo['obrigatorio']
+                ))
+            
+            self.db.db.commit()
+            return True
+            
+        except Exception as e:
+            print(f"Erro ao salvar vínculos do produto: {e}")
+            self.db.db.rollback()
+            return False
