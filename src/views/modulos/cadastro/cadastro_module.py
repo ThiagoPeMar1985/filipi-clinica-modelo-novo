@@ -908,131 +908,155 @@ class CadastroModule(BaseModule):
             if self.db:
                 self.lista_produtos = self.db.listar_produtos()
                 
-                # Frame principal
+                # Frame principal com grid
                 main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
                 main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+                main_frame.columnconfigure(1, weight=1)
+                main_frame.rowconfigure(1, weight=1)
                 
                 # Frame do título
                 title_frame = tk.Frame(main_frame, bg='#f0f2f5')
-                title_frame.pack(fill='x', pady=(0, 20))
+                title_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 10))
                 
-                # Título alinhado à esquerda
                 tk.Label(
                     title_frame, 
                     text="LISTA DE PRODUTOS", 
                     font=('Arial', 16, 'bold'),
                     bg='#f0f2f5',
                     fg='#000000'
-                ).pack(side='left', padx=10)
+                ).pack(side='left')
                 
-                # Frame para conteúdo (botões + tabela)
-                conteudo_frame = tk.Frame(main_frame)
-                conteudo_frame.pack(fill='both', expand=True)
+                # Frame para os botões (lado esquerdo)
+                botoes_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=10, pady=10)
+                botoes_frame.grid(row=1, column=0, sticky='nsew', padx=(0, 5))
+                botoes_frame.columnconfigure(0, weight=1)
                 
-                # Frame para botões (lado esquerdo)
-                botoes_frame = tk.Frame(conteudo_frame, width=150)
-                botoes_frame.pack(side='left', fill='y', padx=(0, 10), pady=(0, 10))
-                botoes_frame.pack_propagate(False)
+                # Configurando o estilo dos botões
+                btn_style = {
+                    'font': ('Arial', 10, 'bold'),
+                    'bg': '#4a6fa5',
+                    'fg': 'white',
+                    'bd': 0,
+                    'padx': 20,
+                    'pady': 8,
+                    'relief': 'flat',
+                    'cursor': 'hand2',
+                    'width': 15
+                }
                 
                 # Botão Novo Produto
                 self.btn_novo_prod = tk.Button(
                     botoes_frame,
                     text="Novo Produto",
-                    font=('Arial', 10, 'bold'),
-                    bg='#4a6fa5',
-                    fg='white',
-                    bd=0,
-                    padx=10,
-                    pady=5,
+                    **btn_style,
                     command=self.novo_produto
                 )
-                self.btn_novo_prod.pack(pady=2, fill='x')
+                self.btn_novo_prod.pack(pady=5, fill='x')
                 
-                # Botão Editar
+                # Botão Editar (inicialmente desabilitado)
                 self.btn_editar_prod = tk.Button(
                     botoes_frame,
                     text="Editar",
-                    font=('Arial', 10, 'bold'),
-                    bg='#4a6fa5',
-                    fg='white',
-                    bd=0,
-                    padx=10,
-                    pady=5,
+                    **btn_style,
                     state='disabled',
                     command=self.editar_produto
                 )
-                self.btn_editar_prod.pack(pady=2, fill='x')
+                self.btn_editar_prod.pack(pady=5, fill='x')
                 
-                # Botão Excluir
+                # Botão Excluir (inicialmente desabilitado)
+                btn_excluir_style = btn_style.copy()
+                btn_excluir_style['bg'] = '#f44336'  # Cor vermelha para o botão excluir
                 self.btn_excluir_prod = tk.Button(
                     botoes_frame,
                     text="Excluir",
-                    font=('Arial', 10, 'bold'),
-                    bg='#f44336',
-                    fg='white',
-                    bd=0,
-                    padx=10,
-                    pady=5,
+                    **btn_excluir_style,
                     state='disabled',
                     command=self.excluir_produto
                 )
-                self.btn_excluir_prod.pack(pady=2, fill='x')
+                self.btn_excluir_prod.pack(pady=5, fill='x')
                 
-                # Frame da tabela (lado direito)
-                tabela_frame = tk.Frame(conteudo_frame, bg='white')
-                tabela_frame.pack(side='left', fill='both', expand=True)
+                # Frame para a tabela (lado direito)
+                tabela_container = tk.Frame(main_frame, bg='#d1d8e0')
+                tabela_container.grid(row=1, column=1, sticky='nsew', padx=(5, 0))
                 
-                # Cria a Treeview
+                # Frame interno para a tabela
+                tabela_frame = tk.Frame(tabela_container, bg='white', padx=1, pady=1)
+                tabela_frame.pack(fill='both', expand=True, padx=1, pady=1)
+                
+                # Cabeçalho da tabela
                 colunas = ("ID", "Nome", "Tipo", "Descrição", "Preço", "Unidade", "Estoque Mínimo")
-                self.tree_produtos = ttk.Treeview(
-                    tabela_frame,
-                    columns=colunas,
-                    show='headings',
-                    selectmode='browse'
-                )
                 
-                # Configura o estilo para os cabeçalhos
+                # Criando a Treeview
                 style = ttk.Style()
+                style.configure("Treeview", 
+                    background="#ffffff",
+                    foreground="#333333",
+                    rowheight=30,
+                    fieldbackground="#ffffff",
+                    borderwidth=0)
+                    
+                style.map('Treeview', 
+                    background=[('selected', '#4a6fa5')],
+                    foreground=[('selected', 'white')])
+                
                 style.configure("Treeview.Heading", 
                     font=('Arial', 10, 'bold'),
                     background='#4a6fa5',
                     foreground='#000000',
                     relief='flat')
+                    
+                style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
                 
-                # Configura as colunas
+                self.tree_produtos = ttk.Treeview(
+                    tabela_frame, 
+                    columns=colunas, 
+                    show='headings',
+                    selectmode='browse',
+                    style="Treeview"
+                )
+                
+                # Configurando as colunas
                 for col in colunas:
                     self.tree_produtos.heading(col, text=col)
                     self.tree_produtos.column(col, width=100, anchor='w')
                 
-                # Ajusta largura das colunas
+                # Ajustando largura das colunas
                 self.tree_produtos.column('ID', width=50, anchor='center')
                 self.tree_produtos.column('Nome', width=200)
                 self.tree_produtos.column('Tipo', width=100)
                 self.tree_produtos.column('Descrição', width=250)
                 self.tree_produtos.column('Preço', width=100, anchor='e')
+                self.tree_produtos.column('Unidade', width=80)
+                self.tree_produtos.column('Estoque Mínimo', width=100)
                 
-                # Barra de rolagem
+                # Adicionando barra de rolagem
                 scrollbar = ttk.Scrollbar(tabela_frame, orient='vertical', command=self.tree_produtos.yview)
                 self.tree_produtos.configure(yscrollcommand=scrollbar.set)
                 
-                # Posiciona os widgets
+                # Posicionando os widgets
                 self.tree_produtos.pack(side='left', fill='both', expand=True)
                 scrollbar.pack(side='right', fill='y')
                 
-                # Preenche a tabela
+                # Preenchendo a tabela com os dados
                 for produto in self.lista_produtos:
-                    self.tree_produtos.insert('', 'end', values=(
-                        produto.get('id', ''),
-                        produto.get('nome', ''),
-                        produto.get('tipo', ''),
-                        produto.get('descricao', ''),
-                        f"R$ {produto.get('preco_venda', 0):.2f}",
-                        produto.get('unidade_medida', 'UN'),
-                        produto.get('quantidade_minima', 0)
-                    ))
+                    self.tree_produtos.insert(
+                        '', 'end', 
+                        values=(
+                            produto.get('id', ''),
+                            produto.get('nome', ''),
+                            produto.get('tipo', ''),
+                            produto.get('descricao', ''),
+                            f"R$ {produto.get('preco_venda', 0):.2f}",
+                            produto.get('unidade_medida', 'UN'),
+                            produto.get('quantidade_minima', 0)
+                        )
+                    )
                 
-                # Configura evento de seleção
+                # Configurar evento de seleção
                 self.tree_produtos.bind('<<TreeviewSelect>>', self.atualizar_botoes_produtos)
+                
+                # Ajustando o layout
+                self.conteudo_frame.update_idletasks()
                 
             else:
                 messagebox.showwarning("Aviso", "Conexão com o banco de dados não disponível")
@@ -1240,129 +1264,154 @@ class CadastroModule(BaseModule):
             if self.db:
                 self.lista_fornecedores = self.db.listar_fornecedores()
                 
-                # Frame principal
+                # Frame principal com grid
                 main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
                 main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+                main_frame.columnconfigure(1, weight=1)
+                main_frame.rowconfigure(1, weight=1)
                 
                 # Frame do título
                 title_frame = tk.Frame(main_frame, bg='#f0f2f5')
-                title_frame.pack(fill='x', pady=(0, 20))
+                title_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 10))
                 
-                # Título alinhado à esquerda
                 tk.Label(
                     title_frame, 
                     text="LISTA DE FORNECEDORES", 
                     font=('Arial', 16, 'bold'),
                     bg='#f0f2f5',
                     fg='#000000'
-                ).pack(side='left', padx=10)
+                ).pack(side='left')
                 
-                # Frame para conteúdo (botões + tabela)
-                conteudo_frame = tk.Frame(main_frame)
-                conteudo_frame.pack(fill='both', expand=True)
+                # Frame para os botões (lado esquerdo)
+                botoes_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=10, pady=10)
+                botoes_frame.grid(row=1, column=0, sticky='nsew', padx=(0, 5))
+                botoes_frame.columnconfigure(0, weight=1)
                 
-                # Frame para botões (lado esquerdo)
-                botoes_frame = tk.Frame(conteudo_frame, width=150)
-                botoes_frame.pack(side='left', fill='y', padx=(0, 10), pady=(0, 10))
-                botoes_frame.pack_propagate(False)
+                # Configurando o estilo dos botões
+                btn_style = {
+                    'font': ('Arial', 10, 'bold'),
+                    'bg': '#4a6fa5',
+                    'fg': 'white',
+                    'bd': 0,
+                    'padx': 20,
+                    'pady': 8,
+                    'relief': 'flat',
+                    'cursor': 'hand2',
+                    'width': 15
+                }
                 
                 # Botão Novo Fornecedor
                 self.btn_novo_forn = tk.Button(
                     botoes_frame,
                     text="Novo Fornecedor",
-                    font=('Arial', 10, 'bold'),
-                    bg='#4a6fa5',
-                    fg='white',
-                    bd=0,
-                    padx=10,
-                    pady=5,
+                    **btn_style,
                     command=self.novo_fornecedor
                 )
-                self.btn_novo_forn.pack(pady=2, fill='x')
+                self.btn_novo_forn.pack(pady=5, fill='x')
                 
-                # Botão Editar
+                # Botão Editar (inicialmente desabilitado)
                 self.btn_editar_forn = tk.Button(
                     botoes_frame,
                     text="Editar",
-                    font=('Arial', 10, 'bold'),
-                    bg='#4a6fa5',
-                    fg='white',
-                    bd=0,
-                    padx=10,
-                    pady=5,
+                    **btn_style,
                     state='disabled',
                     command=self.editar_fornecedor
                 )
-                self.btn_editar_forn.pack(pady=2, fill='x')
+                self.btn_editar_forn.pack(pady=5, fill='x')
                 
-                # Botão Excluir
+                # Botão Excluir (inicialmente desabilitado)
+                btn_excluir_style = btn_style.copy()
+                btn_excluir_style['bg'] = '#f44336'  # Cor vermelha para o botão excluir
                 self.btn_excluir_forn = tk.Button(
                     botoes_frame,
                     text="Excluir",
-                    font=('Arial', 10, 'bold'),
-                    bg='#f44336',
-                    fg='white',
-                    bd=0,
-                    padx=10,
-                    pady=5,
+                    **btn_excluir_style,
                     state='disabled',
                     command=self.excluir_fornecedor
                 )
-                self.btn_excluir_forn.pack(pady=2, fill='x')
+                self.btn_excluir_forn.pack(pady=5, fill='x')
                 
-                # Frame da tabela (lado direito)
-                tabela_frame = tk.Frame(conteudo_frame, bg='white')
-                tabela_frame.pack(side='left', fill='both', expand=True)
+                # Frame para a tabela (lado direito)
+                tabela_container = tk.Frame(main_frame, bg='#d1d8e0')
+                tabela_container.grid(row=1, column=1, sticky='nsew', padx=(5, 0))
                 
-                # Configura o estilo para os cabeçalhos
+                # Frame interno para a tabela
+                tabela_frame = tk.Frame(tabela_container, bg='white', padx=1, pady=1)
+                tabela_frame.pack(fill='both', expand=True, padx=1, pady=1)
+                
+                # Cabeçalho da tabela
+                colunas = ("ID", "Empresa", "Vendedor", "Telefone", "Email")
+                
+                # Criando a Treeview
                 style = ttk.Style()
+                style.configure("Treeview", 
+                    background="#ffffff",
+                    foreground="#333333",
+                    rowheight=30,
+                    fieldbackground="#ffffff",
+                    borderwidth=0)
+                    
+                style.map('Treeview', 
+                    background=[('selected', '#4a6fa5')],
+                    foreground=[('selected', 'white')])
+                
                 style.configure("Treeview.Heading", 
                     font=('Arial', 10, 'bold'),
                     background='#4a6fa5',
                     foreground='#000000',
                     relief='flat')
+                    
+                style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
                 
-                # Cria a Treeview com as colunas solicitadas
-                colunas = ("ID", "Empresa", "Vendedor", "Telefone", "Email")
                 self.tree_fornecedores = ttk.Treeview(
-                    tabela_frame,
-                    columns=colunas,
+                    tabela_frame, 
+                    columns=colunas, 
                     show='headings',
-                    selectmode='browse'
+                    selectmode='browse',
+                    style="Treeview"
                 )
                 
-                # Configura as colunas
+                # Configurando as colunas
                 for col in colunas:
                     self.tree_fornecedores.heading(col, text=col)
                     self.tree_fornecedores.column(col, width=100, anchor='w')
                 
-                # Ajusta largura das colunas
+                # Ajustando largura das colunas
                 self.tree_fornecedores.column('ID', width=50, anchor='center')
                 self.tree_fornecedores.column('Empresa', width=200)
                 self.tree_fornecedores.column('Vendedor', width=150)
                 self.tree_fornecedores.column('Telefone', width=120)
+                self.tree_fornecedores.column('Email', width=180)
                 
-                # Barra de rolagem
+                # Adicionando barra de rolagem
                 scrollbar = ttk.Scrollbar(tabela_frame, orient='vertical', command=self.tree_fornecedores.yview)
                 self.tree_fornecedores.configure(yscrollcommand=scrollbar.set)
                 
-                # Posiciona os widgets
+                # Posicionando os widgets
                 self.tree_fornecedores.pack(side='left', fill='both', expand=True)
                 scrollbar.pack(side='right', fill='y')
                 
-                # Preenche a tabela com dados
+                # Preenchendo a tabela com os dados
                 for fornecedor in self.lista_fornecedores:
-                    self.tree_fornecedores.insert('', 'end', values=(
-                        fornecedor['id'],
-                        fornecedor['empresa'],
-                        fornecedor['vendedor'],
-                        fornecedor['telefone'],
-                        fornecedor['email']
-                    ))
+                    self.tree_fornecedores.insert(
+                        '', 'end', 
+                        values=(
+                            fornecedor['id'],
+                            fornecedor['empresa'],
+                            fornecedor['vendedor'],
+                            fornecedor['telefone'],
+                            fornecedor['email']
+                        )
+                    )
                 
-                # Evento de seleção na tabela
+                # Configurar evento de seleção
                 self.tree_fornecedores.bind('<<TreeviewSelect>>', self.atualizar_botoes_fornecedores)
                 
+                # Ajustando o layout
+                self.conteudo_frame.update_idletasks()
+                
+            else:
+                messagebox.showwarning("Aviso", "Conexão com o banco de dados não disponível")
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar fornecedores: {str(e)}")
 
@@ -1802,128 +1851,152 @@ class CadastroModule(BaseModule):
             if self.db:
                 self.lista_clientes = self.db.listar_clientes(ativo=True)
                 
-                # Frame principal
+                # Frame principal com grid
                 main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
                 main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+                main_frame.columnconfigure(1, weight=1)
+                main_frame.rowconfigure(1, weight=1)
                 
                 # Frame do título
                 title_frame = tk.Frame(main_frame, bg='#f0f2f5')
-                title_frame.pack(fill='x', pady=(0, 20))
+                title_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 10))
                 
-                # Título alinhado à esquerda
                 tk.Label(
                     title_frame, 
                     text="LISTA DE CLIENTES", 
                     font=('Arial', 16, 'bold'),
                     bg='#f0f2f5',
                     fg='#000000'
-                ).pack(side='left', padx=10)
+                ).pack(side='left')
                 
-                # Frame para conteúdo (botões + tabela)
-                conteudo_frame = tk.Frame(main_frame)
-                conteudo_frame.pack(fill='both', expand=True)
+                # Frame para os botões (lado esquerdo)
+                botoes_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=10, pady=10)
+                botoes_frame.grid(row=1, column=0, sticky='nsew', padx=(0, 5))
+                botoes_frame.columnconfigure(0, weight=1)
                 
-                # Frame para botões (lado esquerdo)
-                botoes_frame = tk.Frame(conteudo_frame, width=150)
-                botoes_frame.pack(side='left', fill='y', padx=(0, 10), pady=(0, 10))
-                botoes_frame.pack_propagate(False)
+                # Configurando o estilo dos botões
+                btn_style = {
+                    'font': ('Arial', 10, 'bold'),
+                    'bg': '#4a6fa5',
+                    'fg': 'white',
+                    'bd': 0,
+                    'padx': 20,
+                    'pady': 8,
+                    'relief': 'flat',
+                    'cursor': 'hand2',
+                    'width': 15
+                }
                 
                 # Botão Novo Cliente
                 self.btn_novo_cliente = tk.Button(
                     botoes_frame,
                     text="Novo Cliente",
-                    font=('Arial', 10, 'bold'),
-                    bg='#4a6fa5',
-                    fg='white',
-                    bd=0,
-                    padx=10,
-                    pady=5,
+                    **btn_style,
                     command=self.novo_cliente
                 )
-                self.btn_novo_cliente.pack(pady=2, fill='x')
+                self.btn_novo_cliente.pack(pady=5, fill='x')
                 
-                # Botão Editar
+                # Botão Editar (inicialmente desabilitado)
                 self.btn_editar_cliente = tk.Button(
                     botoes_frame,
                     text="Editar",
-                    font=('Arial', 10, 'bold'),
-                    bg='#4a6fa5',
-                    fg='white',
-                    bd=0,
-                    padx=10,
-                    pady=5,
+                    **btn_style,
                     state='disabled',
                     command=self.editar_cliente
                 )
-                self.btn_editar_cliente.pack(pady=2, fill='x')
+                self.btn_editar_cliente.pack(pady=5, fill='x')
                 
-                # Botão Excluir
+                # Botão Excluir (inicialmente desabilitado)
+                btn_excluir_style = btn_style.copy()
+                btn_excluir_style['bg'] = '#f44336'  # Cor vermelha para o botão excluir
                 self.btn_excluir_cliente = tk.Button(
                     botoes_frame,
                     text="Excluir",
-                    font=('Arial', 10, 'bold'),
-                    bg='#f44336',
-                    fg='white',
-                    bd=0,
-                    padx=10,
-                    pady=5,
+                    **btn_excluir_style,
                     state='disabled',
                     command=self.excluir_cliente
                 )
-                self.btn_excluir_cliente.pack(pady=2, fill='x')
+                self.btn_excluir_cliente.pack(pady=5, fill='x')
                 
-                # Frame da tabela (lado direito)
-                tabela_frame = tk.Frame(conteudo_frame, bg='white')
-                tabela_frame.pack(side='left', fill='both', expand=True)
+                # Frame para a tabela (lado direito)
+                tabela_container = tk.Frame(main_frame, bg='#d1d8e0')
+                tabela_container.grid(row=1, column=1, sticky='nsew', padx=(5, 0))
                 
-                # Configura o estilo para os cabeçalhos
+                # Frame interno para a tabela
+                tabela_frame = tk.Frame(tabela_container, bg='white', padx=1, pady=1)
+                tabela_frame.pack(fill='both', expand=True, padx=1, pady=1)
+                
+                # Cabeçalho da tabela
+                colunas = ("ID", "Nome", "Telefone", "CPF", "Data Cadastro")
+                
+                # Criando a Treeview
                 style = ttk.Style()
+                style.configure("Treeview", 
+                    background="#ffffff",
+                    foreground="#333333",
+                    rowheight=30,
+                    fieldbackground="#ffffff",
+                    borderwidth=0)
+                    
+                style.map('Treeview', 
+                    background=[('selected', '#4a6fa5')],
+                    foreground=[('selected', 'white')])
+                
                 style.configure("Treeview.Heading", 
                     font=('Arial', 10, 'bold'),
                     background='#4a6fa5',
                     foreground='#000000',
                     relief='flat')
+                    
+                style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
                 
-                # Cria a Treeview
-                colunas = ("ID", "Nome", "Telefone", "CPF", "Data Cadastro")
                 self.tree_clientes = ttk.Treeview(
-                    tabela_frame,
-                    columns=colunas,
+                    tabela_frame, 
+                    columns=colunas, 
                     show='headings',
-                    selectmode='browse'
+                    selectmode='browse',
+                    style="Treeview"
                 )
                 
-                # Configura as colunas
+                # Configurando as colunas
                 for col in colunas:
                     self.tree_clientes.heading(col, text=col)
                     self.tree_clientes.column(col, width=100, anchor='w')
                 
-                # Ajusta largura das colunas
+                # Ajustando largura das colunas
                 self.tree_clientes.column('ID', width=50, anchor='center')
                 self.tree_clientes.column('Nome', width=200)
                 self.tree_clientes.column('Telefone', width=120)
+                self.tree_clientes.column('CPF', width=120)
+                self.tree_clientes.column('Data Cadastro', width=120)
                 
-                # Barra de rolagem
+                # Adicionando barra de rolagem
                 scrollbar = ttk.Scrollbar(tabela_frame, orient='vertical', command=self.tree_clientes.yview)
                 self.tree_clientes.configure(yscrollcommand=scrollbar.set)
                 
-                # Posiciona os widgets
+                # Posicionando os widgets
                 self.tree_clientes.pack(side='left', fill='both', expand=True)
                 scrollbar.pack(side='right', fill='y')
                 
-                # Preenche a tabela com dados
+                # Preenchendo a tabela com os dados
                 for cliente in self.lista_clientes:
                     data_formatada = cliente['data_cadastro'].strftime('%d/%m/%Y') if cliente['data_cadastro'] else ''
-                    self.tree_clientes.insert('', 'end', values=(
-                        cliente['id'],
-                        cliente['nome'],
-                        cliente['telefone'],
-                        cliente['cpf'],
-                        data_formatada
-                    ))
+                    self.tree_clientes.insert(
+                        '', 'end', 
+                        values=(
+                            cliente.get('id', ''),
+                            cliente.get('nome', ''),
+                            cliente.get('telefone', ''),
+                            cliente.get('cpf', ''),
+                            data_formatada
+                        )
+                    )
                 
-                # Evento de seleção na tabela
+                # Configurar evento de seleção
                 self.tree_clientes.bind('<<TreeviewSelect>>', self.atualizar_botoes_clientes)
+                
+                # Ajustando o layout
+                self.conteudo_frame.update_idletasks()
                 
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar clientes: {str(e)}")

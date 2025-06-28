@@ -53,8 +53,8 @@ class BaseModule:
         # Estilo para frames de conteúdo
         style.configure('Content.TFrame', 
                       background=self.cores['fundo_conteudo'],
-                      borderwidth=1,
-                      relief='groove')
+                      borderwidth=0,
+                      relief='flat')
         
         # Estilo para labels
         style.configure('TLabel', 
@@ -99,7 +99,7 @@ class BaseModule:
         style.configure('TEntry',
                       fieldbackground=self.cores['fundo_tabela'],
                       foreground=self.cores['texto'],
-                      borderwidth=1,
+                      borderwidth=0,
                       relief='solid')
         style.map('TEntry',
                  fieldbackground=[('readonly', self.cores['fundo_conteudo'])])
@@ -108,7 +108,7 @@ class BaseModule:
         style.configure('TCombobox',
                       fieldbackground=self.cores['fundo_tabela'],
                       foreground=self.cores['texto'],
-                      borderwidth=1,
+                      borderwidth=0,
                       relief='solid')
         style.map('TCombobox',
                  fieldbackground=[('readonly', self.cores['fundo_tabela'])])
@@ -124,19 +124,21 @@ class BaseModule:
                  background=[('selected', self.cores['fundo_conteudo'])],
                  foreground=[('selected', self.cores['primaria'])])
                  
-        # Estilo para Treeview (tabelas)
-        style.configure('Treeview',
+       
+        
+        # Estilo personalizado para Treeview sem relevo 3D
+        style.configure('Custom.Treeview',
                       background='white',
                       foreground='black',
                       fieldbackground='white',
-                      borderwidth=1,
-                      relief='solid')
-        style.configure('Treeview.Heading',
+                      borderwidth=0,
+                      relief='flat')  # Removendo o relevo 3D
+        style.configure('Custom.Treeview.Heading',
                       background='#f0f0f0',
                       foreground='black',
                       font=('Arial', 9, 'bold'),
-                      relief='solid')
-        style.map('Treeview',
+                      relief='flat')  # Removendo o relevo 3D do cabeçalho
+        style.map('Custom.Treeview',
                  background=[('selected', '#0078d7')],
                  foreground=[('selected', 'white')])
     

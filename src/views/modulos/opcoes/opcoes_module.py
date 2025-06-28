@@ -17,6 +17,49 @@ from src.controllers.opcoes_controller import OpcoesController
 from src.views.modulos.base_module import BaseModule
 
 class OpcoesModule(BaseModule):
+    # Dicionário para rastrear estilos já criados
+    _estilos_criados = {}
+    
+    @classmethod
+    def _criar_estilo_treeview(cls, nome_estilo):
+        """Cria um estilo único para TreeView se ainda não existir."""
+        if nome_estilo in cls._estilos_criados:
+            return
+            
+        style = ttk.Style()
+        
+        # Cria o elemento de borda personalizado
+        element_name = f'{nome_estilo}.Treeview.border'
+        if not style.element_names() or element_name not in style.element_names():
+            style.element_create(element_name, 'from', 'clam')
+        
+        # Configura o layout
+        style.layout(f'{nome_estilo}.Treeview', [
+            (f'{nome_estilo}.Treeview.treearea', {'sticky': 'nswe'})
+        ])
+        
+        # Configura as cores e aparência
+        style.configure(f'{nome_estilo}.Treeview',
+                      background='white',
+                      foreground='black',
+                      fieldbackground='white',
+                      borderwidth=0,
+                      relief='flat',
+                      padding=0)
+        
+        style.configure(f'{nome_estilo}.Treeview.Heading',
+                      background='#f0f0f0',
+                      foreground='black',
+                      font=('Arial', 9, 'bold'),
+                      borderwidth=0,
+                      relief='flat')
+        
+        style.map(f'{nome_estilo}.Treeview',
+                background=[('selected', '#0078d7')],
+                foreground=[('selected', 'white')])
+        
+        cls._estilos_criados[nome_estilo] = True
+    
     def __init__(self, parent, controller, db_connection=None):
         super().__init__(parent, controller)
         
@@ -241,6 +284,13 @@ class OpcoesModule(BaseModule):
         tabela_container = tk.Frame(disponiveis_frame, bg='#f0f2f5')
         tabela_container.pack(fill='both', expand=True)
         
+        # Configura os estilos para a tela de vinculação
+        style = ttk.Style()
+        
+        # Cria estilos únicos para as Treeviews
+        self._criar_estilo_treeview('VinculacaoGrupo')
+        self._criar_estilo_treeview('VinculacaoGrupoVinculados')
+        
         # Inicializa a lista de grupos disponíveis
         colunas_grupos_disponiveis = ('id', 'nome')
         self.lista_grupos_disponiveis = ttk.Treeview(
@@ -248,7 +298,7 @@ class OpcoesModule(BaseModule):
             columns=colunas_grupos_disponiveis,
             show='headings',
             selectmode='extended',
-            style='Custom.Treeview',
+            style='VinculacaoGrupo.Treeview',
             height=15
         )
         
@@ -316,7 +366,7 @@ class OpcoesModule(BaseModule):
             columns=colunas_vinculados,
             show='headings',
             selectmode='extended',
-            style='Custom.Treeview',
+            style='VinculacaoGrupo.Treeview',
             height=15
         )
         
@@ -452,7 +502,7 @@ class OpcoesModule(BaseModule):
         frame_principal.rowconfigure(0, weight=1)
         
         # Frame para os grupos (lado esquerdo)
-        frame_grupos = tk.Frame(frame_principal, bg='#f0f2f5', padx=5, pady=5, bd=1, relief='groove')
+        frame_grupos = tk.Frame(frame_principal, bg='#f0f2f5', padx=5, pady=5, bd=0, relief='flat')
         frame_grupos.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
         
         # Configurar o grid para o frame de grupos
@@ -473,7 +523,9 @@ class OpcoesModule(BaseModule):
         tree_frame_grupos.columnconfigure(0, weight=1)
         tree_frame_grupos.rowconfigure(0, weight=1)
         
-        # O estilo do Treeview é configurado no BaseModule
+        # Cria estilos únicos para as Treeviews de gerenciamento
+        self._criar_estilo_treeview('GerenciamentoGrupo')
+        self._criar_estilo_treeview('GerenciamentoItens')
         
         # Lista de grupos
         self.lista_grupos = ttk.Treeview(
@@ -482,7 +534,7 @@ class OpcoesModule(BaseModule):
             show='headings',
             selectmode='browse',
             height=15,
-            style="Custom.Treeview"  # Usa um estilo personalizado
+            style='GerenciamentoGrupo.Treeview'  # Estilo específico para grupos
         )
         
         self.lista_grupos.heading('id', text='ID')
@@ -571,7 +623,7 @@ class OpcoesModule(BaseModule):
         btn_excluir_grupo.pack(side=tk.LEFT, padx=5)
         
         # Frame para os itens (lado direito)
-        frame_itens = tk.Frame(frame_principal, bg='#f0f2f5', padx=5, pady=5, bd=1, relief='groove')
+        frame_itens = tk.Frame(frame_principal, bg='#f0f2f5', padx=5, pady=5, bd=0, relief='flat')
         frame_itens.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
         
         # Configurar o grid para o frame de itens
@@ -592,15 +644,14 @@ class OpcoesModule(BaseModule):
         tree_frame_itens.columnconfigure(0, weight=1)
         tree_frame_itens.rowconfigure(0, weight=1)
         
-        # Usa o estilo padrão do Treeview configurado no BaseModule
-        
-        # Lista de itens
+        # Lista de itens com estilo personalizado
         self.lista_itens = ttk.Treeview(
             tree_frame_itens,
             columns=('id', 'nome', 'preco'),
             show='headings',
             selectmode='browse',
-            height=15
+            height=15,
+            style='GerenciamentoItens.Treeview'  # Estilo específico para itens
         )
         self.lista_itens.heading('id', text='ID')
         self.lista_itens.heading('nome', text='Nome')
@@ -896,7 +947,7 @@ class OpcoesModule(BaseModule):
             campos_frame, 
             textvariable=nome_var, 
             font=('Arial', 10),
-            bd=1,
+            bd=0,
             relief='solid',
             highlightthickness=1,
             highlightbackground='#cccccc',
@@ -921,7 +972,7 @@ class OpcoesModule(BaseModule):
             width=40, 
             height=5,
             font=('Arial', 10),
-            bd=1,
+            bd=0,
             relief='solid',
             highlightthickness=1,
             highlightbackground='#cccccc',
@@ -938,7 +989,7 @@ class OpcoesModule(BaseModule):
             font=('Arial', 10, 'bold'),
             bg='#f0f2f5',
             fg='black',
-            bd=1,
+            bd=0,
             relief='solid',
             padx=10,
             pady=10
@@ -1014,266 +1065,12 @@ class OpcoesModule(BaseModule):
         botoes_frame = tk.Frame(main_frame, bg='#f0f2f5')
         botoes_frame.pack(fill=tk.X, pady=(10, 0))
         
-        # Função para salvar
-        def salvar():
-            dados_grupo = {
-                'id': grupo_id,
-                'nome': nome_var.get().strip(),
-                'descricao': descricao_text.get('1.0', tk.END).strip(),
-                'obrigatorio': obrigatorio_var.get(),
-                'selecao_minima': selecao_min_var.get(),
-                'selecao_maxima': max(selecao_max_var.get(), selecao_min_var.get())
-            }
-            
-            if not dados_grupo['nome']:
-                messagebox.showwarning("Atenção", "O nome do grupo é obrigatório.")
-                return
-                
-            if self.controller.salvar_grupo(dados_grupo):
-                messagebox.showinfo("Sucesso", "Grupo salvo com sucesso!")
-                dialog.destroy()
-                self._carregar_grupos()
-            else:
-                messagebox.showerror("Erro", "Não foi possível salvar o grupo.")
-                
-        # Botão Salvar
-        btn_salvar = tk.Button(
-            botoes_frame, 
-            text="Salvar", 
-            command=salvar,
-            bg='#4CAF50',
-            fg='white',
-            font=('Arial', 10, 'bold'),
-            bd=0,
-            padx=20,
-            pady=8,
-            relief='flat',
-            cursor='hand2',
-            activebackground='#43a047',
-            activeforeground='white',
-            width=15
-        )
-        btn_salvar.pack(side=tk.RIGHT, padx=5)
-        
-        # Botão Cancelar
-        btn_cancelar = tk.Button(
-            botoes_frame, 
-            text="Cancelar", 
-            command=dialog.destroy,
-            bg='#f44336',
-            fg='white',
-            font=('Arial', 10, 'bold'),
-            bd=0,
-            padx=20,
-            pady=8,
-            relief='flat',
-            cursor='hand2',
-            activebackground='#d32f2f',
-            activeforeground='white',
-            width=15
-        )
-        btn_cancelar.pack(side=tk.RIGHT, padx=5)
+       
     
-    def _abrir_formulario_grupo(self, grupo_id=None):
-        """Abre o formulário de grupo."""
-        # Cria a janela de diálogo
-        dialog = tk.Toplevel(self.frame, bg='#f0f2f5')
-        dialog.title("Novo Grupo de Opções" if grupo_id is None else "Editar Grupo de Opções")
-        dialog.transient(self.frame)
-        dialog.grab_set()
-        dialog.resizable(False, False)
         
-        # Define o tamanho da janela
-        largura = 500
-        altura = 600
-        x = (dialog.winfo_screenwidth() // 2) - (largura // 2)
-        y = (dialog.winfo_screenheight() // 2) - (altura // 2)
-        dialog.geometry(f'{largura}x{altura}+{x}+{y}')
-        
-        # Cria um canvas com barra de rolagem
-        canvas = tk.Canvas(dialog, bg='#f0f2f5', highlightthickness=0)
-        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg='#f0f2f5')
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(
-                scrollregion=canvas.bbox("all")
-            )
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Empacota o canvas e a barra de rolagem
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-    
-        # Frame principal dentro do canvas
-        main_frame = tk.Frame(scrollable_frame, bg='#f0f2f5', padx=20, pady=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Título do formulário
-        titulo = "Novo Grupo de Opções" if grupo_id is None else "Editar Grupo de Opções"
-        lbl_titulo = tk.Label(
-            main_frame, 
-            text=titulo, 
-            font=('Arial', 14, 'bold'), 
-            bg='#f0f2f5',
-            fg='black'
-        )
-        lbl_titulo.pack(anchor='w', pady=(0, 20))
-        
-        # Dados do formulário
-        dados = {}
-        
-        # Se for edição, carrega os dados do grupo
-        if grupo_id:
-            grupo = self.controller.obter_grupo(grupo_id)
-            if grupo:
-                dados = grupo
-        
-        # Frame para os campos do formulário
-        campos_frame = tk.Frame(main_frame, bg='#f0f2f5')
-        campos_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Campo Nome do Grupo
-        lbl_nome = tk.Label(
-            campos_frame, 
-            text="Nome do Grupo:", 
-            font=('Arial', 10), 
-            bg='#f0f2f5',
-            fg='black',
-            anchor='w'
-        )
-        lbl_nome.pack(fill=tk.X, pady=(0, 5))
-        
-        nome_var = tk.StringVar(value=dados.get('nome', ''))
-        entry_nome = tk.Entry(
-            campos_frame, 
-            textvariable=nome_var, 
-            font=('Arial', 10),
-            bd=1,
-            relief='solid',
-            highlightthickness=1,
-            highlightbackground='#cccccc',
-            highlightcolor='#4a6fa5',
-            width=40
-        )
-        entry_nome.pack(fill=tk.X, pady=(0, 15))
-        
-        # Campo Descrição
-        lbl_descricao = tk.Label(
-            campos_frame, 
-            text="Descrição:", 
-            font=('Arial', 10), 
-            bg='#f0f2f5',
-            fg='black',
-            anchor='w'
-        )
-        lbl_descricao.pack(fill=tk.X, pady=(0, 5))
-        
-        descricao_var = tk.StringVar(value=dados.get('descricao', ''))
-        descricao_text = tk.Text(
-            campos_frame, 
-            width=40, 
-            height=5,
-            font=('Arial', 10),
-            bd=1,
-            relief='solid',
-            highlightthickness=1,
-            highlightbackground='#cccccc',
-            highlightcolor='#4a6fa5',
-            wrap=tk.WORD
-        )
-        descricao_text.insert('1.0', descricao_var.get())
-        descricao_text.pack(fill=tk.X, pady=(0, 15))
-        
-        # Frame para as opções
-        frame_opcoes = tk.LabelFrame(
-            campos_frame, 
-            text="Configurações", 
-            font=('Arial', 10, 'bold'),
-            bg='#f0f2f5',
-            fg='black',
-            bd=1,
-            relief='solid',
-            padx=10,
-            pady=10
-        )
-        frame_opcoes.pack(fill=tk.X, pady=(0, 15))
-        
-        # Checkbox para obrigatório
-        obrigatorio_var = tk.BooleanVar(value=dados.get('obrigatorio', False))
-        check_obrigatorio = tk.Checkbutton(
-            frame_opcoes, 
-            text="Obrigatório", 
-            variable=obrigatorio_var,
-            font=('Arial', 10),
-            bg='#f0f2f5',
-            activebackground='#f0f2f5',
-            selectcolor='#f0f2f5'
-        )
-        check_obrigatorio.pack(anchor='w', pady=(0, 10))
-        
-        # Frame para seleção mínima
-        frame_selecao_min = tk.Frame(frame_opcoes, bg='#f0f2f5')
-        frame_selecao_min.pack(fill=tk.X, pady=(0, 5))
-        
-        lbl_selecao_min = tk.Label(
-            frame_selecao_min,
-            text="Seleção Mínima:",
-            font=('Arial', 10),
-            bg='#f0f2f5',
-            fg='black',
-            anchor='w',
-            width=15
-        )
-        lbl_selecao_min.pack(side=tk.LEFT)
-        
-        selecao_min_var = tk.IntVar(value=dados.get('selecao_minima', 0))
-        spin_selecao_min = ttk.Spinbox(
-            frame_selecao_min,
-            from_=0,
-            to=10,
-            width=5,
-            textvariable=selecao_min_var,
-            font=('Arial', 10)
-        )
-        spin_selecao_min.pack(side=tk.LEFT, padx=(5, 0))
-        
-        # Frame para seleção máxima
-        frame_selecao_max = tk.Frame(frame_opcoes, bg='#f0f2f5')
-        frame_selecao_max.pack(fill=tk.X, pady=(0, 5))
-        
-        lbl_selecao_max = tk.Label(
-            frame_selecao_max,
-            text="Seleção Máxima:",
-            font=('Arial', 10),
-            bg='#f0f2f5',
-            fg='black',
-            anchor='w',
-            width=15
-        )
-        lbl_selecao_max.pack(side=tk.LEFT)
-        
-        selecao_max_var = tk.IntVar(value=dados.get('selecao_maxima', 1))
-        spin_selecao_max = ttk.Spinbox(
-            frame_selecao_max,
-            from_=1,
-            to=10,
-            width=5,
-            textvariable=selecao_max_var,
-            font=('Arial', 10)
-        )
-        spin_selecao_max.pack(side=tk.LEFT, padx=(5, 0))
-        
-        # Frame para os botões
-        botoes_frame = tk.Frame(main_frame, bg='#f0f2f5')
-        botoes_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        # Função para salvar
-        def salvar():
+       
+        # Função para salvar o grupo
+        def _salvar_grupo():
             dados_grupo = {
                 'id': grupo_id,
                 'nome': nome_var.get().strip(),
@@ -1298,265 +1095,7 @@ class OpcoesModule(BaseModule):
         btn_salvar = tk.Button(
             botoes_frame, 
             text="Salvar", 
-            command=salvar,
-            bg='#4CAF50',
-            fg='white',
-            font=('Arial', 10, 'bold'),
-            bd=0,
-            padx=20,
-            pady=8,
-            relief='flat',
-            cursor='hand2',
-            activebackground='#43a047',
-            activeforeground='white',
-            width=15
-        )
-        btn_salvar.pack(side=tk.RIGHT, padx=5)
-        
-        # Botão Cancelar
-        btn_cancelar = tk.Button(
-            botoes_frame, 
-            text="Cancelar", 
-            command=dialog.destroy,
-            bg='#f44336',
-            fg='white',
-            font=('Arial', 10, 'bold'),
-            bd=0,
-            padx=20,
-            pady=8,
-            relief='flat',
-            cursor='hand2',
-            activebackground='#d32f2f',
-            activeforeground='white',
-            width=15
-        )
-        btn_cancelar.pack(side=tk.RIGHT, padx=5)
-
-    def _abrir_formulario_grupo(self, grupo_id=None):
-        """Abre o formulário de grupo."""
-        # Cria a janela de diálogo
-        dialog = tk.Toplevel(self.frame, bg='#f0f2f5')
-        dialog.title("Novo Grupo de Opções" if grupo_id is None else "Editar Grupo de Opções")
-        dialog.transient(self.frame)
-        dialog.grab_set()
-        dialog.resizable(False, False)
-        
-        # Define o tamanho da janela
-        largura = 500
-        altura = 600
-        x = (dialog.winfo_screenwidth() // 2) - (largura // 2)
-        y = (dialog.winfo_screenheight() // 2) - (altura // 2)
-        dialog.geometry(f'{largura}x{altura}+{x}+{y}')
-        
-        # Cria um canvas com barra de rolagem
-        canvas = tk.Canvas(dialog, bg='#f0f2f5', highlightthickness=0)
-        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg='#f0f2f5')
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(
-                scrollregion=canvas.bbox("all")
-            )
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Empacota o canvas e a barra de rolagem
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-    
-        # Frame principal dentro do canvas
-        main_frame = tk.Frame(scrollable_frame, bg='#f0f2f5', padx=20, pady=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Título do formulário
-        titulo = "Novo Grupo de Opções" if grupo_id is None else "Editar Grupo de Opções"
-        lbl_titulo = tk.Label(
-            main_frame, 
-            text=titulo, 
-            font=('Arial', 14, 'bold'), 
-            bg='#f0f2f5',
-            fg='black'
-        )
-        lbl_titulo.pack(anchor='w', pady=(0, 20))
-        
-        # Dados do formulário
-        dados = {}
-        
-        # Se for edição, carrega os dados do grupo
-        if grupo_id:
-            grupo = self.controller.obter_grupo(grupo_id)
-            if grupo:
-                dados = grupo
-        
-        # Frame para os campos do formulário
-        campos_frame = tk.Frame(main_frame, bg='#f0f2f5')
-        campos_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Campo Nome do Grupo
-        lbl_nome = tk.Label(
-            campos_frame, 
-            text="Nome do Grupo:", 
-            font=('Arial', 10), 
-            bg='#f0f2f5',
-            fg='black',
-            anchor='w'
-        )
-        lbl_nome.pack(fill=tk.X, pady=(0, 5))
-        
-        nome_var = tk.StringVar(value=dados.get('nome', ''))
-        entry_nome = tk.Entry(
-            campos_frame, 
-            textvariable=nome_var, 
-            font=('Arial', 10),
-            bd=1,
-            relief='solid',
-            highlightthickness=1,
-            highlightbackground='#cccccc',
-            highlightcolor='#4a6fa5',
-            width=40
-        )
-        entry_nome.pack(fill=tk.X, pady=(0, 15))
-        
-        # Campo Descrição
-        lbl_descricao = tk.Label(
-            campos_frame, 
-            text="Descrição:", 
-            font=('Arial', 10), 
-            bg='#f0f2f5',
-            fg='black',
-            anchor='w'
-        )
-        lbl_descricao.pack(fill=tk.X, pady=(0, 5))
-        
-        descricao_var = tk.StringVar(value=dados.get('descricao', ''))
-        descricao_text = tk.Text(
-            campos_frame, 
-            width=40, 
-            height=5,
-            font=('Arial', 10),
-            bd=1,
-            relief='solid',
-            highlightthickness=1,
-            highlightbackground='#cccccc',
-            highlightcolor='#4a6fa5',
-            wrap=tk.WORD
-        )
-        descricao_text.insert('1.0', descricao_var.get())
-        descricao_text.pack(fill=tk.X, pady=(0, 15))
-        
-        # Frame para as opções
-        frame_opcoes = tk.LabelFrame(
-            campos_frame, 
-            text="Configurações", 
-            font=('Arial', 10, 'bold'),
-            bg='#f0f2f5',
-            fg='black',
-            bd=1,
-            relief='solid',
-            padx=10,
-            pady=10
-        )
-        frame_opcoes.pack(fill=tk.X, pady=(0, 15))
-        
-        # Checkbox para obrigatório
-        obrigatorio_var = tk.BooleanVar(value=dados.get('obrigatorio', False))
-        check_obrigatorio = tk.Checkbutton(
-            frame_opcoes, 
-            text="Obrigatório", 
-            variable=obrigatorio_var,
-            font=('Arial', 10),
-            bg='#f0f2f5',
-            activebackground='#f0f2f5',
-            selectcolor='#f0f2f5'
-        )
-        check_obrigatorio.pack(anchor='w', pady=(0, 10))
-        
-        # Frame para seleção mínima
-        frame_selecao_min = tk.Frame(frame_opcoes, bg='#f0f2f5')
-        frame_selecao_min.pack(fill=tk.X, pady=(0, 5))
-        
-        lbl_selecao_min = tk.Label(
-            frame_selecao_min,
-            text="Seleção Mínima:",
-            font=('Arial', 10),
-            bg='#f0f2f5',
-            fg='black',
-            anchor='w',
-            width=15
-        )
-        lbl_selecao_min.pack(side=tk.LEFT)
-        
-        selecao_min_var = tk.IntVar(value=dados.get('selecao_minima', 0))
-        spin_selecao_min = ttk.Spinbox(
-            frame_selecao_min,
-            from_=0,
-            to=10,
-            width=5,
-            textvariable=selecao_min_var,
-            font=('Arial', 10)
-        )
-        spin_selecao_min.pack(side=tk.LEFT, padx=(5, 0))
-        
-        # Frame para seleção máxima
-        frame_selecao_max = tk.Frame(frame_opcoes, bg='#f0f2f5')
-        frame_selecao_max.pack(fill=tk.X, pady=(0, 5))
-        
-        lbl_selecao_max = tk.Label(
-            frame_selecao_max,
-            text="Seleção Máxima:",
-            font=('Arial', 10),
-            bg='#f0f2f5',
-            fg='black',
-            anchor='w',
-            width=15
-        )
-        lbl_selecao_max.pack(side=tk.LEFT)
-        
-        selecao_max_var = tk.IntVar(value=dados.get('selecao_maxima', 1))
-        spin_selecao_max = ttk.Spinbox(
-            frame_selecao_max,
-            from_=1,
-            to=10,
-            width=5,
-            textvariable=selecao_max_var,
-            font=('Arial', 10)
-        )
-        spin_selecao_max.pack(side=tk.LEFT, padx=(5, 0))
-        
-        # Frame para os botões
-        botoes_frame = tk.Frame(main_frame, bg='#f0f2f5')
-        botoes_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        # Função para salvar
-        def salvar():
-            dados_grupo = {
-                'id': grupo_id,
-                'nome': nome_var.get().strip(),
-                'descricao': descricao_text.get('1.0', tk.END).strip(),
-                'obrigatorio': obrigatorio_var.get(),
-                'selecao_minima': selecao_min_var.get(),
-                'selecao_maxima': max(selecao_max_var.get(), selecao_min_var.get())
-            }
-            
-            if not dados_grupo['nome']:
-                messagebox.showwarning("Atenção", "O nome do grupo é obrigatório.")
-                return
-                
-            if self.controller.salvar_grupo(dados_grupo):
-                messagebox.showinfo("Sucesso", "Grupo salvo com sucesso!")
-                dialog.destroy()
-                self._carregar_grupos()
-            else:
-                messagebox.showerror("Erro", "Não foi possível salvar o grupo.")
-            
-        # Botão Salvar
-        btn_salvar = tk.Button(
-            botoes_frame, 
-            text="Salvar", 
-            command=salvar,
+            command=lambda: _salvar_grupo(),
             bg='#4CAF50',
             fg='white',
             font=('Arial', 10, 'bold'),
@@ -1675,7 +1214,7 @@ class OpcoesModule(BaseModule):
             campos_frame, 
             textvariable=nome_var, 
             font=('Arial', 10),
-            bd=1,
+            bd=0,
             relief='solid',
             highlightthickness=1,
             highlightbackground='#cccccc',
@@ -1700,7 +1239,7 @@ class OpcoesModule(BaseModule):
             width=50, 
             height=5,
             font=('Arial', 10),
-            bd=1,
+            bd=0,
             relief='solid',
             highlightthickness=1,
             highlightbackground='#cccccc',
@@ -1744,7 +1283,7 @@ class OpcoesModule(BaseModule):
             frame_preco,
             textvariable=preco_var,
             font=('Arial', 10),
-            bd=1,
+            bd=0,
             relief='solid',
             highlightthickness=1,
             highlightbackground='#cccccc',
@@ -2095,34 +1634,6 @@ class OpcoesModule(BaseModule):
         except Exception as e:
             messagebox.showerror("Erro", f"Ocorreu um erro ao atualizar o status: {str(e)}")
     
-    def _salvar_vinculos_grupo_produto(self):
-        """Salva as alterações nos vínculos de grupos com o produto."""
-        # Verifica se há um grupo selecionado
-        if not self.grupo_selecionado:
-            messagebox.showwarning("Aviso", "Selecione um grupo primeiro.")
-            return
-        
-        # Prepara a lista de vínculos para salvar
-        vinculos = []
-        
-        # Obtém os vínculos atuais da interface
-        for item in self.lista_grupos_vinculados.get_children():
-            valores = self.lista_grupos_vinculados.item(item, 'values')
-            if valores:
-                vinculos.append({
-                    'produto_id': int(valores[0]),
-                    'obrigatorio': valores[2] == 'Sim'
-                })
-        
-        try:
-            # Salva os vínculos no banco de dados
-            if self.controller.salvar_vinculos_grupo(self.grupo_selecionado, vinculos):
-                messagebox.showinfo("Sucesso", "Vínculos salvos com sucesso!")
-            else:
-                messagebox.showerror("Erro", "Não foi possível salvar os vínculos.")
-                
-        except Exception as e:
-            messagebox.showerror("Erro", f"Ocorreu um erro ao salvar os vínculos: {str(e)}")
 
 if __name__ == "__main__":
     root = tk.Tk()
