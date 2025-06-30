@@ -135,7 +135,7 @@ class ConfiguracaoModule(BaseModule):
             text="CONFIGURAÇÕES DE NOTA FISCAL ELETRÔNICA", 
             font=('Arial', 16, 'bold'),
             bg='#f0f2f5',
-            fg='#333333'
+            fg='#000000'
         ).pack(side='left')
         
         # Frame do formulário com padding maior nas laterais para centralizar
@@ -143,7 +143,7 @@ class ConfiguracaoModule(BaseModule):
         form_frame.pack(fill='both', expand=True)
         
         # Estilo dos labels e campos
-        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#000000'}
         entry_style = {'font': ('Arial', 10), 'width': 30, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
         
         # Frame para o conteúdo
@@ -308,7 +308,7 @@ class ConfiguracaoModule(BaseModule):
             text="CONFIGURAÇÕES DE BACKUP", 
             font=('Arial', 16, 'bold'),
             bg='#f0f2f5',
-            fg='#333333'
+            fg='#000000'
         ).pack(side='left')
         
         # Frame do formulário
@@ -322,7 +322,7 @@ class ConfiguracaoModule(BaseModule):
         config_backup = self.ctrl.carregar_config_backup()
         
         # Estilo dos labels e campos
-        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#000000'}
         entry_style = {'font': ('Arial', 10), 'width': 30, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
         
         # Pasta de Backup
@@ -620,7 +620,7 @@ class ConfiguracaoModule(BaseModule):
             text="CONFIGURAÇÕES DE IMPRESSORAS", 
             font=('Arial', 16, 'bold'),
             bg='#f0f2f5',
-            fg='#333333'
+            fg='#000000'
         ).pack(side='left')
         
         # Frame do formulário
@@ -637,7 +637,7 @@ class ConfiguracaoModule(BaseModule):
                 text="Configuração de Impressoras",
                 font=('Arial', 12, 'bold'),
                 bg='#f0f2f5',
-                fg='#333333'
+                fg='#000000'
             ).grid(row=0, column=0, columnspan=3, pady=10, sticky='w')
             
             # Obtém a lista de impressoras disponíveis
@@ -696,7 +696,7 @@ class ConfiguracaoModule(BaseModule):
                     text="Configurar Impressoras por Finalidade", 
                     font=('Arial', 12, 'bold'),
                     bg='#f0f2f5',
-                    fg='#333333').grid(
+                    fg='#000000').grid(
                 row=row_start, column=0, columnspan=3, pady=(30, 15), sticky='w'
             )
             
@@ -736,7 +736,7 @@ class ConfiguracaoModule(BaseModule):
                 text="Tamanho da Fonte:",
                 font=('Arial', 9, 'bold'),
                 bg='#f0f2f5',
-                fg='#333333'
+                fg='#000000'
             ).grid(row=row_start+6, column=0, sticky='w', padx=5, pady=(15, 5))
             
             # Define o valor padrão para o tamanho da fonte
@@ -1034,7 +1034,7 @@ class ConfiguracaoModule(BaseModule):
             text="CONFIGURAÇÕES DO BANCO DE DADOS", 
             font=('Arial', 16, 'bold'),
             bg='#f0f2f5',
-            fg='#333333'
+            fg='#000000'
         ).pack(side='left')
         
         # Frame do formulário com padding maior nas laterais para centralizar
@@ -1042,7 +1042,7 @@ class ConfiguracaoModule(BaseModule):
         form_frame.pack(fill='both', expand=True)
         
         # Estilo dos labels e campos
-        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#000000'}
         entry_style = {'font': ('Arial', 10), 'width': 30, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
         
         # Frame para o conteúdo
@@ -1162,7 +1162,7 @@ class ConfiguracaoModule(BaseModule):
             text="CONFIGURAÇÕES DE INTEGRAÇÕES", 
             font=('Arial', 16, 'bold'),
             bg='#f0f2f5',
-            fg='#333333'
+            fg='#000000'
         ).pack(side='left')
         
         # Frame do formulário com padding maior nas laterais para centralizar
@@ -1170,7 +1170,7 @@ class ConfiguracaoModule(BaseModule):
         form_frame.pack(fill='both', expand=True)
         
         # Estilo dos labels e campos
-        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#000000'}
         entry_style = {'font': ('Arial', 10), 'width': 30, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
         
         # Frame para o conteúdo
@@ -1373,7 +1373,7 @@ class ConfiguracaoModule(BaseModule):
             text="CONFIGURAÇÕES DE SEGURANÇA", 
             font=('Arial', 16, 'bold'),
             bg='#f0f2f5',
-            fg='#333333'
+            fg='#000000'
         ).pack(side='top', fill='x')
         
         # Subtítulo explicativo
@@ -1413,7 +1413,7 @@ class ConfiguracaoModule(BaseModule):
                 text="Módulos",
                 font=('Arial', 11, 'bold'),
                 bg='#f0f2f5',
-                fg='#333333',
+                fg='#000000',
                 pady=10
             ).pack(fill='x', padx=5)
             
@@ -1444,7 +1444,7 @@ class ConfiguracaoModule(BaseModule):
                 text="Permissões",
                 font=('Arial', 11, 'bold'),
                 bg='white',
-                fg='#333333',
+                fg='#000000',
                 anchor='w',
                 padx=10
             ).grid(row=0, column=0, sticky='w')
@@ -1455,7 +1455,7 @@ class ConfiguracaoModule(BaseModule):
                 text="Usuário  Master",
                 font=('Arial', 11, 'bold'),
                 bg='white',
-                fg='#333333',
+                fg='#000000',
                 width=18,
                 anchor='center'
             ).grid(row=0, column=1, padx=0)
@@ -1466,7 +1466,7 @@ class ConfiguracaoModule(BaseModule):
                 text="Usuário Básico",
                 font=('Arial', 11, 'bold'),
                 bg='white',
-                fg='#333333',
+                fg='#000000',
                 width=18,
                 anchor='center'
             ).grid(row=0, column=2, padx=0)
@@ -1547,7 +1547,7 @@ class ConfiguracaoModule(BaseModule):
                         botao_frame,
                         text=botao_data['nome'],
                         bg='white',
-                        fg='#333333',
+                        fg='#000000',
                         anchor='w',
                         width=30,
                         padx=10

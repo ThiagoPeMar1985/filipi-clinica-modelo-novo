@@ -37,7 +37,7 @@ class BaseModule:
             'primaria': '#4a6fa5',        # Azul padrão
             'secundaria': '#3b5a7f',      # Azul mais escuro (hover)
             'terciaria': '#333f50',
-            'texto': '#333333',
+            'texto': '#000000',
             'texto_claro': '#ffffff',
             'texto_cabecalho': '#ffffff', # Texto do cabeçalho
             'destaque': '#4CAF50',        # Verde
@@ -129,17 +129,33 @@ class BaseModule:
         # Estilo personalizado para Treeview sem relevo 3D
         style.configure('Custom.Treeview',
                       background='white',
-                      foreground='black',
+                      foreground='#000000',  # Texto preto para melhor legibilidade
                       fieldbackground='white',
                       borderwidth=0,
                       relief='flat')  # Removendo o relevo 3D
         style.configure('Custom.Treeview.Heading',
-                      background='#f0f0f0',
-                      foreground='black',
-                      font=('Arial', 9, 'bold'),
+                      background='#4a6fa5',  # Fundo azul para cabeçalho
+                      foreground='white',    # Texto branco para contraste
+                      font=('Arial', 10, 'bold'),
                       relief='flat')  # Removendo o relevo 3D do cabeçalho
         style.map('Custom.Treeview',
-                 background=[('selected', '#0078d7')],
+                 background=[('selected', '#4a6fa5')],
+                 foreground=[('selected', 'white')])
+                 
+        # Aplicar o estilo Custom.Treeview como padrão para todas as Treeviews
+        style.configure('Treeview',
+                      background='white',
+                      foreground='#000000',  # Texto preto para melhor legibilidade
+                      fieldbackground='white',
+                      borderwidth=0,
+                      relief='flat')
+        style.configure('Treeview.Heading',
+                      background='#4a6fa5',  # Fundo azul para cabeçalho
+                      foreground='white',    # Texto branco para contraste
+                      font=('Arial', 10, 'bold'),
+                      relief='flat')
+        style.map('Treeview',
+                 background=[('selected', '#4a6fa5')],
                  foreground=[('selected', 'white')])
     
     def aplicar_estilos(self):

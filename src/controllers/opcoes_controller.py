@@ -1,5 +1,30 @@
 """
 Controlador para o módulo de Opções de Produtos.
+
+Table: opcoes_grupos
+Columns:
+id int AI PK 
+nome varchar(100) 
+descricao text 
+obrigatorio tinyint(1) 
+selecao_minima int 
+selecao_maxima int 
+ativo tinyint(1) 
+data_criacao timestamp 
+data_atualizacao timestamp
+
+Table: opcoes_itens
+Columns:
+id int AI PK 
+grupo_id int 
+nome varchar(100) 
+descricao text 
+preco_adicional decimal(10,2) 
+ativo tinyint(1) 
+data_criacao timestamp 
+data_atualizacao timestamp
+
+
 """
 
 class OpcoesController:
@@ -85,7 +110,9 @@ class OpcoesController:
         """Lista todas as opções disponíveis para um produto, agrupadas por grupo."""
         if not self.db:
             return {}
-        return self.db.listar_opcoes_por_produto(produto_id)
+            
+        opcoes = self.db.listar_opcoes_por_produto(produto_id)
+        return opcoes
         
     def listar_produtos_para_vinculo(self):
         """Lista todos os produtos que podem ter opções vinculadas."""

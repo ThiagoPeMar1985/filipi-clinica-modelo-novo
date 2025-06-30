@@ -21,7 +21,7 @@ class BackupScreen:
             text="CONFIGURAÇÕES DE BACKUP", 
             font=('Arial', 16, 'bold'),
             bg='#f0f2f5',
-            fg='#333333'
+            fg='#000000'
         ).pack(side='left')
         
         # Frame do formulário com padding maior nas laterais para centralizar
@@ -32,7 +32,7 @@ class BackupScreen:
         config_backup = self.ctrl.carregar_config_backup()
         
         # Estilo dos labels e campos
-        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#000000'}
         entry_style = {'font': ('Arial', 10), 'width': 25, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
         
         # Pasta de Backup

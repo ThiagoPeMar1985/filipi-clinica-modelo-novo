@@ -53,7 +53,7 @@ class SistemaPDV:
             "terciaria": "#333f50",
             "fundo": "#f0f2f5",
             "fundo_conteudo": "#f0f2f5",  # Mesma cor do fundo para remover a borda branca
-            "texto": "#333333",
+            "texto": "#000000",
             "texto_claro": "#ffffff",
             "destaque": "#4caf50",
             "alerta": "#f44336",
@@ -199,16 +199,27 @@ class SistemaPDV:
         self.status_bar = tk.Frame(self.main_frame, bg=self.cores["terciaria"], height=30)
         self.status_bar.pack(fill="x", side="bottom")
         
-        # Data e hora
-        data_atual = datetime.now().strftime("%d/%m/%Y %H:%M")
+        # Data e hora com atualização automática
         self.data_label = tk.Label(
             self.status_bar,
-            text=data_atual,
+            text="",
             bg=self.cores["terciaria"],
             fg=self.cores["texto_claro"],
             font=("Arial", 10)
         )
         self.data_label.pack(side="right", padx=15, pady=3)
+        
+        # Iniciar a atualização do relógio
+        self._atualizar_relogio()
+    
+    def _atualizar_relogio(self):
+        """Atualiza o relógio a cada segundo"""
+        # Atualizar a data e hora atual
+        data_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        self.data_label.config(text=data_atual)
+        
+        # Agendar a próxima atualização em 1000ms (1 segundo)
+        self.root.after(1000, self._atualizar_relogio)
     
     def _get_opcoes_cadastro(self):
         """Retorna as opções do módulo de cadastro"""
@@ -233,11 +244,19 @@ class SistemaPDV:
             {"nome": "🔒 Segurança", "metodo": "seguranca"}
         ]
 
+    def _get_opcoes_vendas(self):
+        """Retorna as opções do módulo de vendas"""
+        return [
+            {"nome": "💰 Venda Avulsa", "metodo": "venda_avulsa"},
+            {"nome": "🛵 Delivery", "metodo": "delivery"}
+        ]
+
     def configurar_modulos(self):
         """Configura os módulos do sistema"""
-        # Obtém as opções do módulo de cadastro
+        # Obtém as opções dos módulos
         opcoes_cadastro = self._get_opcoes_cadastro()
         opcoes_configuracao = self._get_opcoes_configuracao()
+        opcoes_vendas = self._get_opcoes_vendas()
         
         # Configura os comandos para cada opção do cadastro
         for opcao in opcoes_cadastro:
@@ -252,6 +271,13 @@ class SistemaPDV:
             opcao["modulo"] = 'configuracao'
             opcao["acao"] = metodo
             opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('configuracao', m)
+            
+        # Configura os comandos para cada opção de vendas
+        for opcao in opcoes_vendas:
+            metodo = opcao["metodo"]
+            opcao["modulo"] = 'vendas'
+            opcao["acao"] = metodo
+            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('vendas', m)
         
         # Configura os módulos disponíveis
         self.modulos = {
@@ -263,7 +289,7 @@ class SistemaPDV:
             "vendas": {
                 "nome": "VENDAS",
                 "icone": "💰",
-                "opcoes": []
+                "opcoes": opcoes_vendas
             },
             "mesas": {
                 "nome": "MESAS",
@@ -354,7 +380,31 @@ class SistemaPDV:
             widget.destroy()
             
         try:
-            if modulo_id == 'cadastro':
+            if modulo_id == 'vendas':
+                # Cria um frame para o módulo que ocupa todo o espaço
+                modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
+                modulo_frame.pack(fill='both', expand=True)
+                
+                # Importa o módulo de vendas
+                from src.views.modulos.vendas.vendas_module import VendasModule
+                from src.db.database import db
+                
+                # Obtém a conexão com o banco de dados
+                db_connection = db.get_connection()
+                
+                # Cria a instância do módulo
+                modulo = VendasModule(modulo_frame, self)
+                
+                # Define a conexão com o banco de dados
+                self.db_connection = db_connection
+                
+                # Configura o frame do módulo para ocupar todo o espaço
+                modulo.frame.pack(fill='both', expand=True, padx=10, pady=10)
+                
+                # Chama o método show com a ação específica
+                modulo.show(metodo_nome)
+                
+            elif modulo_id == 'cadastro':
                 # Cria um frame para o módulo que ocupa todo o espaço
                 modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
                 modulo_frame.pack(fill='both', expand=True)

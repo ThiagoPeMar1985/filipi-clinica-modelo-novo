@@ -47,7 +47,7 @@ class TelaConexaoDB:
             text="CONFIGURAÇÃO DO BANCO DE DADOS", 
             font=('Arial', 16, 'bold'),
             bg='#f0f2f5',
-            fg='#333333',
+            fg='#000000',
             anchor='center'
         ).pack(fill='x')
         
@@ -77,7 +77,7 @@ class TelaConexaoDB:
         tk.Frame(form_container, bg='#f0f2f5', width=100).pack(side='right', fill='y')
         
         # Estilo dos labels e campos
-        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#333333'}
+        label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w', 'fg': '#000000'}
         entry_style = {'font': ('Arial', 10), 'width': 30, 'bg': 'white', 'borderwidth': 0, 'highlightthickness': 0}
         
         # Frame para o conteúdo

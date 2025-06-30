@@ -178,26 +178,17 @@ class CadastroModule(BaseModule):
                 font=('Arial', 10, 'bold'),
                 bg='#4a6fa5',
                 fg='white',
-                padx=15,
-                pady=5,
-                width=10,
+                bd=0,
+                padx=20,
+                pady=8,
+                relief='flat',
+                cursor='hand2',
+                width=15,
                 command=self.salvar_empresa
             )
             btn_salvar.pack(side='left', padx=5)
             
-            # Botão Cancelar
-            btn_cancelar = tk.Button(
-                btn_frame,
-                text="Cancelar",
-                font=('Arial', 10, 'bold'),
-                bg='#f44336',
-                fg='white',
-                padx=15,
-                pady=5,
-                width=10,
-                command=self.cancelar_edicao
-            )
-            btn_cancelar.pack(side='left', padx=5)
+            # Botão Cancelar removido conforme solicitado
             
             # Ajusta o grid para expandir corretamente
             form_frame.columnconfigure(1, weight=1)
@@ -302,7 +293,7 @@ class CadastroModule(BaseModule):
             style = ttk.Style()
             style.configure("Treeview", 
                 background="#ffffff",
-                foreground="#333333",
+                foreground="#000000",
                 rowheight=30,
                 fieldbackground="#ffffff",
                 borderwidth=0)

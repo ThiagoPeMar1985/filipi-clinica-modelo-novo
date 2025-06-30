@@ -358,6 +358,60 @@ class OpcoesDB:
         finally:
             cursor.close()
     
+    def listar_opcoes_por_produto(self, produto_id: int) -> Dict[int, Dict[str, Any]]:
+        """Lista todas as opções disponíveis para um produto, agrupadas por grupo."""
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            
+            # Primeiro, obtemos os grupos de opções vinculados ao produto
+            query_grupos = """
+                SELECT g.*, po.obrigatorio, po.ordem
+                FROM opcoes_grupos g
+                JOIN produto_opcoes po ON g.id = po.grupo_id
+                WHERE po.produto_id = %s AND g.ativo = TRUE
+                ORDER BY po.ordem, g.nome
+            """
+            
+            cursor.execute(query_grupos, (produto_id,))
+            grupos = cursor.fetchall()
+            
+            resultado = {}
+            
+            # Para cada grupo, buscamos os itens ativos
+            for grupo in grupos:
+                grupo_id = grupo['id']
+                
+                query_itens = """
+                    SELECT * 
+                    FROM opcoes_itens 
+                    WHERE grupo_id = %s AND ativo = TRUE
+                    ORDER BY nome
+                """
+                cursor.execute(query_itens, (grupo_id,))
+                itens = cursor.fetchall()
+                
+                # Adiciona informações adicionais do grupo
+                grupo_info = {
+                    'nome': grupo['nome'],
+                    'descricao': grupo.get('descricao', ''),
+                    'obrigatorio': bool(grupo.get('obrigatorio', False)),
+                    'selecao_minima': grupo.get('selecao_minima', 0),
+                    'selecao_maxima': grupo.get('selecao_maxima', 1),
+                    'ordem': grupo.get('ordem', 0),
+                    'itens': itens
+                }
+                
+                resultado[grupo_id] = grupo_info
+            
+            return resultado
+            
+        except mysql.connector.Error as err:
+            print(f"Erro ao listar opções do produto: {err}")
+            return {}
+        finally:
+            if 'cursor' in locals() and cursor is not None:
+                cursor.close()
+                
     def listar_produtos_por_grupo(self, grupo_id: int) -> List[Dict[str, Any]]:
         """Lista todos os produtos vinculados a um grupo de opções."""
         try:

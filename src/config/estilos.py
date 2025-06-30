@@ -9,7 +9,7 @@ CORES = {
     "terciaria": "#333f50",     # Azul escuro
     "fundo": "#f0f2f5",         # Cinza muito claro
     "fundo_conteudo": "#ffffff", # Branco
-    "texto": "#333333",         # Cinza escuro
+    "texto": "#000000",         # Preto 
     "texto_claro": "#ffffff",   # Branco
     "destaque": "#4caf50",      # Verde
     "alerta": "#f44336",        # Vermelho
