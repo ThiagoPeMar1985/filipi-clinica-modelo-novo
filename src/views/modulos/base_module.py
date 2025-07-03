@@ -134,13 +134,13 @@ class BaseModule:
                       borderwidth=0,
                       relief='flat')  # Removendo o relevo 3D
         style.configure('Custom.Treeview.Heading',
-                      background='#4a6fa5',  # Fundo azul para cabeçalho
-                      foreground='white',    # Texto branco para contraste
+                      background='white',  # Fundo branco para cabeçalho
+                      foreground='#000000',    # Texto preto para contraste
                       font=('Arial', 10, 'bold'),
                       relief='flat')  # Removendo o relevo 3D do cabeçalho
         style.map('Custom.Treeview',
-                 background=[('selected', '#4a6fa5')],
-                 foreground=[('selected', 'white')])
+                 background=[('selected', '#e0e0e0')],
+                 foreground=[('selected', '#000000')])
                  
         # Aplicar o estilo Custom.Treeview como padrão para todas as Treeviews
         style.configure('Treeview',
@@ -150,13 +150,13 @@ class BaseModule:
                       borderwidth=0,
                       relief='flat')
         style.configure('Treeview.Heading',
-                      background='#4a6fa5',  # Fundo azul para cabeçalho
-                      foreground='white',    # Texto branco para contraste
+                      background='white',  # Fundo branco para cabeçalho
+                      foreground='#000000',    # Texto preto para contraste
                       font=('Arial', 10, 'bold'),
                       relief='flat')
         style.map('Treeview',
-                 background=[('selected', '#4a6fa5')],
-                 foreground=[('selected', 'white')])
+                 background=[('selected', '#e0e0e0')],
+                 foreground=[('selected', '#000000')])
     
     def aplicar_estilos(self):
         """Aplica os estilos aos widgets existentes"""

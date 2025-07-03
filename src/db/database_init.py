@@ -315,7 +315,6 @@ def criar_tabelas(connection):
             cpf VARCHAR(14),
             endereco TEXT,
             data_cadastro DATETIME DEFAULT CURRENT_TIMESTAMP,
-            ativo TINYINT(1) DEFAULT 1,
             observacoes TEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)

@@ -978,32 +978,11 @@ class CadastroModule(BaseModule):
                 colunas = ("ID", "Nome", "Tipo", "Descrição", "Preço", "Unidade", "Estoque Mínimo")
                 
                 # Criando a Treeview
-                style = ttk.Style()
-                style.configure("Treeview", 
-                    background="#ffffff",
-                    foreground="#333333",
-                    rowheight=30,
-                    fieldbackground="#ffffff",
-                    borderwidth=0)
-                    
-                style.map('Treeview', 
-                    background=[('selected', '#4a6fa5')],
-                    foreground=[('selected', 'white')])
-                
-                style.configure("Treeview.Heading", 
-                    font=('Arial', 10, 'bold'),
-                    background='#4a6fa5',
-                    foreground='#000000',
-                    relief='flat')
-                    
-                style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
-                
                 self.tree_produtos = ttk.Treeview(
                     tabela_frame, 
                     columns=colunas, 
                     show='headings',
-                    selectmode='browse',
-                    style="Treeview"
+                    selectmode='browse'
                 )
                 
                 # Configurando as colunas
@@ -1337,7 +1316,7 @@ class CadastroModule(BaseModule):
                 style = ttk.Style()
                 style.configure("Treeview", 
                     background="#ffffff",
-                    foreground="#333333",
+                    foreground="#000000",  # Texto preto para melhor legibilidade
                     rowheight=30,
                     fieldbackground="#ffffff",
                     borderwidth=0)
@@ -1840,7 +1819,7 @@ class CadastroModule(BaseModule):
         self.limpar_conteudo()
         try:
             if self.db:
-                self.lista_clientes = self.db.listar_clientes(ativo=True)
+                self.lista_clientes = self.db.listar_clientes()
                 
                 # Frame principal com grid
                 main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
@@ -1924,7 +1903,7 @@ class CadastroModule(BaseModule):
                 style = ttk.Style()
                 style.configure("Treeview", 
                     background="#ffffff",
-                    foreground="#333333",
+                    foreground="#000000",  # Texto preto para melhor legibilidade
                     rowheight=30,
                     fieldbackground="#ffffff",
                     borderwidth=0)

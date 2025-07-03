@@ -541,7 +541,6 @@ class ConfiguracaoModule(BaseModule):
         var = getattr(self, var_name)
         
         style = ttk.Style()
-        style.theme_use('default')
         
         # Configura o estilo do combobox
         style.configure('TCombobox',

@@ -11,6 +11,7 @@ from controllers.cadastro_controller import CadastroController
 from controllers.opcoes_controller import OpcoesController
 from views.modulos.pagamento.pagamento_module import PagamentoModule
 from utils.impressao import GerenciadorImpressao
+from views.modulos.vendas.delivery_module import DeliveryModule
 
 class VendasModule:
     def __init__(self, parent, controller):
@@ -49,8 +50,12 @@ class VendasModule:
         return self.opcoes
         
     def show(self, acao=None):
-        if self.current_view:
-            self.current_view.destroy()
+        # Limpar o frame principal
+        for widget in self.frame.winfo_children():
+            widget.destroy()
+        
+        # Definir o current_view como None inicialmente
+        self.current_view = None
             
         if acao == 'venda_avulsa':
             self._show_venda_avulsa()
@@ -91,15 +96,15 @@ class VendasModule:
                 foreground=[("selected", "#ffffff")])
         
         # Título da página
-        titulo_frame = tk.Frame(frame, bg=self.cores["primaria"])
+        titulo_frame = tk.Frame(frame, bg=self.cores["fundo"])
         titulo_frame.pack(fill="x", padx=0, pady=0)
         
         titulo_label = tk.Label(
             titulo_frame, 
             text="VENDA AVULSA", 
             font=('Arial', 16, 'bold'),
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
+            bg=self.cores["fundo"],
+            fg=self.cores["texto"],
             padx=15,
             pady=10
         )
@@ -111,8 +116,8 @@ class VendasModule:
             titulo_frame,
             text=data_atual,
             font=('Arial', 12),
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
+            bg=self.cores["fundo"],
+            fg=self.cores["texto"],
             padx=15
         )
         data_label.pack(side="right", padx=15)
@@ -873,107 +878,18 @@ class VendasModule:
             )
     
     def _show_delivery(self):
-        frame = ttk.Frame(self.frame, style="Card.TFrame")
-        frame.pack(fill='both', expand=True, padx=20, pady=20)
-        
-        # Configurar estilo para as tabelas
-        style = ttk.Style()
-        style.configure("Treeview", 
-                      background="white",
-                      foreground=self.cores["texto"],
-                      rowheight=25,
-                      fieldbackground="white")
-        style.configure("Treeview.Heading", 
-                      font=("Arial", 10, "bold"), 
-                      background=self.cores["primaria"],
-                      foreground=self.cores["texto_claro"])
-        style.map("Treeview", 
-                background=[("selected", "#4a6fa5")],
-                foreground=[("selected", "#ffffff")])
-        
-        # Título da página
-        titulo_frame = tk.Frame(frame, bg=self.cores["primaria"])
-        titulo_frame.pack(fill="x", padx=0, pady=0)
-        
-        titulo_label = tk.Label(
-            titulo_frame, 
-            text="DELIVERY", 
-            font=('Arial', 16, 'bold'),
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
-            padx=15,
-            pady=10
-        )
-        titulo_label.pack(side="left")
-        
-        # Data e hora atual
-        data_atual = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-        data_label = tk.Label(
-            titulo_frame,
-            text=data_atual,
-            font=('Arial', 12),
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
-            padx=15
-        )
-        data_label.pack(side="right", padx=15)
-        
-        # Container principal
-        container = ttk.Frame(frame)
-        container.pack(fill="both", expand=True, padx=15, pady=15)
-        
-        # Frame esquerdo - Informações do cliente e pedido
-        info_frame = ttk.Frame(container)
-        info_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
-        
-        # Informações do cliente
-        cliente_frame = ttk.LabelFrame(info_frame, text="Informações do Cliente")
-        cliente_frame.pack(fill="x", pady=(0, 10))
-        
-        # Telefone
-        telefone_frame = ttk.Frame(cliente_frame)
-        telefone_frame.pack(fill="x", pady=5, padx=5)
-        
-        ttk.Label(telefone_frame, text="Telefone:").pack(side="left")
-        telefone_entry = ttk.Entry(telefone_frame)
-        telefone_entry.pack(side="left", padx=5, fill="x", expand=True)
-        
-        buscar_button = ttk.Button(telefone_frame, text="Buscar Cliente")
-        buscar_button.pack(side="right")
-        
-        # Frame direito - Endereço de entrega
-        endereco_frame = ttk.LabelFrame(container, text="Endereço de Entrega")
-        endereco_frame.pack(side="right", fill="both", expand=True)
-        
-        # Campos do endereço
-        campos_endereco = [
-            ("Rua:", "entry_rua"),
-            ("Número:", "entry_numero"),
-            ("Complemento:", "entry_complemento"),
-            ("Bairro:", "entry_bairro"),
-            ("Cidade:", "entry_cidade"),
-            ("CEP:", "entry_cep"),
-            ("Referência:", "entry_referencia")
-        ]
-        
-        for label_text, var_name in campos_endereco:
-            frame = ttk.Frame(endereco_frame)
-            frame.pack(fill="x", pady=2, padx=5)
+        # Limpar o frame atual
+        for widget in self.frame.winfo_children():
+            widget.destroy()
             
-            ttk.Label(frame, text=label_text, width=10).pack(side="left")
-            entry = ttk.Entry(frame)
-            entry.pack(side="left", fill="x", expand=True, padx=5)
+        # Inicializar o módulo de delivery
+        try:
+            delivery_module = DeliveryModule(self.frame, self.controller)
+            self.current_view = delivery_module.show()
             
-            # Armazenar a referência do campo
-            setattr(self, var_name, entry)
-        
-        # Botão de finalizar pedido
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill="x", pady=10, padx=15)
-        
-        btn_finalizar = ttk.Button(
-            btn_frame, 
-            text="Finalizar Pedido", 
-            style="Accent.TButton"
-        )
-        btn_finalizar.pack(side="right")
+            # Garantir que o frame seja exibido
+            self.frame.update()
+           
+        except Exception as e:
+            print(f"Erro ao inicializar módulo de delivery: {e}")
+            messagebox.showerror("Erro", f"Erro ao inicializar módulo de delivery: {e}")

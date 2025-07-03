@@ -363,14 +363,11 @@ class CadastroDB:
             return False, f"Erro ao excluir funcionário: {str(e)}"
     
     # Métodos para Clientes
-    def listar_clientes(self, ativo: bool = True) -> List[Dict[str, Any]]:
+    def listar_clientes(self) -> List[Dict[str, Any]]:
         """Lista todos os clientes cadastrados."""
         try:
             cursor = self.db.cursor(dictionary=True)
-            cursor.execute(
-                "SELECT * FROM clientes_pendura WHERE ativo = %s", 
-                (1 if ativo else 0,)
-            )
+            cursor.execute("SELECT * FROM clientes_pendura")
             return cursor.fetchall()
         except Exception as e:
             print(f"Erro ao listar clientes: {e}")
@@ -440,10 +437,10 @@ class CadastroDB:
             return False
     
     def excluir_cliente(self, cliente_id: int) -> bool:
-        """Exclui um cliente pendura (exclusão lógica)"""
+        """Remove permanentemente um cliente do banco de dados"""
         try:
             cursor = self.db.cursor()
-            cursor.execute("UPDATE clientes_pendura SET ativo = 0 WHERE id = %s", (cliente_id,))
+            cursor.execute("DELETE FROM clientes_pendura WHERE id = %s", (cliente_id,))
             self.db.commit()
             return cursor.rowcount > 0
         except Exception as e:
@@ -461,15 +458,14 @@ class CadastroDB:
                 query = """
                     UPDATE clientes_pendura 
                     SET nome = %s, telefone = %s, cpf = %s, 
-                        endereco = %s, ativo = %s, observacoes = %s
+                        endereco = %s, observacoes = %s
                     WHERE id = %s
                 """
                 valores = (
                     dados['nome'],
                     dados['telefone'],
                     dados['cpf'],
-                    dados['endereco'],
-                    dados.get('ativo', 1),
+                    dados.get('endereco', ''),
                     dados.get('observacoes', ''),
                     dados['id']
                 )
@@ -477,8 +473,8 @@ class CadastroDB:
                 # Inserção
                 query = """
                     INSERT INTO clientes_pendura 
-                    (nome, telefone, cpf, endereco, data_cadastro, ativo, observacoes)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (nome, telefone, cpf, endereco, data_cadastro, observacoes)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                 """
                 valores = (
                     dados['nome'],
@@ -486,7 +482,6 @@ class CadastroDB:
                     dados['cpf'],
                     dados['endereco'],
                     datetime.now(),
-                    dados.get('ativo', 1),
                     dados.get('observacoes', '')
                 )
             
