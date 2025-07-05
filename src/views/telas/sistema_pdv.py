@@ -172,10 +172,19 @@ class SistemaPDV:
         welcome_label.pack(pady=50)
         
         # Data atual
-        data_formatada = datetime.now().strftime("%d de %B de %Y").replace("June", "junho")
+        meses_pt_br = {
+            'January': 'janeiro', 'February': 'fevereiro', 'March': 'março',
+            'April': 'abril', 'May': 'maio', 'June': 'junho',
+            'July': 'julho', 'August': 'agosto', 'September': 'setembro',
+            'October': 'outubro', 'November': 'novembro', 'December': 'dezembro'
+        }
+        data_ingles = datetime.now().strftime("%d de %B de %Y")
+        for eng, pt in meses_pt_br.items():
+            data_ingles = data_ingles.replace(eng, pt)
+            
         date_label = tk.Label(
             self.content_frame,
-            text=data_formatada,
+            text=data_ingles,
             font=("Arial", 20),
             bg=self.cores["fundo_conteudo"],
             fg=self.cores["texto"]
@@ -248,7 +257,8 @@ class SistemaPDV:
         """Retorna as opções do módulo de vendas"""
         return [
             {"nome": "💰 Venda Avulsa", "metodo": "venda_avulsa"},
-            {"nome": "🛵 Delivery", "metodo": "delivery"}
+            {"nome": "🛵 Delivery", "metodo": "delivery"},
+            {"nome": "📊 Status Pedidos", "metodo": "status_pedidos"}
         ]
 
     def configurar_modulos(self):

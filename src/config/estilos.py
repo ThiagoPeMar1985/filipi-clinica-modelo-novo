@@ -29,6 +29,7 @@ FONTES = {
 
 # Estilos de botões
 ESTILOS_BOTAO = {
+    # Botão padrão (Azul)
     "padrao": {
         "bg": CORES["primaria"],
         "fg": CORES["texto_claro"],
@@ -37,27 +38,34 @@ ESTILOS_BOTAO = {
         "bd": 0,
         "activebackground": CORES["secundaria"],
         "activeforeground": CORES["texto_claro"],
+        "cursor": "hand2",
+        "highlightthickness": 0,
     },
-    "secundario": {
-        "bg": CORES["secundaria"],
-        "fg": CORES["texto_claro"],
-        "font": FONTES["normal"],
-        "relief": "flat",
-        "bd": 0,
-    },
+    # Botão de perigo (Vermelho)
     "perigo": {
         "bg": CORES["alerta"],
         "fg": CORES["texto_claro"],
         "font": FONTES["normal"],
         "relief": "flat",
         "bd": 0,
+        "cursor": "hand2",
+        "highlightthickness": 0,
     },
+    # Botão de sucesso (Verde)
     "sucesso": {
-        "bg": CORES["sucesso"],
+        "bg": CORES["destaque"],
         "fg": CORES["texto_claro"],
-        "font": FONTES["normal"],
+        "font": ('Arial', 14, 'bold'),
         "relief": "flat",
         "bd": 0,
+        "padx": 20,
+        "pady": 15,
+        "activebackground": "#43a047",
+        "activeforeground": CORES["texto_claro"],
+        "cursor": "hand2",
+        "highlightthickness": 0,
+        "highlightbackground": CORES["fundo"],
+        "highlightcolor": CORES["fundo"]
     },
 }
 

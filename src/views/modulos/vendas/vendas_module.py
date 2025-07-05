@@ -42,7 +42,8 @@ class VendasModule:
         # Opções do menu lateral
         self.opcoes = [
             {"nome": "💰 Venda Avulsa", "acao": "venda_avulsa"},
-            {"nome": "🛵 Delivery", "acao": "delivery"}
+            {"nome": "🛵 Delivery", "acao": "delivery"},
+            {"nome": "📊 Status Pedidos", "acao": "status_pedidos"}
         ]
         
     def get_opcoes(self):
@@ -61,11 +62,142 @@ class VendasModule:
             self._show_venda_avulsa()
         elif acao == 'delivery':
             self._show_delivery()
+        elif acao == 'status_pedidos':
+            self._show_status_pedidos()
         else:
             self._show_default()
             
         self.frame.pack(fill='both', expand=True)
         return self.frame
+    
+    def _show_status_pedidos(self):
+        """Mostra a tela de status dos pedidos"""
+        # Criar o frame principal
+        main_frame = ttk.Frame(self.frame)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Título
+        title_frame = ttk.Frame(main_frame)
+        title_frame.pack(fill='x', pady=(0, 20))
+        
+        ttk.Label(
+            title_frame,
+            text="📊 Status dos Pedidos",
+            font=('Arial', 16, 'bold')
+        ).pack(side='left')
+        
+        # Frame para os botões de ação
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill='x', pady=(0, 10))
+        
+        # Botão para atualizar a lista
+        tk.Button(
+            btn_frame,
+            text="🔄 Atualizar",
+            command=self._atualizar_lista_pedidos,
+            bg=self.cores["primaria"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=15,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            font=('Arial', 10, 'bold')
+        ).pack(side='left', padx=5)
+        
+        # Criar o notebook para as abas
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill='both', expand=True)
+        
+        # Criar abas para cada status
+        self.tabs = {}
+        status_list = [
+            ('em_espera', '⏳ Em Espera'),
+            ('em_preparo', '👨‍🍳 Em Preparo'),
+            ('pronto_entrega', '✅ Pronto para Entrega'),
+            ('em_entrega', '🛵 Em Entrega'),
+            ('entregue', '✔️ Entregue')
+        ]
+        
+        for status_id, status_name in status_list:
+            # Criar frame para a aba
+            tab_frame = ttk.Frame(notebook)
+            notebook.add(tab_frame, text=status_name)
+            
+                # Configurar estilo para a treeview
+            style = ttk.Style()
+            style.configure("Treeview", 
+                         background="white",
+                         foreground=self.cores["texto"],
+                         rowheight=25,
+                         fieldbackground="white")
+            style.configure("Treeview.Heading", 
+                         font=("Arial", 10, "bold"), 
+                         background=self.cores["primaria"],
+                         foreground=self.cores["texto_claro"])
+            style.map("Treeview", 
+                    background=[("selected", self.cores["primaria"])],
+                    foreground=[("selected", self.cores["texto_claro"])])
+            
+            # Criar treeview para listar os pedidos
+            columns = ("ID", "Cliente", "Telefone", "Itens", "Valor", "Hora Pedido")
+            tree = ttk.Treeview(
+                tab_frame,
+                columns=columns,
+                show='headings',
+                selectmode='browse',
+                style="Treeview"
+            )
+            
+            # Configurar colunas
+            for col in columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=100, anchor='center')
+            
+            # Ajustar largura das colunas
+            tree.column("ID", width=50)
+            tree.column("Cliente", width=150)
+            tree.column("Telefone", width=100)
+            tree.column("Itens", width=300)
+            tree.column("Valor", width=100)
+            tree.column("Hora Pedido", width=150)
+            
+            # Adicionar scrollbars
+            vsb = ttk.Scrollbar(tab_frame, orient="vertical", command=tree.yview)
+            hsb = ttk.Scrollbar(tab_frame, orient="horizontal", command=tree.xview)
+            tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            
+            # Posicionar os widgets
+            tree.grid(row=0, column=0, sticky='nsew')
+            vsb.grid(row=0, column=1, sticky='ns')
+            hsb.grid(row=1, column=0, sticky='ew')
+            
+            # Configurar o grid para expandir
+            tab_frame.grid_rowconfigure(0, weight=1)
+            tab_frame.grid_columnconfigure(0, weight=1)
+            
+            # Adicionar à lista de abas
+            self.tabs[status_id] = tree
+        
+        # Carregar dados iniciais
+        self._atualizar_lista_pedidos()
+    
+    def _atualizar_lista_pedidos(self):
+        """Atualiza a lista de pedidos em todas as abas"""
+        # TODO: Implementar a busca dos pedidos no banco de dados
+        # Por enquanto, vamos apenas limpar e adicionar dados de exemplo
+        for status, tree in self.tabs.items():
+            # Limpar a árvore
+            for item in tree.get_children():
+                tree.delete(item)
+            
+            # Adicionar dados de exemplo (substituir pela busca real no banco)
+            # Exemplo:
+            # if status == 'em_espera':
+            #     tree.insert('', 'end', values=(
+            #         '123', 'João Silva', '(11) 99999-9999', '2x Pizza', 'R$ 80,00', '04/07/2023 19:30'
+            #     ))
+            pass
     
     def _show_default(self):
         # Tela inicial do módulo de vendas
@@ -110,17 +242,7 @@ class VendasModule:
         )
         titulo_label.pack(side="left")
         
-        # Data e hora atual
-        data_atual = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-        data_label = tk.Label(
-            titulo_frame,
-            text=data_atual,
-            font=('Arial', 12),
-            bg=self.cores["fundo"],
-            fg=self.cores["texto"],
-            padx=15
-        )
-        data_label.pack(side="right", padx=15)
+        # Removido a exibição da data
         
         # Container principal com grid para melhor divisão do espaço
         container = ttk.Frame(frame)

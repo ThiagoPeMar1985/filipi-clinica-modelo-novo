@@ -187,9 +187,34 @@ class ClienteDialog(tk.Toplevel):
             self.observacoes_text.insert('1.0', str(observacoes))
         self.observacoes_text.grid(row=9, column=1, columnspan=3, sticky="we", padx=5, pady=5)
         
+        # Região de Entrega
+        ttk.Label(main_frame, text="Região de Entrega").grid(row=10, column=0, sticky="e", padx=5, pady=5)
+        
+        # Carregar regiões de entrega ativas
+        self.regioes = self._carregar_regioes_entrega()
+        regioes_nomes = [regiao['nome'] for regiao in self.regioes]
+        
+        self.regiao_var = tk.StringVar()
+        self.regiao_combobox = ttk.Combobox(
+            main_frame, 
+            textvariable=self.regiao_var,
+            values=regioes_nomes,
+            width=37
+        )
+        
+        # Selecionar a região atual se existir
+        regiao_atual_id = self.cliente_data.get('regiao_entrega_id')
+        if regiao_atual_id:
+            for regiao in self.regioes:
+                if regiao['id'] == regiao_atual_id:
+                    self.regiao_var.set(regiao['nome'])
+                    break
+        
+        self.regiao_combobox.grid(row=10, column=1, columnspan=3, sticky="w", padx=5, pady=5)
+        
         # Frame dos botões
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.grid(row=10, column=0, columnspan=4, pady=15, sticky="e")
+        btn_frame.grid(row=11, column=0, columnspan=4, pady=15, sticky="e")
         
         # Botão Excluir (apenas para edição)
         if self.cliente_data.get('id'):
@@ -251,10 +276,31 @@ class ClienteDialog(tk.Toplevel):
         self.bind('<Return>', lambda e: self._salvar_cliente())
         self.bind('<Escape>', lambda e: self.destroy())
     
-    def _validar_campos(self):
-        """Valida os campos obrigatórios."""
-        # Obter os valores dos campos
-        campos = {
+    def _carregar_regioes_entrega(self):
+        """Carrega as regiões de entrega ativas."""
+        try:
+            from src.controllers.delivery_controller import DeliveryController
+            controller = DeliveryController()
+            return controller.listar_regioes_entrega(ativo=True)
+        except Exception as e:
+            print(f"Erro ao carregar regiões de entrega: {e}")
+            return []
+    
+    def _get_dados_formulario(self):
+        """Obtém os dados do formulário."""
+        # Obter a região de entrega selecionada
+        regiao_nome = self.regiao_var.get() if hasattr(self, 'regiao_var') else ''
+        regiao_id = self.cliente_data.get('regiao_entrega_id')
+        
+        # Encontrar o ID da região selecionada se houver seleção
+        if regiao_nome and hasattr(self, 'regioes'):
+            for regiao in self.regioes:
+                if regiao['nome'] == regiao_nome:
+                    regiao_id = regiao['id']
+                    break
+        
+        # Obter os dados básicos dos campos
+        dados = {
             'nome': self.nome_entry.get().strip(),
             'telefone': self.telefone_entry.get().strip(),
             'telefone2': self.telefone2_entry.get().strip(),
@@ -267,8 +313,19 @@ class ClienteDialog(tk.Toplevel):
             'uf': self.uf_entry.get().strip().upper(),
             'cep': self.cep_entry.get().strip(),
             'ponto_referencia': self.ponto_referencia_entry.get().strip(),
-            'observacoes': self.observacoes_text.get('1.0', tk.END).strip()
+            'observacoes': self.observacoes_text.get('1.0', 'end-1c').strip()
         }
+        
+        # Adicionar a região de entrega apenas se existir
+        if regiao_id is not None:
+            dados['regiao_entrega_id'] = regiao_id
+            
+        return dados
+    
+    def _validar_campos(self):
+        """Valida os campos obrigatórios."""
+        # Obter os valores dos campos
+        campos = self._get_dados_formulario()
         
         # Remover caracteres não numéricos dos telefones
         telefone_limpo = re.sub(r'[^0-9]', '', campos['telefone'])
@@ -318,15 +375,11 @@ class ClienteDialog(tk.Toplevel):
             'regiao_entrega_id': None
         }
     
-    def _salvar_cliente(self):
+    def _salvar_cliente(self, event=None):
         """Salva os dados do cliente."""
-        print("\n[DEBUG] Iniciando salvamento de cliente")
         dados = self._validar_campos()
         if not dados:
-            print("[DEBUG] Validação falhou")
             return
-            
-        print("[DEBUG] Dados validados, chamando callback")
         if self.callback:
             self.callback(dados)
         else:

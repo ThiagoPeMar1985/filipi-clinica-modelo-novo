@@ -4,11 +4,15 @@ import datetime
 import sys
 from pathlib import Path
 
+# Importar configurações de estilo
+from config.estilos import CORES, FONTES, aplicar_estilo
+
 # Adiciona o diretório raiz do projeto ao path para importar módulos
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from controllers.cadastro_controller import CadastroController
 from controllers.cliente_controller import ClienteController
+from controllers.delivery_controller import DeliveryController
 
 class DeliveryModule:
     def __init__(self, parent, controller):
@@ -19,6 +23,7 @@ class DeliveryModule:
         # Inicializar os controladores
         self.cadastro_controller = CadastroController()
         self.cliente_controller = ClienteController()
+        self.delivery_controller = DeliveryController()
         
         # Cores do tema
         self.cores = {
@@ -47,8 +52,11 @@ class DeliveryModule:
         frame = ttk.Frame(self.frame, style="Card.TFrame")
         frame.pack(fill='both', expand=True, padx=20, pady=20)
         
-        # Configurar estilo para as tabelas
+        # Ajustar o estilo dos botões
         style = ttk.Style()
+        style.configure('TButton', 
+                      font=('Arial', 14),
+                      padding=10)
         style.configure("Treeview", 
                       background="white",
                       foreground="black",  
@@ -77,17 +85,7 @@ class DeliveryModule:
         )
         titulo_label.pack(side="left")
         
-        # Data e hora atual
-        data_atual = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-        data_label = tk.Label(
-            titulo_frame,
-            text=data_atual,
-            font=('Arial', 12),
-            bg=self.cores["fundo"],
-            fg=self.cores["texto"],
-            padx=15
-        )
-        data_label.pack(side="right", padx=15)
+        # Removido a exibição da data
         
         # Container principal com grid para melhor divisão do espaço
         container = ttk.Frame(frame)
@@ -166,27 +164,58 @@ class DeliveryModule:
         info_cliente_frame = ttk.Frame(dados_cliente_frame)
         info_cliente_frame.pack(fill="x", pady=5)
         
-        # Nome do cliente
+        # Cabeçalho Nome e Telefone
+        ttk.Label(
+            info_cliente_frame,
+            text="Nome: ",
+            font=('Arial', 9, 'bold')
+        ).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        
         self.nome_cliente_label = ttk.Label(
             info_cliente_frame, 
-            text="Nenhum cliente selecionado",
-            font=('Arial', 9, 'bold'),
+            text="-",
+            font=('Arial', 9),
             width=40
         )
-        self.nome_cliente_label.grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.nome_cliente_label.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         
-        # Telefone do cliente
+        ttk.Label(
+            info_cliente_frame,
+            text="Telefone: ",
+            font=('Arial', 9, 'bold')
+        ).grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        
         self.telefone_cliente_label = ttk.Label(
             info_cliente_frame, 
             text="-",
-            font=('Arial', 9, 'bold'),
-            width=25
+            font=('Arial', 9),
+            width=20
         )
-        self.telefone_cliente_label.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        self.telefone_cliente_label.grid(row=0, column=3, sticky="w", padx=5, pady=5)
         
-        # Label de endereço (oculto, mantido para compatibilidade)
-        self.endereco_cliente_label = ttk.Label(info_cliente_frame, text="")
-        self.endereco_cliente_label.grid_remove()
+        # Linha do Endereço
+        ttk.Label(
+            info_cliente_frame, 
+            text="Endereço: ",
+            font=('Arial', 9, 'bold')
+        ).grid(row=1, column=0, sticky="nw", padx=5, pady=5)
+        
+        self.endereco_cliente_label = ttk.Label(
+            info_cliente_frame, 
+            text="-",
+            font=('Arial', 9),
+            wraplength=400,
+            justify='left'
+        )
+        self.endereco_cliente_label.grid(row=1, column=1, columnspan=3, sticky="w", padx=5, pady=5)
+        
+        # Taxa de entrega (invisível, apenas para cálculo)
+        self.taxa_entrega_label = ttk.Label(
+            info_cliente_frame,
+            text="R$ 0,00",
+            font=('Arial', 1)  # Fonte mínima para ficar invisível
+        )
+        self.taxa_entrega_label.grid_remove()  # Remove da grade de layout
         
         # Frame esquerdo - Lista de produtos
         produtos_frame = ttk.Frame(container)
@@ -317,9 +346,64 @@ class DeliveryModule:
         )
         adicionar_button.pack(fill="x")
         
-        # Frame direito - Carrinho de compras
-        carrinho_frame = ttk.Frame(container)
-        carrinho_frame.grid(row=1, column=1, sticky="nsew")
+        # Frame direito - Conteúdo principal
+        right_frame = ttk.Frame(container)
+        right_frame.grid(row=1, column=1, sticky="nsew")
+        right_frame.columnconfigure(0, weight=1)
+        right_frame.rowconfigure(1, weight=1)
+        
+        # Frame para as informações de entrega
+        entrega_frame = ttk.Frame(right_frame)
+        entrega_frame.pack(fill="x", pady=(0, 5))
+        
+        # Cabeçalho das informações de entrega
+        entrega_header = ttk.Frame(entrega_frame)
+        entrega_header.pack(fill="x")
+        
+        ttk.Label(
+            entrega_header, 
+            text="Informações de Entrega", 
+            font=('Arial', 12, 'bold')
+        ).pack(side="left", anchor="w")
+        
+        # Conteúdo das informações de entrega
+        entrega_content = ttk.Frame(entrega_frame)
+        entrega_content.pack(fill="x", pady=5)
+        
+        # Botão para gerenciar regiões de entrega
+        btn_gerenciar_entregas = tk.Button(
+            entrega_content,
+            text="Gerenciar Regiões de Entrega",
+            bg=self.cores["secundaria"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            command=self._gerenciar_regioes_entrega
+        )
+        btn_gerenciar_entregas.pack(side="left", padx=5, pady=5)
+        
+        # Informações da entrega
+        info_frame = ttk.Frame(entrega_content)
+        info_frame.pack(side="left", fill="x", expand=True, padx=5, pady=5)
+        
+        # Região de entrega
+        ttk.Label(info_frame, text="Região:").grid(row=0, column=0, sticky="w", padx=2)
+        self.regiao_entrega_label = ttk.Label(info_frame, text="Selecione um cliente", font=('Arial', 9, 'bold'))
+        self.regiao_entrega_label.grid(row=0, column=1, sticky="w", padx=2)
+        
+        # Taxa de entrega
+        ttk.Label(info_frame, text="Taxa:").grid(row=0, column=2, sticky="e", padx=2)
+        self.taxa_entrega_label = ttk.Label(info_frame, text="R$ 0,00", font=('Arial', 9, 'bold'))
+        self.taxa_entrega_label.grid(row=0, column=3, sticky="w", padx=2)
+        
+        # Frame do carrinho de compras
+        carrinho_frame = ttk.Frame(right_frame)
+        carrinho_frame.pack(fill="both", expand=True, pady=(10, 0))
+        carrinho_frame.columnconfigure(0, weight=1)
+        carrinho_frame.rowconfigure(1, weight=1)
         
         # Cabeçalho do carrinho
         carrinho_header = ttk.Frame(carrinho_frame)
@@ -331,100 +415,124 @@ class DeliveryModule:
             font=('Arial', 12, 'bold')
         ).pack(side="left", anchor="w")
         
-        # Botão para limpar carrinho
-        limpar_button = tk.Button(
-            carrinho_header,
-            text="Limpar",
-            command=self._limpar_carrinho,
+        # Organizar o carrinho em um frame principal
+        carrinho_conteudo = ttk.Frame(carrinho_frame)
+        carrinho_conteudo.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Frame para a tabela do carrinho
+        tabela_carrinho_frame = ttk.Frame(carrinho_conteudo)
+        tabela_carrinho_frame.pack(fill="both", expand=True)
+        
+        # Tabela do carrinho com altura ajustada
+        colunas_carrinho = ("Produto", "Qtd", "Unit.", "Total")
+        
+        # Configurar estilo para a tabela do carrinho
+        style = ttk.Style()
+        style.configure("Carrinho.Treeview",
+            background="#ffffff",
+            fieldbackground="#ffffff",
+            borderwidth=0,
+            highlightthickness=0
+        )
+        
+        self.carrinho_tree = ttk.Treeview(
+            tabela_carrinho_frame, 
+            columns=colunas_carrinho, 
+            show="headings", 
+            height=15,
+            style="Carrinho.Treeview"
+        )
+        
+        # Configurar cabeçalhos com larguras proporcionais
+        larguras_carrinho = {"Produto": 200, "Qtd": 50, "Unit.": 80, "Total": 80}
+        for col in colunas_carrinho:
+            self.carrinho_tree.heading(col, text=col)
+            self.carrinho_tree.column(col, width=larguras_carrinho.get(col, 100), anchor="center")
+        
+        # Adicionar barra de rolagem
+        scrollbar_carrinho = ttk.Scrollbar(tabela_carrinho_frame, orient="vertical", command=self.carrinho_tree.yview)
+        self.carrinho_tree.configure(yscrollcommand=scrollbar_carrinho.set)
+        
+        self.carrinho_tree.pack(side="left", fill="both", expand=True)
+        scrollbar_carrinho.pack(side="right", fill="y")
+        
+        # Botões de ação para o carrinho em um grid para melhor distribuição
+        botoes_carrinho = ttk.Frame(carrinho_conteudo)
+        botoes_carrinho.pack(fill="x", pady=5)
+        botoes_carrinho.columnconfigure(0, weight=1)
+        botoes_carrinho.columnconfigure(1, weight=1)
+        
+        remover_button = tk.Button(
+            botoes_carrinho, 
+            text="Remover Item", 
             bg=self.cores["alerta"],
             fg=self.cores["texto_claro"],
             bd=0,
             padx=10,
             pady=5,
             relief='flat',
-            cursor='hand2'
+            cursor='hand2',
+            command=self._remover_do_carrinho
         )
-        limpar_button.pack(side="right")
+        remover_button.grid(row=0, column=0, sticky="ew", padx=2)
         
-        # Tabela do carrinho
-        carrinho_tabela_frame = ttk.Frame(carrinho_frame)
-        carrinho_tabela_frame.pack(fill="both", expand=True)
-        
-        # Colunas da tabela do carrinho
-        colunas_carrinho = ("Código", "Produto", "Qtd", "Unit.", "Total")
-        
-        # Configurar estilo para remover as bordas
-        style = ttk.Style()
-        style.configure("Treeview",
-            background="#ffffff",
-            fieldbackground="#ffffff",
-            borderwidth=0,
-            highlightthickness=0
+        limpar_button = tk.Button(
+            botoes_carrinho, 
+            text="Limpar Carrinho", 
+            bg=self.cores["terciaria"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            command=self._limpar_carrinho
         )
-        style.configure("Treeview.Heading",
-            borderwidth=0,
-            relief="flat"
+        limpar_button.grid(row=0, column=1, sticky="ew", padx=2)
+        
+        # Resumo da compra em um frame com estilo destacado
+        resumo_frame = ttk.LabelFrame(carrinho_conteudo, text="Resumo do Pedido")
+        resumo_frame.pack(fill="x", pady=5)
+        
+        # Grid para organizar os campos do resumo
+        resumo_grid = ttk.Frame(resumo_frame)
+        resumo_grid.pack(fill="x", padx=10, pady=5)
+        resumo_grid.columnconfigure(0, weight=1)  # Coluna dos rótulos
+        resumo_grid.columnconfigure(1, weight=1)  # Coluna dos valores
+        
+        # Subtotal
+        ttk.Label(resumo_grid, text="Subtotal:", font=('Arial', 10)).grid(row=0, column=0, sticky="w", pady=2)
+        self.subtotal_valor = ttk.Label(resumo_grid, text="R$ 0,00", font=('Arial', 10))
+        self.subtotal_valor.grid(row=0, column=1, sticky="e", pady=2)
+        
+        # Taxa de entrega
+        ttk.Label(resumo_grid, text="Taxa de Entrega:", font=('Arial', 10)).grid(row=1, column=0, sticky="w", pady=2)
+        self.taxa_entrega_valor = ttk.Label(resumo_grid, text="R$ 0,00", font=('Arial', 10))
+        self.taxa_entrega_valor.grid(row=1, column=1, sticky="e", pady=2)
+        
+        # Separador antes do total
+        ttk.Separator(resumo_grid, orient="horizontal").grid(row=2, column=0, columnspan=2, sticky="ew", pady=5)
+        
+        # Total com destaque
+        ttk.Label(resumo_grid, text="TOTAL:", font=('Arial', 12, 'bold')).grid(row=3, column=0, sticky="w", pady=2)
+        self.total_valor = ttk.Label(resumo_grid, text="R$ 0,00", font=('Arial', 12, 'bold'))
+        self.total_valor.grid(row=3, column=1, sticky="e", pady=2)
+        
+        # Botão de finalizar pedido com estilo 'sucesso'
+        from config.estilos import aplicar_estilo
+        finalizar_button = tk.Button(
+            carrinho_conteudo, 
+            text="FINALIZAR PEDIDO",
+            command=self._finalizar_pedido
         )
-        style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
-        
-        self.carrinho_tree = ttk.Treeview(
-            carrinho_tabela_frame, 
-            columns=colunas_carrinho, 
-            show="headings", 
-            height=15,
-            style="Treeview"
-        )
-        
-        # Configurar cabeçalhos
-        larguras_carrinho = {"Código": 60, "Produto": 150, "Qtd": 50, "Unit.": 80, "Total": 80}
-        for col in colunas_carrinho:
-            self.carrinho_tree.heading(col, text=col)
-            self.carrinho_tree.column(col, width=larguras_carrinho.get(col, 80))
-        
-        # Adicionar barra de rolagem
-        scrollbar_carrinho = ttk.Scrollbar(carrinho_tabela_frame, orient="vertical", command=self.carrinho_tree.yview)
-        scrollbar_carrinho.pack(side="right", fill="y")
-        self.carrinho_tree.configure(yscrollcommand=scrollbar_carrinho.set)
-        self.carrinho_tree.pack(fill="both", expand=True)
+        aplicar_estilo(finalizar_button, "sucesso")
+        finalizar_button.pack(fill="x", pady=5)
         
         # Vincular duplo clique para remover do carrinho
         self.carrinho_tree.bind("<Double-1>", self._remover_do_carrinho)
         
-        # Área de informações de entrega
-        entrega_frame = ttk.LabelFrame(carrinho_frame, text="Informações de Entrega")
-        entrega_frame.pack(fill="x", pady=10)
-        
-        # Observações
-        ttk.Label(entrega_frame, text="Observações:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        self.observacoes_entry = ttk.Entry(entrega_frame, width=30)
-        self.observacoes_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
-        
-        # Taxa de entrega
-        ttk.Label(entrega_frame, text="Taxa de Entrega:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.taxa_entry = ttk.Entry(entrega_frame, width=10)
-        self.taxa_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
-        self.taxa_entry.insert(0, "0.00")
-        
-        # Barra inferior com total e finalização
-        barra_inferior = ttk.Frame(container)
-        barra_inferior.grid(row=2, column=0, columnspan=2, sticky="ew", pady=10)
-        
-        # Total
-        total_frame = ttk.Frame(barra_inferior)
-        total_frame.pack(side="left")
-        
-        ttk.Label(total_frame, text="Total do Pedido:", font=("Arial", 12, "bold")).pack(side="left")
-        self.total_label = ttk.Label(total_frame, text="R$ 0,00", font=("Arial", 12, "bold"))
-        self.total_label.pack(side="left", padx=5)
-        
-        # Botão de finalizar pedido
-        self.btn_finalizar = ttk.Button(
-            barra_inferior,
-            text="Finalizar Pedido",
-            style="Accent.TButton",
-            command=self._finalizar_pedido
-        )
-        self.btn_finalizar.pack(side="right")
+        # Barra inferior vazia para manter o layout
+        ttk.Frame(container, height=10).grid(row=2, column=0, columnspan=2, sticky="ew")
         
         # Carregar produtos do banco de dados
         self._carregar_produtos()
@@ -561,7 +669,7 @@ class DeliveryModule:
             tree.insert("", "end", values=(
                 cliente.get("id", ""),
                 cliente.get("nome", ""),
-                cliente.get("telefone_principal", ""),
+                cliente.get("telefone", ""),
                 f"{cliente.get('endereco', '')}, {cliente.get('numero', '')} - {cliente.get('bairro', '')}"
             ))
         
@@ -920,28 +1028,35 @@ class DeliveryModule:
         janela.update_idletasks()
         width = janela.winfo_width()
         height = janela.winfo_height()
-        x = (janela.winfo_screenwidth() // 2) - (width // 2)
-        y = (janela.winfo_screenheight() // 2) - (height // 2)
-        janela.geometry(f'{width}x{height}+{x}+{y}')
         
     def _atualizar_dados_cliente(self, dados_atualizados=None):
+        """Atualiza os dados do cliente na interface."""
         if dados_atualizados:
             self.cliente_atual = dados_atualizados
+            
         if self.cliente_atual:
-            # Atualizar o rótulo do nome em negrito
-            self.nome_cliente_label.config(
-                text=f"Nome: {self.cliente_atual['nome']}",
-                font=('Arial', 9, 'bold')
-            )
+            # Atualiza os campos visíveis
+            self.nome_cliente_label.config(text=self.cliente_atual['nome'])
+            self.telefone_cliente_label.config(text=self.cliente_atual['telefone'])
             
-            # Atualizar o rótulo do telefone em negrito
-            self.telefone_cliente_label.config(
-                text=f"Telefone: {self.cliente_atual.get('telefone_principal', self.cliente_atual.get('telefone', '-'))}",
-                font=('Arial', 9, 'bold')
-            )
+            # Formata o endereço em múltiplas linhas se necessário
+            endereco = f"{self.cliente_atual['endereco']}, {self.cliente_atual['numero']} - {self.cliente_atual['bairro']}"
+            self.endereco_cliente_label.config(text=endereco)
             
-            # Esconder o campo de endereço
-            self.endereco_cliente_label.grid_remove()
+            # Atualiza a região e taxa de entrega
+            regiao = self.delivery_controller.obter_regiao_por_bairro(self.cliente_atual.get('bairro', ''))
+            if regiao:
+                self.regiao_entrega_label.config(text=regiao['nome'])
+                self.taxa_entrega_label.config(text=f"R$ {float(regiao['taxa_entrega']):.2f}".replace('.', ','))
+            else:
+                self.regiao_entrega_label.config(text="Região não encontrada")
+                self.taxa_entrega_label.config(text="R$ 0,00")
+        else:
+            # Limpa os campos quando não há cliente selecionado
+            self.nome_cliente_label.config(text="-")
+            self.telefone_cliente_label.config(text="-")
+            self.endereco_cliente_label.config(text="-")
+            self.taxa_entrega_label.config(text="R$ 0,00")
     def _carregar_produtos(self, tipo=None):
         """Carrega todos os produtos ou filtra por tipo"""
         # Limpar a tabela atual
@@ -1300,7 +1415,7 @@ class DeliveryModule:
                     f"{item['nome']} {'+' if tem_opcoes else ''}",
                     item['quantidade'],
                     f"R$ {item['preco']:.2f}".replace('.', ','),
-                    f"R$ {item['total']:.2f}".replace('.', ',')
+                    f"R$ {item['total']:.2f}".replace('.=','.00').replace('.', ',')
                 ),
                 tags=('com_opcoes' if tem_opcoes else 'sem_opcoes',)
             )
@@ -1320,61 +1435,865 @@ class DeliveryModule:
                         tags=('opcao_item',)
                     )
         
-        # Atualizar o total do pedido
+        # Calcular o subtotal (soma de todos os itens)
+        self.subtotal = sum(item['total'] for item in self.itens_pedido)
+        
+        # Atualizar os valores no resumo da compra
+        if hasattr(self, 'subtotal_valor'):
+            self.subtotal_valor.config(text=f"R$ {self.subtotal:.2f}".replace('.', ','))
+            
+        # Recalcular o total com taxa de entrega
         self._atualizar_total_pedido()
         
     def _atualizar_total_pedido(self):
         """Atualiza o valor total do pedido"""
-        total = 0.0
+        # Obter o subtotal (já calculado em _atualizar_carrinho)
+        subtotal = getattr(self, 'subtotal', 0)
         
-        # Somar todos os itens do carrinho
-        for item in self.itens_pedido:
-            total += item['total']
-        
-        # Adicionar taxa de entrega, se houver
+        # Obter a taxa de entrega
         try:
-            taxa = float(self.taxa_entry.get().replace(",", "."))
-            total += taxa
-        except ValueError:
-            pass
+            # Extrair o valor da taxa do label (formato: "R$ X,XX")
+            taxa_texto = self.taxa_entrega_label.cget("text").replace("R$", "").strip()
+            taxa = float(taxa_texto.replace(".", "").replace(",", "."))
+        except (ValueError, AttributeError):
+            taxa = 0.0
         
-        # Atualizar o label de total
-        self.total_label.config(text=f"R$ {total:.2f}".replace(".", ","))
+        # Calcular o total
+        total = subtotal + taxa
+        
+        # Atualizar os valores na interface
+        if hasattr(self, 'taxa_entrega_valor'):
+            self.taxa_entrega_valor.config(text=f"R$ {taxa:.2f}".replace(".", ","))
+            
+        if hasattr(self, 'total_valor'):
+            self.total_valor.config(text=f"R$ {total:.2f}".replace(".", ","))
         
         return total
     
     def _finalizar_pedido(self):
-        # Verificar se há cliente selecionado
-        if not self.cliente_atual:
-            messagebox.showwarning("Aviso", "Selecione um cliente antes de finalizar o pedido.")
-            return
-        
         # Verificar se há itens no carrinho
         if not self.carrinho_tree.get_children():
             messagebox.showwarning("Aviso", "Não há itens no carrinho para finalizar o pedido.")
             return
         
-        # Confirmar finalização
-        if messagebox.askyesno("Confirmação", "Deseja finalizar o pedido de delivery?"):
-            # Aqui seria feita a finalização do pedido no banco de dados
-            messagebox.showinfo("Sucesso", "Pedido finalizado com sucesso!")
+        # Verificar se há um cliente selecionado
+        if not self.cliente_atual or 'id' not in self.cliente_atual:
+            messagebox.showwarning("Aviso", "Selecione um cliente antes de finalizar o pedido.")
+            return
+        
+        # Calcular o valor total do pedido
+        subtotal = 0.0
+        itens_pedido = []
+        
+        for item in self.carrinho_tree.get_children():
+            valores = self.carrinho_tree.item(item, 'values')
+            # Verificar se o item tem valores e se o índice 3 (total) existe
+            if valores and len(valores) > 3:
+                try:
+                    # O valor total está no índice 3 (quarto elemento)
+                    valor_item = float(valores[3].replace('R$', '').replace('.', '').replace(',', '.'))
+                    subtotal += valor_item
+                    
+                    # Adicionar item à lista de itens do pedido
+                    itens_pedido.append({
+                        'produto_id': valores[0],  # ID do produto
+                        'descricao': valores[1],    # Nome do produto
+                        'quantidade': 1,           # Quantidade (ajustar conforme necessário)
+                        'preco_unitario': valor_item,
+                        'total': valor_item
+                    })
+                except (ValueError, IndexError) as e:
+                    print(f"Erro ao processar item do carrinho: {e}")
+        
+        # Adicionar taxa de entrega ao valor total
+        taxa_entrega = 0.0
+        if hasattr(self, 'taxa_entrega_label'):
+            try:
+                taxa_texto = self.taxa_entrega_label.cget("text").replace("R$", "").strip()
+                taxa_entrega = float(taxa_texto.replace(".", "").replace(",", "."))
+                
+                # Adicionar taxa de entrega como um item do pedido
+                itens_pedido.append({
+                    'produto_id': 'TAXA_ENTREGA',
+                    'descricao': 'Taxa de Entrega',
+                    'quantidade': 1,
+                    'preco_unitario': taxa_entrega,
+                    'total': taxa_entrega
+                })
+            except (ValueError, AttributeError) as e:
+                print(f"Erro ao processar taxa de entrega: {e}")
+                taxa_entrega = 0.0
+        
+        valor_total = subtotal + taxa_entrega
+        
+        # Criar janela de pagamento
+        pagamento_window = tk.Toplevel(self.frame)
+        pagamento_window.title("Forma de Pagamento")
+        pagamento_window.geometry("500x600")
+        pagamento_window.transient(self.frame)
+        pagamento_window.resizable(False, False)
+        
+        # Centralizar na tela
+        pagamento_window.update_idletasks()
+        width = 500
+        height = 600
+        x = (pagamento_window.winfo_screenwidth() // 2) - (width // 2)
+        y = (pagamento_window.winfo_screenheight() // 2) - (height // 2)
+        pagamento_window.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Frame principal com scroll
+        main_frame = ttk.Frame(pagamento_window)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Canvas para rolagem
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Adicionar padding ao frame rolável
+        content_frame = ttk.Frame(scrollable_frame, padding=20)
+        content_frame.pack(fill='both', expand=True)
+        
+        # Título
+        ttk.Label(
+            content_frame, 
+            text="FORMA DE PAGAMENTO",
+            font=('Arial', 16, 'bold'),
+            foreground=CORES['primaria']
+        ).pack(pady=(0, 20))
+        
+        # Variável para armazenar a forma de pagamento selecionada
+        forma_pagamento = tk.StringVar()
+        
+        def formatar_moeda(valor):
+            """Formata um valor float para o formato de moeda brasileira"""
+            try:
+                return f"R$ {float(valor):.2f}".replace('.', ',')
+            except (ValueError, TypeError):
+                return "R$ 0,00"
+        
+        def calcular_troco(*args):
+            if forma_pagamento.get() != 'dinheiro' or not valor_dinheiro.get() or not valor_dinheiro.get().strip():
+                troco_label.config(text=formatar_moeda(0), foreground='#2e7d32')
+                return
+                
+            try:
+                # Remove pontos de milhar e substitui vírgula por ponto
+                valor_digitado = valor_dinheiro.get().replace('.', '').replace(',', '.')
+                valor_pago = float(valor_digitado)
+                
+                if valor_pago < 0:
+                    raise ValueError("Valor não pode ser negativo")
+                    
+                if valor_pago >= valor_total:
+                    troco = valor_pago - valor_total
+                    troco_label.config(
+                        text=formatar_moeda(troco),
+                        foreground='#2e7d32'  # Verde escuro
+                    )
+                else:
+                    valor_restante = valor_total - valor_pago
+                    troco_label.config(
+                        text=f"Faltam {formatar_moeda(valor_restante)}",
+                        foreground='#d32f2f'  # Vermelho
+                    )
+                
+                # Mostrar os campos de dinheiro e troco
+                valor_dinheiro_frame.pack(fill='x', pady=10)
+                troco_frame.pack(fill='x', pady=5)
+                
+            except (ValueError, AttributeError) as e:
+                troco_label.config(
+                    text="Valor inválido!",
+                    foreground='#d32f2f'  # Vermelho
+                )
+                valor_dinheiro_frame.pack(fill='x', pady=10)
+                troco_frame.pack(fill='x', pady=5)
+    
+        def atualizar_visibilidade_campo_dinheiro(*args):
+            """Atualiza a visibilidade do campo de valor em dinheiro com base na forma de pagamento"""
+            if forma_pagamento.get() == 'dinheiro':
+                valor_dinheiro_frame.pack(fill='x', pady=10)
+                troco_frame.pack(fill='x', pady=5)
+                valor_entry.focus_set()
+                calcular_troco()
+            else:
+                valor_dinheiro_frame.pack_forget()
+                troco_frame.pack_forget()
+                troco_label.config(text=formatar_moeda(0), foreground='#2e7d32')
+        
+        # Frame para o valor total - mais compacto
+        total_frame = ttk.Frame(content_frame, padding=(0, 5, 0, 15))
+        total_frame.pack(fill='x')
             
-            # Limpar os dados
-            self._limpar_carrinho()
-            self.busca_cliente_entry.delete(0, tk.END)
-            self.observacoes_entry.delete(0, tk.END)
-            self.taxa_entry.delete(0, tk.END)
-            self.taxa_entry.insert(0, "0.00")
+        # Frame para organizar os elementos
+        total_container = ttk.Frame(total_frame)
+        total_container.pack(fill='x', pady=5)
             
-            # Limpar dados do cliente
-            self.cliente_atual = None
-            self.nome_cliente_label.config(text="Nenhum cliente selecionado")
-            self.telefone_cliente_label.config(text="-")
-            self.endereco_cliente_label.config(text="-")
+        # Label do total
+        ttk.Label(
+            total_container,
+            text="TOTAL A PAGAR:",
+            font=('Arial', 12, 'bold'),
+            foreground='#333333'
+        ).pack(side=tk.LEFT, padx=(0, 10))
+            
+        # Valor total
+        total_label = ttk.Label(
+            total_container,
+            text=formatar_moeda(valor_total),
+            font=('Arial', 16, 'bold'),
+            foreground=CORES['primaria']
+        )
+        total_label.pack(side=tk.RIGHT)
+        
+        # Frame para os botões de pagamento
+        pagamento_frame = ttk.LabelFrame(content_frame, text="FORMA DE PAGAMENTO", padding=(10, 5))
+        pagamento_frame.pack(fill='x', pady=(0, 15))
+            
+        # Frame para os botões de pagamento - usando grid para melhor organização
+        btn_frame = ttk.Frame(pagamento_frame, padding=5)
+        btn_frame.pack(fill='both', expand=True)
+        
+        # Lista de formas de pagamento disponíveis
+        formas_pagamento = [
+            ("💵", "Dinheiro", "dinheiro", CORES['primaria']),
+            ("💳", "Crédito", "credito", CORES['primaria']),
+            ("💳", "Débito", "debito", CORES['primaria']),
+            ("📱", "PIX", "pix", CORES['primaria']),
+            ("📝", "Outros", "outros", CORES['primaria'])
+        ]
+        
+        # Criar botões para cada forma de pagamento em uma grade 2x3
+        for i, (icone, texto, forma, cor) in enumerate(formas_pagamento):
+            # Calcular posição na grade
+            row = i // 3  # 3 colunas
+            col = i % 3   # 3 colunas
+            
+            # Frame para cada botão
+            btn_container = ttk.Frame(btn_frame, padding=2)
+            btn_container.grid(row=row, column=col, padx=3, pady=3, sticky='nsew')
+            
+            # Configurar peso das colunas para expansão uniforme
+            btn_frame.columnconfigure(col, weight=1, uniform='btn')
+            btn_frame.rowconfigure(row, weight=1)
+            
+            # Criar botão com estilo mais compacto
+            btn = tk.Radiobutton(
+                btn_container,
+                text=f"{icone} {texto}",
+                font=('Arial', 10, 'bold'),
+                bg=cor,
+                fg='white',
+                selectcolor=cor,
+                activebackground=self._darken_color(cor),
+                activeforeground='white',
+                indicatoron=0,
+                relief='flat',
+                bd=0,
+                padx=5,
+                pady=5,
+                wraplength=80,  # Forçar quebra de linha
+                justify='center',
+                variable=forma_pagamento,
+                value=forma,
+                command=atualizar_visibilidade_campo_dinheiro
+            )
+            btn.pack(fill='both', expand=True, ipady=8, padx=2, pady=2)
+            
+            # Efeito hover para os botões de pagamento
+            btn.bind('<Enter>', lambda e, b=btn, c=cor: b.config(bg=self._darken_color(c)))
+            btn.bind('<Leave>', lambda e, b=btn, c=cor: b.config(bg=c))
+            
+            # Selecionar o primeiro botão por padrão
+            if i == 0:
+                forma_pagamento.set(forma)
+        
+        # Frame para o campo de valor em dinheiro
+        valor_dinheiro_frame = ttk.Frame(content_frame, padding=(0, 10))
+        
+        # Frame para a entrada de valor
+        entrada_frame = ttk.Frame(valor_dinheiro_frame)
+        entrada_frame.pack(fill='x')
+        
+        # Label para o campo de valor
+        ttk.Label(
+            entrada_frame,
+            text="Valor em dinheiro:",
+            font=('Arial', 10),
+            foreground='#333333'
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Variável para o valor em dinheiro
+        valor_dinheiro = tk.StringVar()
+        
+        # Entrada para o valor em dinheiro
+        valor_entry = ttk.Entry(
+            entrada_frame,
+            textvariable=valor_dinheiro,
+            font=('Arial', 12),
+            width=15,
+            justify='right'
+        )
+        valor_entry.pack(side=tk.LEFT)
+        
+        # Frame para o troco
+        troco_frame = ttk.Frame(valor_dinheiro_frame)
+        
+        # Label para o troco
+        ttk.Label(
+            troco_frame,
+            text="Troco:",
+            font=('Arial', 10, 'bold'),
+            foreground='#333333'
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Label para exibir o valor do troco
+        troco_label = ttk.Label(
+            troco_frame,
+            text="R$ 0,00",
+            font=('Arial', 12, 'bold'),
+            foreground='#2e7d32'  # Verde escuro
+        )
+        troco_label.pack(side=tk.LEFT)
+        
+        # Função para formatar o valor em moeda
+        def formatar_valor_moeda(*args):
+            """Formata o valor digitado como moeda brasileira"""
+            # Remove tudo que não for dígito ou vírgula
+            valor = ''.join(filter(lambda x: x.isdigit() or x == ',', valor_dinheiro.get()))
+            
+            # Se houver mais de uma vírgula, mantém apenas a primeira
+            if valor.count(',') > 1:
+                valor = valor.replace(',', '', valor.count(',') - 1)
+            
+            # Se houver vírgula, limita a 2 casas decimais
+            if ',' in valor:
+                partes = valor.split(',')
+                if len(partes) > 1 and len(partes[1]) > 2:
+                    valor = f"{partes[0]},{partes[1][:2]}"
+            
+            # Atualiza o valor formatado
+            valor_dinheiro.set(valor)
+            
+            # Chama a função para calcular o troco
+            calcular_troco()
+        
+        # Atualizar a visibilidade do campo de dinheiro com base na forma de pagamento selecionada
+        forma_pagamento.trace('w', atualizar_visibilidade_campo_dinheiro)
+        
+        # Vincular a função de formatação ao evento de tecla solta
+        valor_dinheiro.trace('w', formatar_valor_moeda)
+        
+        # Vincular a função de cálculo de troco ao evento de tecla solta
+        valor_dinheiro.trace('w', calcular_troco)
+        
+        # Frame para os botões de confirmação
+        botoes_frame = ttk.Frame(content_frame, padding=(0, 20, 0, 0))
+        botoes_frame.pack(fill='x', pady=(10, 0))
+        
+        # Configurar peso das colunas
+        botoes_frame.columnconfigure(0, weight=1)
+        botoes_frame.columnconfigure(1, weight=1)
+        
+        # Botão de cancelar
+        btn_cancelar = tk.Button(
+            botoes_frame,
+            text="❌ Cancelar",
+            command=pagamento_window.destroy,
+            bg='#f44336',  # Vermelho
+            fg='white',
+            font=('Arial', 12, 'bold'),
+            relief='flat',
+            bd=0,
+            padx=5,
+            pady=10
+        )
+        btn_cancelar.grid(row=0, column=0, padx=5, sticky='nsew')
+        
+        # Botão de confirmar
+        btn_confirmar = tk.Button(
+            botoes_frame,
+            text="✅ Confirmar Pedido",
+            command=lambda: self._processar_pagamento(
+                forma_pagamento.get(),
+                valor_dinheiro.get() if forma_pagamento.get() == 'dinheiro' else None,
+                valor_total,
+                pagamento_window
+            ),
+            bg='#4caf50',  # Verde
+            fg='white',
+            font=('Arial', 12, 'bold'),
+            relief='flat',
+            bd=0,
+            padx=5,
+            pady=10
+        )
+        btn_confirmar.grid(row=0, column=1, padx=5, sticky='nsew')
+        
+        # Efeito hover para os botões
+        btn_confirmar.bind('<Enter>', lambda e, b=btn_confirmar: b.config(bg=self._darken_color('#4caf50')))
+        btn_confirmar.bind('<Leave>', lambda e, b=btn_confirmar: b.config(bg='#4caf50'))
+        
+        # Configurar trace para o campo de valor em dinheiro
+        valor_dinheiro.trace_add('write', lambda *args: formatar_valor_moeda())
+        
+        # Configurar atalhos de teclado
+        pagamento_window.bind('<Return>', lambda e: btn_confirmar.invoke())
+        pagamento_window.bind('<Escape>', lambda e: pagamento_window.destroy())
+        
+        # Focar na janela
+        pagamento_window.focus_force()
+        
+        # Definir foco no campo de valor em dinheiro se a forma de pagamento for dinheiro
+        def on_show():
+            if forma_pagamento.get() == 'dinheiro':
+                valor_entry.focus_set()
+        
+        pagamento_window.after(100, on_show)
+        
+        # Efeito hover para o botão de confirmar
+        btn_confirmar.bind('<Enter>', lambda e, b=btn_confirmar: b.config(bg=self._darken_color(CORES['destaque'])))
+        btn_confirmar.bind('<Leave>', lambda e, b=btn_confirmar: b.config(bg=CORES['destaque']))
+        
+    def _darken_color(self, color, factor=0.2):
+        """Escurece uma cor em um fator especificado"""
+        try:
+            # Verifica se a cor está no formato #RRGGBB
+            if color.startswith('#'):
+                color = color[1:]
+            
+            # Converte a cor para RGB
+            r = int(color[0:2], 16)
+            g = int(color[2:4], 16)
+            b = int(color[4:6], 16)
+            
+            # Escurece a cor
+            r = max(0, int(r * (1 - factor)))
+            g = max(0, int(g * (1 - factor)))
+            b = max(0, int(b * (1 - factor)))
+            
+            # Formata de volta para o formato hexadecimal
+            return f'#{r:02x}{g:02x}{b:02x}'
+        except:
+            # Em caso de erro, retorna a cor original
+            return color
+            
+    def _processar_pagamento(self, forma_pagamento, valor_recebido, valor_total, janela):
+        """
+        Processa o pagamento do pedido
+        
+        Args:
+            forma_pagamento (str): Forma de pagamento selecionada
+            valor_recebido (str): Valor recebido em dinheiro (apenas para pagamento em dinheiro)
+            valor_total (float): Valor total do pedido
+            janela: Referência para a janela de pagamento
+        """
+        try:
+            # Verificar se a conexão com o banco de dados está disponível
+            if not hasattr(self, 'delivery_controller') or not self.delivery_controller:
+                messagebox.showerror("Erro", "Conexão com o banco de dados não disponível.")
+                return
+            
+            # Verificar se há itens no carrinho
+            if not hasattr(self, 'carrinho_tree') or not self.carrinho_tree.get_children():
+                messagebox.showwarning("Aviso", "Não há itens no carrinho para finalizar o pedido.")
+                return
+                
+            # Verificar se há um cliente selecionado
+            if not self.cliente_atual or 'id' not in self.cliente_atual:
+                messagebox.showwarning("Aviso", "Selecione um cliente antes de finalizar o pedido.")
+                return
+                
+            # Verificar se a forma de pagamento foi selecionada
+            if not forma_pagamento or forma_pagamento not in ['dinheiro', 'credito', 'debito', 'pix', 'outros']:
+                messagebox.showwarning("Aviso", "Selecione uma forma de pagamento válida.")
+                return
+                
+            # Validar valor recebido para pagamento em dinheiro
+            valor_recebido_float = 0.0
+            if forma_pagamento == 'dinheiro':
+                if not valor_recebido or not valor_recebido.strip():
+                    messagebox.showwarning("Aviso", "Informe o valor recebido em dinheiro.")
+                    return
+                    
+                try:
+                    valor_recebido_float = float(valor_recebido.replace('.', '').replace(',', '.'))
+                    if valor_recebido_float <= 0:
+                        messagebox.showwarning("Aviso", "O valor recebido deve ser maior que zero.")
+                        return
+                        
+                    if valor_recebido_float < valor_total:
+                        messagebox.showwarning("Aviso", 
+                            f"O valor recebido (R$ {valor_recebido_float:.2f}) "
+                            f"é menor que o valor total (R$ {valor_total:.2f}).")
+                        return
+                except ValueError:
+                    messagebox.showerror("Erro", "Valor inválido. Digite um valor numérico válido.")
+                    return
+            
+            # Preparar os dados do pedido
+            itens_pedido = []
+            try:
+                for item in self.carrinho_tree.get_children():
+                    valores = self.carrinho_tree.item(item, 'values')
+                    if not valores or len(valores) < 3:
+                        messagebox.showwarning("Aviso", "Dados inválidos no carrinho. Por favor, verifique os itens.")
+                        return
+                        
+                    itens_pedido.append({
+                        'produto_id': valores[0],
+                        'quantidade': int(valores[1]),
+                        'preco_unitario': float(valores[2].replace('R$', '').replace('.', '').replace(',', '.')),
+                        'observacoes': valores[3] if len(valores) > 3 else ''
+                    })
+            except (ValueError, IndexError) as e:
+                messagebox.showerror("Erro", f"Erro ao processar itens do carrinho: {str(e)}")
+                return
+            
+            # Verificar se há itens válidos no pedido
+            if not itens_pedido:
+                messagebox.showwarning("Aviso", "Nenhum item válido encontrado no carrinho.")
+                return
+            
+            # Obter observações do pedido, se disponível
+            observacoes = ""
+            if hasattr(self, 'observacoes_text'):
+                try:
+                    observacoes = self.observacoes_text.get('1.0', tk.END).strip()
+                except:
+                    pass
+            
+            # Dados do pedido
+            dados_pedido = {
+                'cliente_id': self.cliente_atual['id'],
+                'itens': itens_pedido,
+                'valor_total': valor_total,
+                'forma_pagamento': forma_pagamento,
+                'status': 'pendente',
+                'observacoes': observacoes,
+                'data_hora': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
+            # Se for pagamento em dinheiro, adicionar o valor recebido e o troco
+            if forma_pagamento == 'dinheiro':
+                dados_pedido['valor_recebido'] = valor_recebido_float
+                dados_pedido['troco'] = valor_recebido_float - valor_total
+            
+            # Registrar o pedido no banco de dados
+            try:
+                sucesso, mensagem = self.delivery_controller.registrar_pedido(dados_pedido)
+                
+                if sucesso:
+                    messagebox.showinfo("Sucesso", "Pedido registrado com sucesso!")
+                    
+                    # Limpar o carrinho e os dados do cliente
+                    self._limpar_carrinho()
+                    self.cliente_atual = None
+                    self._atualizar_dados_cliente()
+                    
+                    # Fechar a janela de pagamento
+                    if janela and janela.winfo_exists():
+                        janela.destroy()
+                    
+                    # Atualizar a lista de pedidos em espera (se existir)
+                    if hasattr(self, '_atualizar_lista_pedidos'):
+                        try:
+                            self._atualizar_lista_pedidos()
+                        except Exception as e:
+                            print(f"Aviso: Não foi possível atualizar a lista de pedidos: {str(e)}")
+                else:
+                    messagebox.showerror("Erro", f"Não foi possível registrar o pedido: {mensagem}")
+                    
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao registrar pedido no banco de dados: {str(e)}")
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro inesperado ao processar o pagamento: {str(e)}")
+            import traceback
+            print(f"Erro detalhado: {traceback.format_exc()}")
 
+    def _processar_pedido_finalizado(self, pagamentos):
+        """
+        Processa o pedido finalizado com os pagamentos realizados
+        
+        Este método é mantido para compatibilidade, mas não é mais usado no fluxo principal.
+        O processamento do pedido agora é feito diretamente no método confirmar_pagamento.
+{{ ... }}
+        """
+        # Este método não faz mais nada, pois o processamento é feito em confirmar_pagamento
+        # Mantido apenas para compatibilidade
+        pass
+
+    def _gerenciar_regioes_entrega(self):
+        """Abre a janela para gerenciar as regiões de entrega"""
+        # Criar janela de diálogo
+        dialog = tk.Toplevel(self.frame)
+        dialog.title("Gerenciar Regiões de Entrega")
+        dialog.transient(self.frame)
+        dialog.grab_set()
+        
+        # Centralizar a janela
+        largura = 800
+        altura = 500
+        x = (dialog.winfo_screenwidth() - largura) // 2
+        y = (dialog.winfo_screenheight() - altura) // 2
+        dialog.geometry(f"{largura}x{altura}+{x}+{y}")
+        
+        # Frame principal
+        main_frame = ttk.Frame(dialog, padding=10)
+        main_frame.pack(fill="both", expand=True)
+        
+        # Frame para os botões de ação
+        botoes_frame = ttk.Frame(main_frame)
+        botoes_frame.pack(fill="x", pady=(0, 10))
+        
+        # Botão para adicionar nova região
+        btn_nova = tk.Button(
+            botoes_frame,
+            text="Nova Região",
+            bg=self.cores["destaque"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            command=lambda: self._abrir_formulario_regiao()
+        )
+        btn_nova.pack(side="left", padx=5)
+        
+        # Botão para atualizar a lista
+        btn_atualizar = tk.Button(
+            botoes_frame,
+            text="Atualizar",
+            bg=self.cores["secundaria"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            command=lambda: self._atualizar_lista_regioes(tree)
+        )
+        btn_atualizar.pack(side="left", padx=5)
+        
+        # Criar a tabela de regiões
+        colunas = ("ID", "Nome", "Taxa (R$)", "Tempo Médio (min)", "Status")
+        
+        # Configurar estilo para a tabela
+        style = ttk.Style()
+        style.configure("Regioes.Treeview",
+            background="#ffffff",
+            fieldbackground="#ffffff",
+            borderwidth=0,
+            highlightthickness=0
+        )
+        
+        # Frame para a tabela com barra de rolagem
+        table_frame = ttk.Frame(main_frame)
+        table_frame.pack(fill="both", expand=True, pady=(0, 10))
+        
+        # Adicionar barra de rolagem
+        scroll_y = ttk.Scrollbar(table_frame)
+        scroll_y.pack(side="right", fill="y")
+        
+        # Criar a Treeview
+        tree = ttk.Treeview(
+            table_frame, 
+            columns=colunas, 
+            show="headings",
+            style="Regioes.Treeview",
+            selectmode="browse",
+            yscrollcommand=scroll_y.set
+        )
+        
+        # Configurar a barra de rolagem
+        scroll_y.config(command=tree.yview)
+        
+        # Empacotar a treeview
+        tree.pack(side="left", fill="both", expand=True)
+        
+        # Configurar as colunas
+        larguras = {"ID": 50, "Nome": 250, "Taxa (R$)": 100, "Tempo Médio (min)": 120, "Status": 80}
+        for col in colunas:
+            tree.heading(col, text=col)
+            tree.column(col, width=larguras.get(col, 100), anchor="center" if col != "Nome" else "w")
+        
+        # Adicionar barra de rolagem
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        
+        # Empacotar a árvore e a barra de rolagem
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Adicionar botões de ação
+        botoes_acao_frame = ttk.Frame(main_frame)
+        botoes_acao_frame.pack(fill="x", pady=(10, 0))
+        
+        # Botão para editar
+        btn_editar = tk.Button(
+            botoes_acao_frame,
+            text="Editar",
+            bg=self.cores["secundaria"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            command=lambda: self._editar_regiao_selecionada(tree)
+        )
+        btn_editar.pack(side="left", padx=5)
+        
+        # Botão para excluir
+        btn_excluir = tk.Button(
+            botoes_acao_frame,
+            text="Excluir",
+            bg=self.cores["alerta"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            command=lambda: self._excluir_regiao_selecionada(tree)
+        )
+        btn_excluir.pack(side="left", padx=5)
+        
+        # Frame para o botão de fechar
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill="x", pady=(10, 0))
+        
+        # Botão Fechar
+        btn_fechar = tk.Button(
+            btn_frame,
+            text="Fechar",
+            bg=self.cores["alerta"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            command=dialog.destroy
+        )
+        btn_fechar.pack(side="right", padx=5, pady=5)
+        
+        # Configurar o evento de duplo clique para edição
+        tree.bind("<Double-1>", lambda e: self._editar_regiao_selecionada(tree))
+        
+        # Carregar as regiões na tabela
+        self._atualizar_lista_regioes(tree)
+    
+    def _abrir_formulario_regiao(self, regiao_id=None):
+        """Abre o formulário para cadastrar/editar uma região de entrega."""
+        from views.dialogs.regiao_entrega_dialog import RegiaoEntregaDialog
+        
+        regiao_data = None
+        if regiao_id:
+            regiao_data = self.delivery_controller.obter_regiao_por_id(regiao_id)
+        
+        def callback_salvar(dados):
+            try:
+                self.delivery_controller.salvar_regiao_entrega(dados)
+                messagebox.showinfo("Sucesso", "Região salva com sucesso!", parent=dialog)
+                self._atualizar_lista_regioes()
+                dialog.destroy()
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao salvar região: {str(e)}", parent=dialog)
+        
+        dialog = RegiaoEntregaDialog(
+            self.frame,
+            self.delivery_controller,
+            regiao_data=regiao_data,
+            callback=callback_salvar
+        )
+    
+    def _editar_regiao_selecionada(self, tree):
+        """Abre o formulário para editar a região selecionada."""
+        selecionado = tree.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione uma região para editar.")
+            return
+        
+        regiao_id = tree.item(selecionado[0], 'values')[0]
+        self._abrir_formulario_regiao(regiao_id)
+    
+    def _excluir_regiao_selecionada(self, tree):
+        """Exclui a região selecionada."""
+        selecionado = tree.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione uma região para excluir.")
+            return
+        
+        regiao_id = tree.item(selecionado[0], 'values')[0]
+        regiao_nome = tree.item(selecionado[0], 'values')[1]
+        
+        if messagebox.askyesno("Confirmar", f"Tem certeza que deseja excluir a região '{regiao_nome}'?"):
+            try:
+                if self.delivery_controller.excluir_regiao_entrega(regiao_id):
+                    messagebox.showinfo("Sucesso", "Região excluída com sucesso!")
+                    self._atualizar_lista_regioes(tree)
+                else:
+                    messagebox.showerror("Erro", "Não foi possível excluir a região.")
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao excluir região: {str(e)}")
+    
+    def _atualizar_lista_regioes(self, tree=None):
+        """Atualiza a lista de regiões na tabela."""
+        if not tree:
+            # Se não for passada uma tree, tenta encontrar a janela ativa
+            for window in self.frame.winfo_children():
+                if isinstance(window, tk.Toplevel) and "Gerenciar Regiões de Entrega" in window.title():
+                    for widget in window.winfo_children():
+                        if isinstance(widget, ttk.Frame) and hasattr(widget, 'winfo_children'):
+                            for child in widget.winfo_children():
+                                if isinstance(child, ttk.Treeview):
+                                    tree = child
+                                    break
+                            if tree:
+                                break
+                    break
+            
+            if not tree:
+                return
+        
+        # Limpar a árvore
+        for item in tree.get_children():
+            tree.delete(item)
+        
+        # Buscar as regiões no banco de dados
+        regioes = self.delivery_controller.listar_regioes_entrega()
+        
+        # Preencher a árvore
+        for regiao in regioes:
+            tree.insert("", "end", values=(
+                regiao['id'],
+                regiao['nome'],
+                f"R$ {float(regiao['taxa_entrega']):.2f}".replace('.', ','),
+                regiao['tempo_medio_entrega'],
+                'Ativo' if regiao['ativo'] else 'Inativo'
+            ))
+    
     def _limpar_carrinho(self):
         """Limpa todos os itens do carrinho"""
-        for item in self.carrinho_tree.get_children():
-            self.carrinho_tree.delete(item)
-        self.itens_pedido = []
-        self._atualizar_total_pedido()
+        if self.itens_pedido:
+            if messagebox.askyesno("Confirmar", "Deseja realmente limpar o carrinho?"):
+                self.itens_pedido = []
+                self._atualizar_carrinho()
+                self._atualizar_total_pedido()
