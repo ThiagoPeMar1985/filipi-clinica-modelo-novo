@@ -182,6 +182,10 @@ class ClienteController:
         campos = []
         valores = []
         
+        # Adicionar a data de cadastro atual
+        from datetime import datetime
+        dados_cliente['data_cadastro'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
         for campo, valor in dados_cliente.items():
             if valor is not None and valor != '':
                 campos.append(campo)
@@ -295,29 +299,6 @@ class ClienteController:
         except Exception as e:
             print(f"Erro ao obter cliente por ID: {e}")
             return None
-    
-    def desativar_cliente(self, cliente_id: int) -> Tuple[bool, str]:
-        """
-        Desativa um cliente (exclusão lógica).
-        
-        Args:
-            cliente_id: ID do cliente a ser desativado.
-            
-        Returns:
-            Tupla (sucesso, mensagem).
-        """
-        query = """
-            UPDATE clientes_delivery 
-            SET ativo = 0 
-            WHERE id = %s
-        """
-        
-        try:
-            self.db.execute_query(query, (cliente_id,))
-            return True, "Cliente desativado com sucesso."
-        except Exception as e:
-            print(f"Erro ao desativar cliente: {e}")
-            return False, f"Erro ao desativar cliente: {str(e)}"
             
     def excluir_cliente(self, cliente_id: int) -> Tuple[bool, str]:
         """

@@ -13,6 +13,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from controllers.cadastro_controller import CadastroController
 from controllers.cliente_controller import ClienteController
 from controllers.delivery_controller import DeliveryController
+from utils.impressao import GerenciadorImpressao
 
 class DeliveryModule:
     def __init__(self, parent, controller):
@@ -42,6 +43,13 @@ class DeliveryModule:
         
         # Dados do cliente selecionado
         self.cliente_atual = None
+        
+        # Labels para exibir os dados do cliente
+        self.nome_cliente_label = None
+        self.telefone_cliente_label = None
+        self.endereco_cliente_label = None
+        self.regiao_entrega_label = None
+        self.taxa_entrega_label = None
         
     def show(self):
         # Limpar o frame atual
@@ -1869,6 +1877,80 @@ class DeliveryModule:
         btn_confirmar.bind('<Enter>', lambda e, b=btn_confirmar: b.config(bg=self._darken_color(CORES['destaque'])))
         btn_confirmar.bind('<Leave>', lambda e, b=btn_confirmar: b.config(bg=CORES['destaque']))
         
+    def _atualizar_dados_cliente(self, dados_atualizados=None):
+        """
+        Atualiza os dados do cliente na interface.
+        
+        Args:
+            dados_atualizados (dict, optional): Dados atualizados do cliente. Se None, usa self.cliente_atual.
+        """
+        if dados_atualizados is not None:
+            self.cliente_atual = dados_atualizados
+            
+        if not hasattr(self, 'cliente_atual') or not self.cliente_atual:
+            # Se não houver cliente selecionado, limpa os campos
+            if hasattr(self, 'nome_cliente_label') and self.nome_cliente_label:
+                self.nome_cliente_label.config(text="-")
+            if hasattr(self, 'telefone_cliente_label') and self.telefone_cliente_label:
+                self.telefone_cliente_label.config(text="-")
+            if hasattr(self, 'endereco_cliente_label') and self.endereco_cliente_label:
+                self.endereco_cliente_label.config(text="-")
+            if hasattr(self, 'regiao_entrega_label') and self.regiao_entrega_label:
+                self.regiao_entrega_label.config(text="Selecione um cliente")
+            if hasattr(self, 'taxa_entrega_label') and self.taxa_entrega_label:
+                self.taxa_entrega_label.config(text="R$ 0,00")
+            return
+            
+        # Atualizar os labels com os dados do cliente
+        if hasattr(self, 'nome_cliente_label') and self.nome_cliente_label:
+            self.nome_cliente_label.config(text=self.cliente_atual.get('nome', '-'))
+            
+        if hasattr(self, 'telefone_cliente_label') and self.telefone_cliente_label:
+            self.telefone_cliente_label.config(text=self.cliente_atual.get('telefone', '-'))
+            
+        if hasattr(self, 'endereco_cliente_label') and self.endereco_cliente_label:
+            endereco = []
+            if 'endereco' in self.cliente_atual and self.cliente_atual['endereco']:
+                endereco.append(self.cliente_atual['endereco'])
+            if 'numero' in self.cliente_atual and self.cliente_atual['numero']:
+                endereco.append(str(self.cliente_atual['numero']))
+            if 'bairro' in self.cliente_atual and self.cliente_atual['bairro']:
+                endereco.append(self.cliente_atual['bairro'])
+                
+            endereco_str = ", ".join(endereco) if endereco else "-"
+            self.endereco_cliente_label.config(text=endereco_str)
+            
+            # Se o cliente tiver bairro, tentar obter a região de entrega
+            if 'bairro' in self.cliente_atual and self.cliente_atual['bairro']:
+                try:
+                    regiao = self.delivery_controller.obter_regiao_por_bairro(self.cliente_atual['bairro'])
+                    if regiao and 'id' in regiao:
+                        if hasattr(self, 'regiao_entrega_label') and self.regiao_entrega_label:
+                            self.regiao_entrega_label.config(text=regiao.get('nome', 'Região não especificada'))
+                        if hasattr(self, 'taxa_entrega_label') and self.taxa_entrega_label:
+                            taxa = float(regiao.get('taxa_entrega', 0))
+                            self.taxa_entrega_label.config(text=f"R$ {taxa:.2f}".replace(".", ","))
+                    else:
+                        if hasattr(self, 'regiao_entrega_label') and self.regiao_entrega_label:
+                            self.regiao_entrega_label.config(text="Região não encontrada")
+                        if hasattr(self, 'taxa_entrega_label') and self.taxa_entrega_label:
+                            self.taxa_entrega_label.config(text="R$ 0,00")
+                except Exception as e:
+                    print(f"Erro ao obter região de entrega: {e}")
+                    if hasattr(self, 'regiao_entrega_label') and self.regiao_entrega_label:
+                        self.regiao_entrega_label.config(text="Erro ao buscar região")
+                    if hasattr(self, 'taxa_entrega_label') and self.taxa_entrega_label:
+                        self.taxa_entrega_label.config(text="R$ 0,00")
+            else:
+                if hasattr(self, 'regiao_entrega_label') and self.regiao_entrega_label:
+                    self.regiao_entrega_label.config(text="Bairro não informado")
+                if hasattr(self, 'taxa_entrega_label') and self.taxa_entrega_label:
+                    self.taxa_entrega_label.config(text="R$ 0,00")
+        
+        # Atualizar o total do pedido para incluir a taxa de entrega, se aplicável
+        if hasattr(self, '_atualizar_total_pedido'):
+            self._atualizar_total_pedido()
+    
     def _darken_color(self, color, factor=0.2):
         """Escurece uma cor em um fator especificado"""
         try:
@@ -1948,17 +2030,14 @@ class DeliveryModule:
             # Preparar os dados do pedido
             itens_pedido = []
             try:
-                for item in self.carrinho_tree.get_children():
-                    valores = self.carrinho_tree.item(item, 'values')
-                    if not valores or len(valores) < 3:
-                        messagebox.showwarning("Aviso", "Dados inválidos no carrinho. Por favor, verifique os itens.")
-                        return
-                        
+                # Usar os dados já estruturados em self.itens_pedido em vez de ler da árvore
+                for item in self.itens_pedido:
                     itens_pedido.append({
-                        'produto_id': valores[0],
-                        'quantidade': int(valores[1]),
-                        'preco_unitario': float(valores[2].replace('R$', '').replace('.', '').replace(',', '.')),
-                        'observacoes': valores[3] if len(valores) > 3 else ''
+                        'produto_id': item['id'],  # Usar o ID do item diretamente
+                        'quantidade': item['quantidade'],
+                        'preco_unitario': item['preco'],
+                        'observacoes': item.get('observacoes', ''),
+                        'opcoes': item.get('opcoes', [])  # Incluir as opções do item
                     })
             except (ValueError, IndexError) as e:
                 messagebox.showerror("Erro", f"Erro ao processar itens do carrinho: {str(e)}")
@@ -1980,12 +2059,19 @@ class DeliveryModule:
             # Dados do pedido
             dados_pedido = {
                 'cliente_id': self.cliente_atual['id'],
+                'cliente_nome': self.cliente_atual.get('nome', ''),
+                'cliente_telefone': self.cliente_atual.get('telefone', ''),
+                'endereco': self.cliente_atual.get('endereco', ''),
+                'bairro': self.cliente_atual.get('bairro', ''),
+                'cidade': self.cliente_atual.get('cidade', ''),
+                'referencia': self.cliente_atual.get('referencia', ''),
                 'itens': itens_pedido,
                 'valor_total': valor_total,
                 'forma_pagamento': forma_pagamento,
                 'status': 'pendente',
                 'observacoes': observacoes,
-                'data_hora': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                'data_hora': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'taxa_entrega': float(self.taxa_entrega_label.cget('text').replace('R$ ', '').replace(',', '.')) if hasattr(self, 'taxa_entrega_label') else 0.0
             }
             
             # Se for pagamento em dinheiro, adicionar o valor recebido e o troco
@@ -1995,13 +2081,178 @@ class DeliveryModule:
             
             # Registrar o pedido no banco de dados
             try:
-                sucesso, mensagem = self.delivery_controller.registrar_pedido(dados_pedido)
+                sucesso, mensagem, pedido_id = self.delivery_controller.registrar_pedido(dados_pedido)
                 
                 if sucesso:
-                    messagebox.showinfo("Sucesso", "Pedido registrado com sucesso!")
+                    messagebox.showinfo("Sucesso", f"Pedido {pedido_id} registrado com sucesso!")
+                    
+                    # Imprimir o comprovante do pedido
+                    try:
+                        # Tentar obter o config_controller de várias maneiras diferentes
+                        config_controller = None
+                        
+                        # 1. Tenta acessar diretamente do controlador
+                        if hasattr(self.controller, 'config_controller'):
+                            config_controller = self.controller.config_controller
+                        
+                        # 2. Tenta acessar através do sistema_controller
+                        elif hasattr(self.controller, 'sistema_controller'):
+                            if hasattr(self.controller.sistema_controller, 'config_controller'):
+                                config_controller = self.controller.sistema_controller.config_controller
+                        
+                        # 3. Tenta importar diretamente
+                        if not config_controller:
+                            try:
+                                from controllers.config_controller import ConfigController
+                                config_controller = ConfigController()
+                            except ImportError as e:
+                                print(f"Erro ao importar ConfigController: {e}")
+                        
+                        # Se ainda não encontrou, usa um config_controller vazio
+                        if not config_controller:
+                            print("Aviso: Usando ConfigController vazio. As configurações de impressora podem não estar disponíveis.")
+                            from controllers.config_controller import ConfigController
+                            config_controller = ConfigController()
+                            
+                        # Verificar se o controller principal tem um config_controller
+                        if hasattr(self.controller, 'config_controller') and self.controller.config_controller:
+                            config_controller = self.controller.config_controller
+                            print("Usando config_controller do controller principal")
+                            
+                        # Inicializar o gerenciador de impressão
+                        gerenciador = GerenciadorImpressao(config_controller)
+                        
+                        # Preparar os dados do pedido para impressão
+                        dados_venda = {
+                            'id': pedido_id,
+                            'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+                            'cliente_nome': self.cliente_atual.get('nome', 'Cliente não identificado'),
+                            'cliente_telefone': self.cliente_atual.get('telefone', ''),
+                            'valor_total': valor_total,
+                            'tipo': 'DELIVERY',
+                            'observacoes': observacoes,
+                            'taxa_entrega': float(dados_pedido.get('taxa_entrega', 0)),
+                            'forma_pagamento': forma_pagamento.upper()
+                        }
+                        
+                        # Adicionar endereço de entrega
+                        endereco = []
+                        if 'endereco' in self.cliente_atual and self.cliente_atual['endereco']:
+                            endereco.append(self.cliente_atual['endereco'])
+                        if 'numero' in self.cliente_atual and self.cliente_atual['numero']:
+                            endereco.append(str(self.cliente_atual['numero']))
+                        if 'bairro' in self.cliente_atual and self.cliente_atual['bairro']:
+                            endereco.append(self.cliente_atual['bairro'])
+                        
+                        dados_venda['endereco_entrega'] = ", ".join(endereco) if endereco else "Endereço não informado"
+                        
+                        # Preparar os itens para impressão
+                        itens_impressao = []
+                        for item in itens_pedido:
+                            # Buscar informações completas do produto, incluindo o tipo
+                            produto_info = None
+                            try:
+                                if 'produto_id' in item and item['produto_id'] != 'TAXA_ENTREGA':
+                                    produto_info = self.cadastro_controller.obter_produto(item['produto_id'])
+                            except Exception as e:
+                                print(f"Erro ao buscar informações do produto {item.get('produto_id')}: {e}")
+                                
+                            # Determinar o tipo do produto
+                            tipo_produto = 'Outros'
+                            if produto_info and 'tipo' in produto_info:
+                                tipo_produto = produto_info['tipo']
+                                
+                            # Preparar item para impressão
+                            # Obter o nome do produto com prioridade: produto_info > descricao > nome
+                            nome_produto = 'Produto sem nome'
+                            if produto_info and 'nome' in produto_info:
+                                nome_produto = produto_info['nome']
+                            elif 'descricao' in item and item['descricao']:
+                                nome_produto = item['descricao']
+                            elif 'nome' in item and item['nome']:
+                                nome_produto = item['nome']
+                                
+                            item_impressao = {
+                                'nome': nome_produto,  # Usar o nome obtido do produto
+                                'quantidade': item['quantidade'],
+                                'valor_unitario': item['preco_unitario'],
+                                'valor_total': item['quantidade'] * item['preco_unitario'],
+                                'observacoes': item.get('observacoes', ''),
+                                'tipo': tipo_produto
+                            }
+                            
+                            # Adicionar opções do item, se houver
+                            if 'opcoes' in item and item['opcoes']:
+                                # Processar as opções para o formato esperado pelo módulo de impressão
+                                opcoes_formatadas = []
+                                for opcao in item['opcoes']:
+                                    # Verificar se a opção tem o formato esperado
+                                    if isinstance(opcao, dict) and 'nome' in opcao:
+                                        opcoes_formatadas.append(opcao)
+                                    elif isinstance(opcao, dict) and 'opcao_id' in opcao:
+                                        # Buscar informações da opção no banco de dados
+                                        try:
+                                            from controllers.opcoes_controller import OpcoesController
+                                            from src.db.database import DatabaseConnection
+                                            
+                                            # Obter conexão com o banco de dados
+                                            db_connection = DatabaseConnection().get_connection()
+                                            opcoes_controller = OpcoesController(db_connection=db_connection)
+                                            opcao_info = opcoes_controller.obter_item_opcao(opcao['opcao_id'])
+                                            if opcao_info:
+                                                opcoes_formatadas.append({
+                                                    'nome': opcao_info.get('nome', 'Opção'),
+                                                    'preco_adicional': opcao_info.get('preco_adicional', 0)
+                                                })
+                                        except Exception as e:
+                                            print(f"Erro ao buscar informações da opção {opcao.get('opcao_id')}: {e}")
+                                
+                                item_impressao['opcoes'] = opcoes_formatadas
+                                
+                            itens_impressao.append(item_impressao)
+                        
+                        # Preparar os pagamentos para impressão
+                        pagamentos_impressao = [{
+                            'forma_nome': forma_pagamento.upper(),
+                            'valor': valor_total
+                        }]
+                        
+                        # Se for pagamento em dinheiro, adicionar o troco
+                        if forma_pagamento.lower() == 'dinheiro' and 'troco' in dados_pedido:
+                            pagamentos_impressao.append({
+                                'forma_nome': 'TROCO',
+                                'valor': dados_pedido['troco']
+                            })
+                        
+                        # Imprimir o demonstrativo de delivery com informações do cliente e endereço
+                        sucesso_cupom = gerenciador.imprimir_demonstrativo_delivery(
+                            dados_venda, 
+                            itens_impressao, 
+                            pagamentos_impressao
+                        )
+                        
+                        # Depois, imprimir as comandas por tipo de produto
+                        # Os itens já estão no formato esperado pelo método imprimir_comandas_por_tipo
+                        # com o tipo do produto incluído
+                        
+                        # Imprimir as comandas por tipo de produto
+                        sucesso_comandas = gerenciador.imprimir_comandas_por_tipo(
+                            dados_venda,
+                            itens_impressao
+                        )
+                        
+                        if not sucesso_cupom and not sucesso_comandas:
+                            print("Aviso: Não foi possível imprimir o comprovante do pedido.")
+                        elif not sucesso_cupom:
+                            print("Aviso: Não foi possível imprimir o cupom fiscal, mas as comandas foram enviadas.")
+                        elif not sucesso_comandas:
+                            print("Aviso: As comandas não foram enviadas corretamente, mas o cupom fiscal foi impresso.")
+                            
+                    except Exception as e:
+                        print(f"Erro ao tentar imprimir o comprovante do pedido: {str(e)}")
                     
                     # Limpar o carrinho e os dados do cliente
-                    self._limpar_carrinho()
+                    self._limpar_carrinho_sem_confirmacao()
                     self.cliente_atual = None
                     self._atualizar_dados_cliente()
                     
@@ -2290,10 +2541,23 @@ class DeliveryModule:
                 'Ativo' if regiao['ativo'] else 'Inativo'
             ))
     
-    def _limpar_carrinho(self):
-        """Limpa todos os itens do carrinho"""
-        if self.itens_pedido:
-            if messagebox.askyesno("Confirmar", "Deseja realmente limpar o carrinho?"):
-                self.itens_pedido = []
-                self._atualizar_carrinho()
-                self._atualizar_total_pedido()
+    def _limpar_carrinho(self, confirmar=True):
+        """
+        Limpa todos os itens do carrinho.
+        
+        Args:
+            confirmar (bool): Se True, pede confirmação antes de limpar.
+        """
+        if not self.itens_pedido:
+            return
+            
+        if confirmar and not messagebox.askyesno("Confirmar", "Deseja realmente limpar o carrinho?"):
+            return
+            
+        self.itens_pedido = []
+        self._atualizar_carrinho()
+        self._atualizar_total_pedido()
+    
+    def _limpar_carrinho_sem_confirmacao(self):
+        """Limpa todos os itens do carrinho sem pedir confirmação"""
+        self._limpar_carrinho(confirmar=False)

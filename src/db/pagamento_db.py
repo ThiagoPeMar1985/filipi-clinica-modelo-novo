@@ -242,17 +242,35 @@ class PagamentoDB:
                 # Inserir as opções do item, se houver
                 opcoes = item.get('opcoes', [])
                 for opcao in opcoes:
+                    # Obter o nome da opção em um cursor separado
+                    opcao_cursor = self.db.cursor(dictionary=True)
+                    try:
+                        opcao_cursor.execute("SELECT nome FROM opcoes_itens WHERE id = %s", (opcao.get('opcao_id'),))
+                        resultado = opcao_cursor.fetchone()
+                        opcao_nome = resultado['nome'] if resultado else "Opção Desconhecida"
+                    except Exception as e:
+                        print(f"Erro ao obter nome da opção: {e}")
+                        opcao_nome = "Opção Desconhecida"
+                    finally:
+                        opcao_cursor.close()
+                    
+                    # Inserir a opção do item
                     cursor.execute("""
-                        INSERT INTO venda_item_opcoes (
-                            venda_item_id, opcao_id, grupo_id, preco_adicional
+                        INSERT INTO itens_pedido_opcoes (
+                            item_pedido_id, opcao_id, grupo_id, nome, preco_adicional
                         )
-                        VALUES (%s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s)
                     """, (
                         item_id,
                         opcao.get('opcao_id'),
                         opcao.get('grupo_id'),
+                        opcao_nome,
                         opcao.get('preco_adicional', 0)
                     ))
+                    
+                    # Garantir que o resultado foi consumido
+                    while cursor.nextset():
+                        pass
             
             # Registrar os pagamentos
             for pagamento in pagamentos:

@@ -260,6 +260,21 @@ class OpcoesDB:
             return False
         finally:
             cursor.close()
+            
+    def obter_item(self, item_id: int) -> Optional[Dict[str, Any]]:
+        """Obtém um item de opção pelo ID."""
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT * FROM opcoes_itens 
+                WHERE id = %s
+            """, (item_id,))
+            return cursor.fetchone()
+        except mysql.connector.Error as err:
+            print(f"Erro ao obter item de opção: {err}")
+            return None
+        finally:
+            cursor.close()
     
     # Métodos para Relação entre Produtos e Opções
     def listar_grupos_por_produto(self, produto_id: int) -> List[Dict[str, Any]]:

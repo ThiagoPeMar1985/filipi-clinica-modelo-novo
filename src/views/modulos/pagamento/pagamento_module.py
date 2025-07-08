@@ -1129,7 +1129,7 @@ class PagamentoModule:
             config_controller = None
             if hasattr(self, 'config_controller'):
                 config_controller = self.config_controller
-            
+                
             # Inicializar o gerenciador de impressão
             gerenciador = GerenciadorImpressao(config_controller)
             

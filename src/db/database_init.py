@@ -70,21 +70,6 @@ def criar_tabelas(connection):
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
         
-        # Tabela de pendura
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS pendura (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            cliente_id INT NOT NULL,
-            data_hora DATETIME NOT NULL,
-            descricao TEXT,
-            valor DECIMAL(10,2) NOT NULL,
-            pago TINYINT(1) DEFAULT 0,
-            data_pagamento DATETIME,
-            mesa_id INT,
-            pedido_id INT,
-            garcom_nome VARCHAR(255)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        """)
         
         # Tabela de pedidos
         cursor.execute("""
@@ -120,9 +105,8 @@ def criar_tabelas(connection):
             pedido_id INT NOT NULL,
             forma_pagamento VARCHAR(50) NOT NULL,
             valor DECIMAL(10,2) NOT NULL,
-            troco DECIMAL(10,2) DEFAULT 0.00,
             data_hora DATETIME NOT NULL,
-            credito TINYINT(1) DEFAULT 0,
+            tipo_venda ENUM('avulso', 'delivery', 'mesa'),
             FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
@@ -177,20 +161,6 @@ def criar_tabelas(connection):
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
         
-        # Tabela de histórico de estoque
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS historico_estoque (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            produto_id INT NOT NULL,
-            tipo_movimento ENUM('ENTRADA','SAIDA') NOT NULL,
-            quantidade DECIMAL(10,2) NOT NULL,
-            preco_unitario DECIMAL(10,2) NOT NULL,
-            fornecedor VARCHAR(255),
-            nota_fiscal VARCHAR(100),
-            data_movimento TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (produto_id) REFERENCES produtos(id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        """)
         
         # Tabela de funcionários
         cursor.execute("""
@@ -259,9 +229,9 @@ def criar_tabelas(connection):
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
         
-        # Tabela de empresa
+        # Tabela de empresas
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS empresa (
+        CREATE TABLE IF NOT EXISTS empresas (
             id INT AUTO_INCREMENT PRIMARY KEY,
             nome_fantasia VARCHAR(255) NOT NULL,
             razao_social VARCHAR(255) NOT NULL,
@@ -306,18 +276,6 @@ def criar_tabelas(connection):
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
         
-        # Tabela de clientes para pendura
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS clientes_pendura (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            nome VARCHAR(255) NOT NULL,
-            telefone VARCHAR(20),
-            cpf VARCHAR(14),
-            endereco TEXT,
-            data_cadastro DATETIME DEFAULT CURRENT_TIMESTAMP,
-            observacoes TEXT
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        """)
         
         # Tabela de clientes delivery
         cursor.execute("""

@@ -3,10 +3,16 @@ Módulo de Cadastro - Gerencia cadastros do sistema
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 import os
 import sys
+import requests
+import json
 from datetime import datetime
+from pathlib import Path
+
+# Importar configurações de estilo
+from config.estilos import CORES, FONTES, aplicar_estilo
 
 # Adicione o diretório raiz ao path para permitir importações absolutas
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
@@ -1110,7 +1116,7 @@ class CadastroModule(BaseModule):
         
         # Frame para os botões de ação (abaixo dos campos)
         botoes_frame = tk.Frame(form_frame)
-        botoes_frame.grid(row=6, column=0, columnspan=2, pady=(20, 10), sticky='w')
+        botoes_frame.grid(row=10, column=0, columnspan=4, pady=(20, 10), sticky='w')
         
         # Botão Salvar
         btn_salvar = tk.Button(
@@ -1209,23 +1215,243 @@ class CadastroModule(BaseModule):
             
         produto_id = self.tree_produtos.item(selecionado[0])['values'][0]
         self._criar_formulario_produto("Editar Produto", produto_id)
-    
+        
     def excluir_produto(self):
-        """Exclui produto selecionado"""
+        """Exclui o produto selecionado usando o CadastroController"""
         selecionado = self.tree_produtos.selection()
         if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um produto para excluir")
             return
             
         produto_id = self.tree_produtos.item(selecionado[0])['values'][0]
         nome = self.tree_produtos.item(selecionado[0])['values'][1]
         
-        if messagebox.askyesno("Confirmar", f"Excluir {nome}?"):
+        if messagebox.askyesno("Confirmar", f"Tem certeza que deseja excluir o produto {nome}?"):
             try:
-                if self.db.excluir_produto(produto_id):
-                    self.tree_produtos.delete(selecionado[0])
-                    messagebox.showinfo("Sucesso", "Produto excluído")
+                # Usar o CadastroController para excluir o produto
+                from src.controllers.cadastro_controller import CadastroController
+                controller = CadastroController()
+                sucesso, mensagem = controller.excluir_produto(produto_id)
+                
+                if sucesso:
+                    messagebox.showinfo("Sucesso", mensagem)
+                    self.mostrar_produtos()  # Atualiza a lista de produtos
+                else:
+                    messagebox.showerror("Erro", mensagem)
+                    
+            except Exception as e:
+                messagebox.showerror("Erro", f"Falha ao excluir produto: {str(e)}")
+    
+    def excluir_cliente(self):
+        """Exclui o cliente selecionado usando o CadastroController"""
+        selecionado = self.tree_clientes.selection()
+        if not selecionado:
+            return
+            
+        cliente_id = self.tree_clientes.item(selecionado[0])['values'][0]
+        nome = self.tree_clientes.item(selecionado[0])['values'][1]
+        
+        if messagebox.askyesno("Confirmar", f"Excluir cliente {nome}?"):
+            try:
+                # Usar o CadastroController para excluir o cliente
+                from src.controllers.cadastro_controller import CadastroController
+                cadastro_controller = CadastroController()
+                if cadastro_controller.excluir_cliente(cliente_id):
+                    self.tree_clientes.delete(selecionado[0])
+                    messagebox.showinfo("Sucesso", "Cliente excluído")
+                else:
+                    messagebox.showerror("Erro", "Não foi possível excluir o cliente")
             except Exception as e:
                 messagebox.showerror("Erro", f"Falha ao excluir: {str(e)}")
+                import traceback
+                traceback.print_exc()
+    
+    def _criar_formulario_cliente(self, titulo, cliente_id=None):
+        """Cria formulário para cadastro/edição de cliente usando a tabela clientes_delivery"""
+        self.limpar_conteudo()
+        
+        # Dados do cliente (se edição)
+        self.cliente_atual = None
+        if cliente_id:
+            # Usar o CadastroController para obter os dados do cliente
+            from src.controllers.cadastro_controller import CadastroController
+            cadastro_controller = CadastroController()
+            self.cliente_atual = cadastro_controller.obter_cliente(cliente_id)
+        
+        # Frame principal
+        main_frame = tk.Frame(self.conteudo_frame)
+        main_frame.pack(fill='both', expand=True, padx=20, pady=10)
+        
+        # Título
+        tk.Label(main_frame, text=titulo, font=('Arial', 14, 'bold')).pack(pady=10)
+        
+        # Frame do formulário
+        form_frame = tk.Frame(main_frame)
+        form_frame.pack(fill='both', expand=True)
+        
+        # Campos do formulário - Adicionando todos os campos da tabela clientes_delivery
+        campos = [
+            ('Nome:', 'nome', 0, 0),
+            ('Telefone:', 'telefone', 1, 0),
+            ('Telefone 2:', 'telefone2', 1, 2),
+            ('Email:', 'email', 2, 0),
+            ('Endereço:', 'endereco', 3, 0),
+            ('Número:', 'numero', 3, 2),
+            ('Complemento:', 'complemento', 4, 0),
+            ('Bairro:', 'bairro', 5, 0),
+            ('Cidade:', 'cidade', 5, 2),
+            ('UF:', 'uf', 6, 0),
+            ('CEP:', 'cep', 6, 2),
+            ('Ponto de Referência:', 'ponto_referencia', 7, 0),
+            ('Observações:', 'observacoes', 8, 0)
+        ]
+        
+        self.entries = {}
+        for label, field, row, col in campos:
+            # Label
+            tk.Label(form_frame, text=label, font=('Arial', 10)).grid(row=row, column=col, sticky='e', padx=5, pady=5)
+            
+            # Entry padrão
+            entry_width = 40 if col == 0 else 15
+            entry = tk.Entry(form_frame, font=('Arial', 10), width=entry_width)
+            entry.grid(row=row, column=col+1, sticky='w', padx=5, pady=5)
+            self.entries[field] = entry
+            
+            # Preenche com dados existentes se estiver editando
+            if self.cliente_atual and field in self.cliente_atual and self.cliente_atual[field] is not None:
+                self.entries[field].insert(0, str(self.cliente_atual[field]))
+        
+        # Frame para os botões de ação (abaixo dos campos)
+        botoes_frame = tk.Frame(form_frame)
+        botoes_frame.grid(row=4, column=0, columnspan=2, pady=(20, 10), sticky='w')
+        
+        # Botão Salvar
+        btn_salvar = tk.Button(
+            botoes_frame, 
+            text="Salvar", 
+            command=lambda: self._salvar_cliente(cliente_id),
+            font=('Arial', 10, 'bold'),
+            bg='#4a6fa5',
+            fg='white',
+            padx=15,
+            pady=5,
+            width=10
+        )
+        btn_salvar.pack(side='left', padx=5)
+        
+        # Botão Cancelar
+        btn_cancelar = tk.Button(
+            botoes_frame, 
+            text="Cancelar", 
+            command=self.mostrar_clientes,
+            font=('Arial', 10, 'bold'),
+            bg='#f44336',
+            fg='white',
+            padx=15,
+            pady=5,
+            width=10
+        )
+        btn_cancelar.pack(side='left', padx=5)
+    
+    def buscar_cep(self):
+        """Busca endereço pelo CEP usando a API ViaCEP"""
+        cep = self.entries['cep'].get().strip().replace('-', '').replace('.', '')
+        
+        if not cep or len(cep) != 8:
+            messagebox.showwarning("Aviso", "Digite um CEP válido com 8 dígitos")
+            return
+            
+        try:
+            # Consulta a API ViaCEP
+            url = f"https://viacep.com.br/ws/{cep}/json/"
+            response = requests.get(url)
+            data = response.json()
+            
+            if "erro" in data:
+                messagebox.showwarning("Aviso", "CEP não encontrado")
+                return
+                
+            # Preenche os campos com os dados retornados
+            if 'logradouro' in data and data['logradouro']:
+                self.entries['endereco'].delete(0, tk.END)
+                self.entries['endereco'].insert(0, data['logradouro'])
+                
+            if 'bairro' in data and data['bairro']:
+                self.entries['bairro'].delete(0, tk.END)
+                self.entries['bairro'].insert(0, data['bairro'])
+                
+            if 'localidade' in data and data['localidade']:
+                self.entries['cidade'].delete(0, tk.END)
+                self.entries['cidade'].insert(0, data['localidade'])
+                
+            if 'uf' in data and data['uf']:
+                self.entries['uf'].delete(0, tk.END)
+                self.entries['uf'].insert(0, data['uf'])
+                
+            # Foca no campo de número para continuar o preenchimento
+            self.entries['numero'].focus_set()
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao buscar CEP: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def _salvar_cliente(self, cliente_id=None):
+        """Salva os dados do cliente com tratamento completo de erros usando CadastroController"""
+        try:
+            # Validação do nome
+            nome = self.entries['nome'].get()
+            if not nome or not nome.strip():
+                messagebox.showwarning("Aviso", "Nome do cliente é obrigatório")
+                self.entries['nome'].focus_set()
+                return
+
+            # Validação do telefone
+            telefone = self.entries['telefone'].get()
+            if not telefone or not telefone.strip():
+                messagebox.showwarning("Aviso", "Telefone do cliente é obrigatório")
+                self.entries['telefone'].focus_set()
+                return
+                
+            # Coletando todos os dados do formulário
+            dados = {
+                'nome': nome.strip(),
+                'telefone': telefone.strip(),
+                'telefone2': self.entries['telefone2'].get().strip(),
+                'email': self.entries['email'].get().strip(),
+                'endereco': self.entries['endereco'].get().strip(),
+                'numero': self.entries['numero'].get().strip(),
+                'complemento': self.entries['complemento'].get().strip(),
+                'bairro': self.entries['bairro'].get().strip(),
+                'cidade': self.entries['cidade'].get().strip(),
+                'uf': self.entries['uf'].get().strip(),
+                'cep': self.entries['cep'].get().strip(),
+                'ponto_referencia': self.entries['ponto_referencia'].get().strip(),
+                'observacoes': self.entries['observacoes'].get().strip()
+            }
+
+            # Usar o CadastroController para salvar os dados
+            from src.controllers.cadastro_controller import CadastroController
+            cadastro_controller = CadastroController()
+            
+            # Operação no banco
+            if cliente_id:
+                resultado = cadastro_controller.atualizar_cliente(cliente_id, dados)
+                msg = "atualizado"
+            else:
+                resultado = cadastro_controller.inserir_cliente(dados)
+                msg = "cadastrado"
+
+            if resultado:
+                messagebox.showinfo("Sucesso", f"Cliente {msg} com sucesso!")
+                self.mostrar_clientes()
+            else:
+                messagebox.showerror("Erro", f"Falha ao {msg} cliente")
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao salvar cliente: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def mostrar_fornecedores(self):
         """Mostra a tela de cadastro de fornecedores"""
@@ -1677,11 +1903,11 @@ class CadastroModule(BaseModule):
             messagebox.showerror("Erro", f"Falha ao salvar: {str(e)}")
 
     def novo_cliente(self):
-        """Abre formulário para novo cliente pendura"""
+        """Abre formulário para novo cliente usando a tabela clientes_delivery"""
         self._criar_formulario_cliente("Novo Cliente")
     
     def editar_cliente(self):
-        """Abre formulário para editar cliente pendura"""
+        """Abre formulário para editar cliente usando a tabela clientes_delivery"""
         selecionado = self.tree_clientes.selection()
         if not selecionado:
             messagebox.showwarning("Aviso", "Selecione um cliente")
@@ -1691,7 +1917,7 @@ class CadastroModule(BaseModule):
         self._criar_formulario_cliente("Editar Cliente", cliente_id)
     
     def excluir_cliente(self):
-        """Exclui cliente pendura selecionado"""
+        """Exclui cliente selecionado usando a tabela clientes_delivery"""
         selecionado = self.tree_clientes.selection()
         if not selecionado:
             messagebox.showwarning("Aviso", "Selecione um cliente")
@@ -1702,20 +1928,30 @@ class CadastroModule(BaseModule):
         
         if messagebox.askyesno("Confirmar", f"Excluir cliente {nome}?"):
             try:
-                if self.db.excluir_cliente(cliente_id):
+                # Usar o CadastroController para excluir o cliente
+                from src.controllers.cadastro_controller import CadastroController
+                cadastro_controller = CadastroController()
+                if cadastro_controller.excluir_cliente(cliente_id):
                     self.tree_clientes.delete(selecionado[0])
-                    messagebox.showinfo("Sucesso", "Cliente excluído")
+                    messagebox.showinfo("Sucesso", "Cliente excluído com sucesso")
+                else:
+                    messagebox.showerror("Erro", "Não foi possível excluir o cliente")
             except Exception as e:
                 messagebox.showerror("Erro", f"Falha ao excluir: {str(e)}")
+                import traceback
+                traceback.print_exc()
     
     def _criar_formulario_cliente(self, titulo, cliente_id=None):
-        """Cria formulário para cadastro/edição de cliente pendura"""
+        """Cria formulário para cadastro/edição de cliente usando a tabela clientes_delivery"""
         self.limpar_conteudo()
         
         # Dados do cliente (se edição)
         self.cliente_atual = None
-        if cliente_id and self.db:
-            self.cliente_atual = self.db.obter_cliente(cliente_id)
+        if cliente_id:
+            # Usar o CadastroController para obter os dados do cliente
+            from src.controllers.cadastro_controller import CadastroController
+            cadastro_controller = CadastroController()
+            self.cliente_atual = cadastro_controller.obter_cliente(cliente_id)
         
         # Frame principal
         main_frame = tk.Frame(self.conteudo_frame)
@@ -1728,39 +1964,64 @@ class CadastroModule(BaseModule):
         form_frame = tk.Frame(main_frame)
         form_frame.pack(fill='both', expand=True)
         
-        # Campos do formulário
+        # Campos do formulário - Reorganizados para colocar CEP antes do endereço
         campos = [
-            ('Nome:', 'nome', 0),
-            ('Telefone:', 'telefone', 1),
-            ('CPF:', 'cpf', 2),
-            ('Endereço:', 'endereco', 3),
-            ('Observações:', 'observacoes', 4)
+            ('Nome:', 'nome', 0, 0),
+            ('Telefone:', 'telefone', 1, 0),
+            ('Telefone 2:', 'telefone2', 1, 2),
+            ('Email:', 'email', 2, 0),
+            ('CEP:', 'cep', 3, 0),
+            ('Endereço:', 'endereco', 4, 0),
+            ('Número:', 'numero', 4, 2),
+            ('Complemento:', 'complemento', 5, 0),
+            ('Bairro:', 'bairro', 6, 0),
+            ('Cidade:', 'cidade', 6, 2),
+            ('UF:', 'uf', 7, 0),
+            ('Ponto de Referência:', 'ponto_referencia', 8, 0),
+            ('Observações:', 'observacoes', 9, 0)
         ]
         
         self.entries = {}
-        for label, field, row in campos:
+        for label, field, row, col in campos:
             # Label
-            tk.Label(form_frame, text=label, font=('Arial', 10)).grid(row=row, column=0, sticky='e', padx=5, pady=5)
+            tk.Label(form_frame, text=label, font=('Arial', 10)).grid(row=row, column=col, sticky='e', padx=5, pady=5)
             
-            # Entry
-            entry = tk.Entry(form_frame, font=('Arial', 10), width=40)
-            entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+            # Entry padrão
+            entry_width = 40 if col == 0 else 15
+            entry = tk.Entry(form_frame, font=('Arial', 10), width=entry_width)
+            entry.grid(row=row, column=col+1, sticky='w', padx=5, pady=5)
+            self.entries[field] = entry
             
             # Preenche com dados existentes se estiver editando
-            if self.cliente_atual and field in self.cliente_atual:
-                entry.insert(0, self.cliente_atual[field])
+            if self.cliente_atual and field in self.cliente_atual and self.cliente_atual[field] is not None:
+                self.entries[field].insert(0, str(self.cliente_atual[field]))
             
-            self.entries[field] = entry
+            # Adiciona botão de busca ao lado do campo CEP
+            if field == 'cep':
+                btn_buscar_cep = tk.Button(
+                    form_frame,
+                    text="Buscar",
+                    command=self.buscar_cep,
+                    font=('Arial', 9),
+                    bg='#4a6fa5',
+                    fg='white',
+                    padx=5,
+                    pady=2
+                )
+                btn_buscar_cep.grid(row=row, column=col+2, padx=5, pady=5)
+                
+                # Adiciona evento para buscar CEP ao pressionar Enter no campo
+                self.entries['cep'].bind('<Return>', lambda event: self.buscar_cep())
         
         # Campo de observações como Text (para múltiplas linhas)
         self.txt_observacoes = tk.Text(form_frame, height=5, width=40, font=('Arial', 10))
-        self.txt_observacoes.grid(row=4, column=1, sticky='w', padx=5, pady=5)
-        if self.cliente_atual and 'observacoes' in self.cliente_atual:
+        self.txt_observacoes.grid(row=9, column=1, sticky='w', padx=5, pady=5)
+        if self.cliente_atual and 'observacoes' in self.cliente_atual and self.cliente_atual['observacoes'] is not None:
             self.txt_observacoes.insert('1.0', self.cliente_atual['observacoes'])
         
         # Frame para os botões de ação (abaixo dos campos)
         botoes_frame = tk.Frame(form_frame)
-        botoes_frame.grid(row=5, column=0, columnspan=2, pady=(20, 10), sticky='w')
+        botoes_frame.grid(row=10, column=0, columnspan=4, pady=(20, 10), sticky='w')
         
         # Botão Salvar
         btn_salvar = tk.Button(
@@ -1790,183 +2051,262 @@ class CadastroModule(BaseModule):
         )
         btn_cancelar.pack(side='left', padx=5)
     
+    def buscar_cep(self):
+        """Busca endereço pelo CEP usando a API ViaCEP"""
+        cep = self.entries['cep'].get().strip().replace('-', '').replace('.', '')
+        
+        if not cep or len(cep) != 8:
+            messagebox.showwarning("Aviso", "Digite um CEP válido com 8 dígitos")
+            return
+            
+        try:
+            # Consulta a API ViaCEP
+            url = f"https://viacep.com.br/ws/{cep}/json/"
+            response = requests.get(url)
+            data = response.json()
+            
+            if "erro" in data:
+                messagebox.showwarning("Aviso", "CEP não encontrado")
+                return
+                
+            # Preenche os campos com os dados retornados
+            if 'logradouro' in data and data['logradouro']:
+                self.entries['endereco'].delete(0, tk.END)
+                self.entries['endereco'].insert(0, data['logradouro'])
+                
+            if 'bairro' in data and data['bairro']:
+                self.entries['bairro'].delete(0, tk.END)
+                self.entries['bairro'].insert(0, data['bairro'])
+                
+            if 'localidade' in data and data['localidade']:
+                self.entries['cidade'].delete(0, tk.END)
+                self.entries['cidade'].insert(0, data['localidade'])
+                
+            if 'uf' in data and data['uf']:
+                self.entries['uf'].delete(0, tk.END)
+                self.entries['uf'].insert(0, data['uf'])
+                
+            # Foca no campo de número para continuar o preenchimento
+            self.entries['numero'].focus_set()
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao buscar CEP: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
     def _salvar_cliente(self, cliente_id=None):
-        """Salva os dados do cliente no banco de dados"""
+        """Salva os dados do cliente no banco de dados usando CadastroController"""
+        # Coletar todos os campos do formulário
         dados = {
-            'nome': self.entries['nome'].get(),
-            'telefone': self.entries['telefone'].get(),
-            'cpf': self.entries['cpf'].get(),
-            'endereco': self.entries['endereco'].get(),
-            'observacoes': self.txt_observacoes.get('1.0', 'end-1c')
+            'nome': self.entries['nome'].get().strip(),
+            'telefone': self.entries['telefone'].get().strip(),
+            'telefone2': self.entries['telefone2'].get().strip(),
+            'email': self.entries['email'].get().strip(),
+            'endereco': self.entries['endereco'].get().strip(),
+            'numero': self.entries['numero'].get().strip(),
+            'complemento': self.entries['complemento'].get().strip(),
+            'bairro': self.entries['bairro'].get().strip(),
+            'cidade': self.entries['cidade'].get().strip(),
+            'uf': self.entries['uf'].get().strip().upper(),
+            'cep': self.entries['cep'].get().strip(),
+            'ponto_referencia': self.entries['ponto_referencia'].get().strip(),
+            'observacoes': self.txt_observacoes.get('1.0', 'end-1c').strip() if hasattr(self, 'txt_observacoes') else ''
         }
         
+        # Validação básica
+        if not dados['nome']:
+            messagebox.showwarning("Aviso", "Nome do cliente é obrigatório")
+            return
+            
+        if not dados['telefone']:
+            messagebox.showwarning("Aviso", "Telefone do cliente é obrigatório")
+            return
+        
         try:
+            # Usar o CadastroController para salvar os dados
+            from src.controllers.cadastro_controller import CadastroController
+            cadastro_controller = CadastroController()
+            
             if cliente_id:
-                # Edição
-                if self.db.atualizar_cliente(cliente_id, **dados):
-                    messagebox.showinfo("Sucesso", "Cliente atualizado!")
+                # Edição - Passando cliente_id como argumento posicional e dados como argumentos nomeados
+                if cadastro_controller.atualizar_cliente(cliente_id, **dados):
+                    messagebox.showinfo("Sucesso", "Cliente atualizado com sucesso!")
+                else:
+                    messagebox.showerror("Erro", "Não foi possível atualizar o cliente")
+                    return
             else:
-                # Novo
-                if self.db.inserir_cliente(**dados):
-                    messagebox.showinfo("Sucesso", "Cliente cadastrado!")
+                # Novo - Passando os dados como argumentos nomeados (**dados)
+                if cadastro_controller.inserir_cliente(**dados):
+                    messagebox.showinfo("Sucesso", "Cliente cadastrado com sucesso!")
+                else:
+                    messagebox.showerror("Erro", "Não foi possível cadastrar o cliente")
+                    return
             
             self.mostrar_clientes()
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao salvar: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def mostrar_clientes(self):
-        """Mostra a tela de clientes pendura"""
+        """Mostra a tela de clientes usando a tabela clientes_delivery"""
         self.limpar_conteudo()
         try:
-            if self.db:
-                self.lista_clientes = self.db.listar_clientes()
+            # Usar o CadastroController para obter os clientes
+            from src.controllers.cadastro_controller import CadastroController
+            cadastro_controller = CadastroController()
+            self.lista_clientes = cadastro_controller.listar_clientes()
+            
+            # Frame principal com grid
+            main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+            main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+            main_frame.columnconfigure(1, weight=1)
+            main_frame.rowconfigure(1, weight=1)
+            
+            # Frame do título
+            title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+            title_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 10))
+            
+            tk.Label(
+                title_frame, 
+                text="LISTA DE CLIENTES", 
+                font=('Arial', 16, 'bold'),
+                bg='#f0f2f5',
+                fg='#000000'
+            ).pack(side='left')
+            
+            # Frame para os botões (lado esquerdo)
+            botoes_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=10, pady=10)
+            botoes_frame.grid(row=1, column=0, sticky='nsew', padx=(0, 5))
+            botoes_frame.columnconfigure(0, weight=1)
+            
+            # Configurando o estilo dos botões
+            btn_style = {
+                'font': ('Arial', 10, 'bold'),
+                'bg': '#4a6fa5',
+                'fg': 'white',
+                'bd': 0,
+                'padx': 20,
+                'pady': 8,
+                'relief': 'flat',
+                'cursor': 'hand2',
+                'width': 15
+            }
+            
+            # Botão Novo Cliente
+            self.btn_novo_cliente = tk.Button(
+                botoes_frame,
+                text="Novo Cliente",
+                **btn_style,
+                command=self.novo_cliente
+            )
+            self.btn_novo_cliente.pack(pady=5, fill='x')
+            
+            # Botão Editar (inicialmente desabilitado)
+            self.btn_editar_cliente = tk.Button(
+                botoes_frame,
+                text="Editar",
+                **btn_style,
+                state='disabled',
+                command=self.editar_cliente
+            )
+            self.btn_editar_cliente.pack(pady=5, fill='x')
+            
+            # Botão Excluir (inicialmente desabilitado)
+            btn_excluir_style = btn_style.copy()
+            btn_excluir_style['bg'] = '#f44336'  # Cor vermelha para o botão excluir
+            self.btn_excluir_cliente = tk.Button(
+                botoes_frame,
+                text="Excluir",
+                **btn_excluir_style,
+                state='disabled',
+                command=self.excluir_cliente
+            )
+            self.btn_excluir_cliente.pack(pady=5, fill='x')
+            
+            # Frame para a tabela (lado direito)
+            tabela_container = tk.Frame(main_frame, bg='#d1d8e0')
+            tabela_container.grid(row=1, column=1, sticky='nsew', padx=(5, 0))
+            
+            # Frame interno para a tabela
+            tabela_frame = tk.Frame(tabela_container, bg='white', padx=1, pady=1)
+            tabela_frame.pack(fill='both', expand=True, padx=1, pady=1)
+            
+            # Cabeçalho da tabela - Apenas as colunas solicitadas
+            colunas = ("ID", "Nome", "Telefone", "Endereço", "Número", "Bairro")
+            
+            # Criando a Treeview
+            style = ttk.Style()
+            style.configure("Treeview", 
+                background="#ffffff",
+                foreground="#000000",  # Texto preto para melhor legibilidade
+                rowheight=30,
+                fieldbackground="#ffffff",
+                borderwidth=0)
                 
-                # Frame principal com grid
-                main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
-                main_frame.pack(fill='both', expand=True, padx=10, pady=10)
-                main_frame.columnconfigure(1, weight=1)
-                main_frame.rowconfigure(1, weight=1)
+            style.map('Treeview', 
+                background=[('selected', '#4a6fa5')],
+                foreground=[('selected', 'white')])
+            
+            style.configure("Treeview.Heading", 
+                font=('Arial', 10, 'bold'),
+                background='#4a6fa5',
+                foreground='#000000',
+                relief='flat')
                 
-                # Frame do título
-                title_frame = tk.Frame(main_frame, bg='#f0f2f5')
-                title_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 10))
-                
-                tk.Label(
-                    title_frame, 
-                    text="LISTA DE CLIENTES", 
-                    font=('Arial', 16, 'bold'),
-                    bg='#f0f2f5',
-                    fg='#000000'
-                ).pack(side='left')
-                
-                # Frame para os botões (lado esquerdo)
-                botoes_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=10, pady=10)
-                botoes_frame.grid(row=1, column=0, sticky='nsew', padx=(0, 5))
-                botoes_frame.columnconfigure(0, weight=1)
-                
-                # Configurando o estilo dos botões
-                btn_style = {
-                    'font': ('Arial', 10, 'bold'),
-                    'bg': '#4a6fa5',
-                    'fg': 'white',
-                    'bd': 0,
-                    'padx': 20,
-                    'pady': 8,
-                    'relief': 'flat',
-                    'cursor': 'hand2',
-                    'width': 15
-                }
-                
-                # Botão Novo Cliente
-                self.btn_novo_cliente = tk.Button(
-                    botoes_frame,
-                    text="Novo Cliente",
-                    **btn_style,
-                    command=self.novo_cliente
-                )
-                self.btn_novo_cliente.pack(pady=5, fill='x')
-                
-                # Botão Editar (inicialmente desabilitado)
-                self.btn_editar_cliente = tk.Button(
-                    botoes_frame,
-                    text="Editar",
-                    **btn_style,
-                    state='disabled',
-                    command=self.editar_cliente
-                )
-                self.btn_editar_cliente.pack(pady=5, fill='x')
-                
-                # Botão Excluir (inicialmente desabilitado)
-                btn_excluir_style = btn_style.copy()
-                btn_excluir_style['bg'] = '#f44336'  # Cor vermelha para o botão excluir
-                self.btn_excluir_cliente = tk.Button(
-                    botoes_frame,
-                    text="Excluir",
-                    **btn_excluir_style,
-                    state='disabled',
-                    command=self.excluir_cliente
-                )
-                self.btn_excluir_cliente.pack(pady=5, fill='x')
-                
-                # Frame para a tabela (lado direito)
-                tabela_container = tk.Frame(main_frame, bg='#d1d8e0')
-                tabela_container.grid(row=1, column=1, sticky='nsew', padx=(5, 0))
-                
-                # Frame interno para a tabela
-                tabela_frame = tk.Frame(tabela_container, bg='white', padx=1, pady=1)
-                tabela_frame.pack(fill='both', expand=True, padx=1, pady=1)
-                
-                # Cabeçalho da tabela
-                colunas = ("ID", "Nome", "Telefone", "CPF", "Data Cadastro")
-                
-                # Criando a Treeview
-                style = ttk.Style()
-                style.configure("Treeview", 
-                    background="#ffffff",
-                    foreground="#000000",  # Texto preto para melhor legibilidade
-                    rowheight=30,
-                    fieldbackground="#ffffff",
-                    borderwidth=0)
-                    
-                style.map('Treeview', 
-                    background=[('selected', '#4a6fa5')],
-                    foreground=[('selected', 'white')])
-                
-                style.configure("Treeview.Heading", 
-                    font=('Arial', 10, 'bold'),
-                    background='#4a6fa5',
-                    foreground='#000000',
-                    relief='flat')
-                    
-                style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
-                
-                self.tree_clientes = ttk.Treeview(
-                    tabela_frame, 
-                    columns=colunas, 
-                    show='headings',
-                    selectmode='browse',
-                    style="Treeview"
-                )
-                
-                # Configurando as colunas
-                for col in colunas:
-                    self.tree_clientes.heading(col, text=col)
-                    self.tree_clientes.column(col, width=100, anchor='w')
-                
-                # Ajustando largura das colunas
-                self.tree_clientes.column('ID', width=50, anchor='center')
-                self.tree_clientes.column('Nome', width=200)
-                self.tree_clientes.column('Telefone', width=120)
-                self.tree_clientes.column('CPF', width=120)
-                self.tree_clientes.column('Data Cadastro', width=120)
-                
-                # Adicionando barra de rolagem
-                scrollbar = ttk.Scrollbar(tabela_frame, orient='vertical', command=self.tree_clientes.yview)
-                self.tree_clientes.configure(yscrollcommand=scrollbar.set)
-                
-                # Posicionando os widgets
-                self.tree_clientes.pack(side='left', fill='both', expand=True)
-                scrollbar.pack(side='right', fill='y')
-                
-                # Preenchendo a tabela com os dados
-                for cliente in self.lista_clientes:
-                    data_formatada = cliente['data_cadastro'].strftime('%d/%m/%Y') if cliente['data_cadastro'] else ''
-                    self.tree_clientes.insert(
-                        '', 'end', 
-                        values=(
-                            cliente.get('id', ''),
-                            cliente.get('nome', ''),
-                            cliente.get('telefone', ''),
-                            cliente.get('cpf', ''),
-                            data_formatada
-                        )
+            style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
+            
+            self.tree_clientes = ttk.Treeview(
+                tabela_frame, 
+                columns=colunas, 
+                show='headings',
+                selectmode='browse',
+                style="Treeview"
+            )
+            
+            # Configurando as colunas
+            for col in colunas:
+                self.tree_clientes.heading(col, text=col)
+                self.tree_clientes.column(col, width=100, anchor='w')
+            
+            # Ajustando largura das colunas
+            self.tree_clientes.column('ID', width=40, anchor='center')
+            self.tree_clientes.column('Nome', width=200)
+            self.tree_clientes.column('Telefone', width=120)
+            self.tree_clientes.column('Endereço', width=250)
+            self.tree_clientes.column('Número', width=80, anchor='center')
+            self.tree_clientes.column('Bairro', width=180)
+            
+            # Adicionando barra de rolagem
+            scrollbar = ttk.Scrollbar(tabela_frame, orient='vertical', command=self.tree_clientes.yview)
+            self.tree_clientes.configure(yscrollcommand=scrollbar.set)
+            
+            # Posicionando os widgets
+            self.tree_clientes.pack(side='left', fill='both', expand=True)
+            scrollbar.pack(side='right', fill='y')
+            
+            # Preenchendo a tabela com os dados
+            for cliente in self.lista_clientes:
+                data_formatada = cliente['data_cadastro'].strftime('%d/%m/%Y') if cliente.get('data_cadastro') else ''
+                self.tree_clientes.insert(
+                    '', 'end', 
+                    values=(
+                        cliente.get('id', ''),
+                        cliente.get('nome', ''),
+                        cliente.get('telefone', ''),
+                        cliente.get('endereco', ''),
+                        cliente.get('numero', ''),
+                        cliente.get('bairro', '')
                     )
-                
-                # Configurar evento de seleção
-                self.tree_clientes.bind('<<TreeviewSelect>>', self.atualizar_botoes_clientes)
-                
-                # Ajustando o layout
-                self.conteudo_frame.update_idletasks()
-                
+                )
+            
+            # Configurar evento de seleção
+            self.tree_clientes.bind('<<TreeviewSelect>>', self.atualizar_botoes_clientes)
+            
+            # Ajustando o layout
+            self.conteudo_frame.update_idletasks()
+            
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar clientes: {str(e)}")
+            import traceback
+            traceback.print_exc()

@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sys
 import datetime
+from datetime import datetime as dt
 from pathlib import Path
 
 # Adiciona o diretório raiz do projeto ao path para importar módulos
@@ -9,9 +10,11 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from controllers.cadastro_controller import CadastroController
 from controllers.opcoes_controller import OpcoesController
+from controllers.financeiro_controller import FinanceiroController
 from views.modulos.pagamento.pagamento_module import PagamentoModule
 from utils.impressao import GerenciadorImpressao
 from views.modulos.vendas.delivery_module import DeliveryModule
+from views.modulos.vendas.status_module import StatusPedidosModule
 
 class VendasModule:
     def __init__(self, parent, controller):
@@ -23,6 +26,7 @@ class VendasModule:
         
         # Inicializar o controlador de cadastro
         self.cadastro_controller = CadastroController()
+        self.financeiro_controller = FinanceiroController(controller.db_connection)
         
         # Inicializar o carrinho de compras
         self.carrinho = []
@@ -70,134 +74,41 @@ class VendasModule:
         self.frame.pack(fill='both', expand=True)
         return self.frame
     
+    def _show_delivery(self):
+        """Mostra a tela de delivery"""
+        # Limpar o frame atual
+        for widget in self.frame.winfo_children():
+            widget.destroy()
+            
+        # Inicializar o módulo de delivery
+        try:
+            delivery_module = DeliveryModule(self.frame, self.controller)
+            self.current_view = delivery_module.show()
+            
+            # Garantir que o frame seja exibido
+            self.frame.update()
+           
+        except Exception as e:
+            print(f"Erro ao inicializar módulo de delivery: {e}")
+            messagebox.showerror("Erro", f"Erro ao inicializar módulo de delivery: {e}")
+    
     def _show_status_pedidos(self):
         """Mostra a tela de status dos pedidos"""
-        # Criar o frame principal
-        main_frame = ttk.Frame(self.frame)
-        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        # Título
-        title_frame = ttk.Frame(main_frame)
-        title_frame.pack(fill='x', pady=(0, 20))
-        
-        ttk.Label(
-            title_frame,
-            text="📊 Status dos Pedidos",
-            font=('Arial', 16, 'bold')
-        ).pack(side='left')
-        
-        # Frame para os botões de ação
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill='x', pady=(0, 10))
-        
-        # Botão para atualizar a lista
-        tk.Button(
-            btn_frame,
-            text="🔄 Atualizar",
-            command=self._atualizar_lista_pedidos,
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
-            bd=0,
-            padx=15,
-            pady=5,
-            relief='flat',
-            cursor='hand2',
-            font=('Arial', 10, 'bold')
-        ).pack(side='left', padx=5)
-        
-        # Criar o notebook para as abas
-        notebook = ttk.Notebook(main_frame)
-        notebook.pack(fill='both', expand=True)
-        
-        # Criar abas para cada status
-        self.tabs = {}
-        status_list = [
-            ('em_espera', '⏳ Em Espera'),
-            ('em_preparo', '👨‍🍳 Em Preparo'),
-            ('pronto_entrega', '✅ Pronto para Entrega'),
-            ('em_entrega', '🛵 Em Entrega'),
-            ('entregue', '✔️ Entregue')
-        ]
-        
-        for status_id, status_name in status_list:
-            # Criar frame para a aba
-            tab_frame = ttk.Frame(notebook)
-            notebook.add(tab_frame, text=status_name)
+        # Limpar o frame atual
+        for widget in self.frame.winfo_children():
+            widget.destroy()
             
-                # Configurar estilo para a treeview
-            style = ttk.Style()
-            style.configure("Treeview", 
-                         background="white",
-                         foreground=self.cores["texto"],
-                         rowheight=25,
-                         fieldbackground="white")
-            style.configure("Treeview.Heading", 
-                         font=("Arial", 10, "bold"), 
-                         background=self.cores["primaria"],
-                         foreground=self.cores["texto_claro"])
-            style.map("Treeview", 
-                    background=[("selected", self.cores["primaria"])],
-                    foreground=[("selected", self.cores["texto_claro"])])
+        # Inicializar o módulo de status de pedidos
+        try:
+            status_module = StatusPedidosModule(self.frame, self.controller)
+            self.current_view = status_module.show()
             
-            # Criar treeview para listar os pedidos
-            columns = ("ID", "Cliente", "Telefone", "Itens", "Valor", "Hora Pedido")
-            tree = ttk.Treeview(
-                tab_frame,
-                columns=columns,
-                show='headings',
-                selectmode='browse',
-                style="Treeview"
-            )
-            
-            # Configurar colunas
-            for col in columns:
-                tree.heading(col, text=col)
-                tree.column(col, width=100, anchor='center')
-            
-            # Ajustar largura das colunas
-            tree.column("ID", width=50)
-            tree.column("Cliente", width=150)
-            tree.column("Telefone", width=100)
-            tree.column("Itens", width=300)
-            tree.column("Valor", width=100)
-            tree.column("Hora Pedido", width=150)
-            
-            # Adicionar scrollbars
-            vsb = ttk.Scrollbar(tab_frame, orient="vertical", command=tree.yview)
-            hsb = ttk.Scrollbar(tab_frame, orient="horizontal", command=tree.xview)
-            tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-            
-            # Posicionar os widgets
-            tree.grid(row=0, column=0, sticky='nsew')
-            vsb.grid(row=0, column=1, sticky='ns')
-            hsb.grid(row=1, column=0, sticky='ew')
-            
-            # Configurar o grid para expandir
-            tab_frame.grid_rowconfigure(0, weight=1)
-            tab_frame.grid_columnconfigure(0, weight=1)
-            
-            # Adicionar à lista de abas
-            self.tabs[status_id] = tree
-        
-        # Carregar dados iniciais
-        self._atualizar_lista_pedidos()
-    
-    def _atualizar_lista_pedidos(self):
-        """Atualiza a lista de pedidos em todas as abas"""
-        # TODO: Implementar a busca dos pedidos no banco de dados
-        # Por enquanto, vamos apenas limpar e adicionar dados de exemplo
-        for status, tree in self.tabs.items():
-            # Limpar a árvore
-            for item in tree.get_children():
-                tree.delete(item)
-            
-            # Adicionar dados de exemplo (substituir pela busca real no banco)
-            # Exemplo:
-            # if status == 'em_espera':
-            #     tree.insert('', 'end', values=(
-            #         '123', 'João Silva', '(11) 99999-9999', '2x Pizza', 'R$ 80,00', '04/07/2023 19:30'
-            #     ))
-            pass
+            # Garantir que o frame seja exibido
+            self.frame.update()
+           
+        except Exception as e:
+            print(f"Erro ao inicializar módulo de status de pedidos: {e}")
+            messagebox.showerror("Erro", f"Erro ao inicializar módulo de status de pedidos: {e}")
     
     def _show_default(self):
         # Tela inicial do módulo de vendas
@@ -209,8 +120,14 @@ class VendasModule:
         label.pack(pady=20)
     
     def _show_venda_avulsa(self):
+        # Remover a visualização atual se existir
+        if hasattr(self, 'current_view') and self.current_view:
+            self.current_view.destroy()
+            
+        # Criar novo frame para a visualização
         frame = ttk.Frame(self.frame, style="Card.TFrame")
         frame.pack(fill='both', expand=True, padx=20, pady=20)
+        self.current_view = frame  # Armazenar referência à visualização atual
         
         # Configurar estilo para as tabelas
         style = ttk.Style()
@@ -222,7 +139,7 @@ class VendasModule:
         style.configure("Treeview.Heading", 
                       font=("Arial", 10, "bold"), 
                       background=self.cores["primaria"],
-                      foreground=self.cores["texto_claro"])
+                      foreground=self.cores["texto"])
         style.map("Treeview", 
                 background=[("selected", "#4a6fa5")],
                 foreground=[("selected", "#ffffff")])
@@ -679,9 +596,30 @@ class VendasModule:
             for grupo_id, selecao in self.selecoes_opcoes.items():
                 if selecao['tipo'] == 'unico' and selecao['var'].get():
                     # Opção única selecionada
+                    opcao_id = int(selecao['var'].get())
+                    
+                    # Buscar o nome da opção selecionada
+                    nome_opcao = ""
+                    preco_adicional = 0.0
+                    
+                    # Buscar informações da opção no banco de dados
+                    try:
+                        from controllers.opcoes_controller import OpcoesController
+                        db_connection = getattr(self.controller, 'db_connection', None)
+                        if db_connection:
+                            opcoes_controller = OpcoesController(db_connection=db_connection)
+                            opcao = opcoes_controller.obter_item_opcao(opcao_id)
+                            if opcao:
+                                nome_opcao = opcao.get('nome', '')
+                                preco_adicional = opcao.get('preco_adicional', 0.0)
+                    except Exception as e:
+                        print(f"Erro ao buscar nome da opção: {e}")
+                    
                     opcoes_selecionadas.append({
                         'grupo_id': grupo_id,
-                        'opcao_id': int(selecao['var'].get())
+                        'opcao_id': opcao_id,
+                        'nome': nome_opcao,
+                        'preco_adicional': preco_adicional
                     })
                 elif selecao['tipo'] == 'multiplo':
                     # Múltiplas opções podem ser selecionadas
@@ -941,77 +879,125 @@ class VendasModule:
         pagamento_window.protocol("WM_DELETE_WINDOW", pagamento_window.destroy)
         
     def _processar_venda_finalizada(self, pagamentos):
-        """Processa a venda finalizada com os pagamentos realizados"""
-        # Preparar dados da venda para impressão
+        """
+        Processa a venda finalizada com os pagamentos realizados
+        
+        Args:
+            pagamentos: Lista de dicionários com os dados dos pagamentos
+        """
+        # Calcular totais
         valor_total = sum(item['total'] for item in self.carrinho)
         desconto = float(self.desconto_var.get() or 0) if hasattr(self, 'desconto_var') else 0
         valor_final = valor_total - desconto
         
-        venda = {
-            'tipo': 'avulsa',
-            'valor_total': valor_total,
-            'desconto': desconto,
-            'valor_final': valor_final,
-            'data_venda': datetime.datetime.now()
-        }
+        # Obter informações do usuário logado
+        usuario_id = getattr(self.controller, 'usuario_id', None)
+        usuario_nome = getattr(self.controller, 'usuario_nome', 'Sistema')
         
-        # A impressão do cupom fiscal será feita no módulo de pagamento
-        # para evitar duplicação
-        
-        # Limpar o carrinho
-        self.carrinho = []
-        
-        # Limpar o campo de desconto
-        if hasattr(self, 'desconto_var'):
-            self.desconto_var.set('')
+        # Criar descrição dos itens da venda
+        descricao_itens = ", ".join([f"{item['quantidade']}x {item['nome']}"[:50] for item in self.carrinho[:3]])
+        if len(self.carrinho) > 3:
+            descricao_itens += "..."
             
-        # Atualizar a interface
-        self._atualizar_carrinho()
+        descricao = f"Venda avulsa - {descricao_itens}"
         
-        # Exibir mensagem de sucesso
-        messagebox.showinfo("Sucesso", "Venda finalizada com sucesso!")
-        
-    def _imprimir_cupom_fiscal(self, venda, itens, pagamentos):
-        """Imprime o cupom fiscal da venda finalizada"""
+        cursor = None
         try:
-            # Obter o controlador de configurações
-            config_controller = None
-            if hasattr(self.controller, 'config_controller'):
-                config_controller = self.controller.config_controller
-            elif hasattr(self.controller, 'sistema_controller') and hasattr(self.controller.sistema_controller, 'config_controller'):
-                config_controller = self.controller.sistema_controller.config_controller
+            cursor = self.controller.db_connection.cursor()
             
-            # Inicializar o gerenciador de impressão
-            gerenciador = GerenciadorImpressao(config_controller)
-            
-            # Imprimir o cupom fiscal
-            sucesso = gerenciador.imprimir_cupom_fiscal(venda, itens, pagamentos)
-            
-            if not sucesso:
-                messagebox.showwarning(
-                    "Aviso", 
-                    "Não foi possível imprimir o cupom fiscal. Verifique as configurações de impressora."
+            # Inserir o pedido
+            cursor.execute("""
+                INSERT INTO pedidos (
+                    data_abertura, 
+                    status, 
+                    total, 
+                    garcom_id, 
+                    tipo, 
+                    observacao, 
+                    cliente_nome,
+                    status_entrega,
+                    processado_estoque
                 )
-        except Exception as e:
-            print(f"Erro ao imprimir cupom fiscal: {e}")
-            messagebox.showwarning(
-                "Aviso", 
-                f"Erro ao imprimir cupom fiscal: {str(e)}"
+                VALUES (
+                    NOW(), 
+                    'FECHADO', 
+                    %s, 
+                    %s, 
+                    'AVULSO', 
+                    %s, 
+                    %s,
+                    'NAO_APLICAVEL',
+                    0
+                )
+            """, (
+                valor_final,  # total
+                usuario_id,   # garcom_id (usando o usuário logado)
+                descricao,    # observação com os itens
+                usuario_nome  # cliente_nome (usando o nome do usuário logado)
+            ))
+            
+            pedido_id = cursor.lastrowid
+            
+            # Registrar o pagamento principal
+            try:
+                # Usar a forma de pagamento do primeiro item da lista (assumindo que há pelo menos um pagamento)
+                forma_pagamento = pagamentos[0].get('forma_nome', 'Desconhecido') if pagamentos else 'Desconhecido'
+                
+                entrada_id = self.financeiro_controller.registrar_entrada(
+                    valor=valor_final,
+                    descricao=descricao,
+                    tipo_entrada=forma_pagamento,  # Usar a forma de pagamento real
+                    usuario_id=usuario_id,
+                    usuario_nome=usuario_nome,
+                    pedido_id=pedido_id
+                )
+                
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                entrada_id = None
+            
+            # Commit das alterações
+            self.controller.db_connection.commit()
+            
+            # Preparar dados da venda para impressão
+            venda = {
+                'tipo': 'avulsa',
+                'valor_total': valor_total,
+                'desconto': desconto,
+                'valor_final': valor_final,
+                'data_venda': datetime.datetime.now(),
+                'pedido_id': pedido_id,
+                'entrada_id': entrada_id if 'entrada_id' in locals() else None
+            }
+            
+            # Limpar o carrinho
+            self.carrinho = []
+            
+            # Limpar o campo de desconto
+            if hasattr(self, 'desconto_var'):
+                self.desconto_var.set('')
+                
+            # Atualizar a interface
+            self._atualizar_carrinho()
+            
+            # Mostrar mensagem de sucesso
+            messagebox.showinfo(
+                "Venda Finalizada", 
+                f"Venda finalizada com sucesso!\nPedido #{pedido_id}"
             )
-    
-    def _show_delivery(self):
-        # Limpar o frame atual
-        for widget in self.frame.winfo_children():
-            widget.destroy()
             
-        # Inicializar o módulo de delivery
-        try:
-            delivery_module = DeliveryModule(self.frame, self.controller)
-            self.current_view = delivery_module.show()
+            # Voltar para a tela inicial de vendas
+            self._show_venda_avulsa()
             
-            # Garantir que o frame seja exibido
-            self.frame.update()
-           
         except Exception as e:
-            print(f"Erro ao inicializar módulo de delivery: {e}")
-            messagebox.showerror("Erro", f"Erro ao inicializar módulo de delivery: {e}")
+            if self.controller.db_connection:
+                self.controller.db_connection.rollback()
+            print(f"Erro ao processar venda: {e}")
+            messagebox.showerror(
+                "Erro", 
+                f"Ocorreu um erro ao processar a venda: {str(e)}"
+            )
+        finally:
+            if cursor:
+                cursor.close()

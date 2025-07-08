@@ -723,10 +723,10 @@ class ConfiguracaoModule(BaseModule):
                 config_salva.get('sobremesas', '')
             )
             
-            # Impressora de Delivery
-            self.imp_delivery = self.criar_linha_impressora(
-                frame, "Delivery:", row_start+5, impressoras,
-                config_salva.get('delivery', '')
+            # Impressora para Outros
+            self.imp_outros = self.criar_linha_impressora(
+                frame, "Outros:", row_start+5, impressoras,
+                config_salva.get('outros', '')
             )
             
             # Configura o tamanho da fonte
@@ -903,7 +903,7 @@ class ConfiguracaoModule(BaseModule):
                 'cozinha': self.imp_cozinha.get() if hasattr(self, 'imp_cozinha') else '',
                 'bar': self.imp_bar.get() if hasattr(self, 'imp_bar') else '',
                 'sobremesas': self.imp_sobremesas.get() if hasattr(self, 'imp_sobremesas') else '',
-                'delivery': self.imp_delivery.get() if hasattr(self, 'imp_delivery') else '',
+                'outros': self.imp_outros.get() if hasattr(self, 'imp_outros') else '',
                 'tamanho_fonte': self.imp_tamanho_fonte.get() if hasattr(self, 'imp_tamanho_fonte') else '12'
             }
             

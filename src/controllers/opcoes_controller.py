@@ -86,6 +86,12 @@ class OpcoesController:
         if not self.db:
             return False
         return self.db.excluir_item(item_id)
+        
+    def obter_item_opcao(self, item_id):
+        """Obtém um item de opção pelo ID."""
+        if not self.db:
+            return None
+        return self.db.obter_item(item_id)
     
     # Métodos para Relação entre Produtos e Opções
     def listar_grupos_por_produto(self, produto_id):
@@ -281,5 +287,95 @@ class OpcoesController:
             
         except Exception as e:
             print(f"Erro ao salvar vínculos do produto: {e}")
+            self.db.db.rollback()
+            return False
+            
+    def salvar_vinculos_grupo(self, grupo_id, vinculos):
+        """
+        Salva os vínculos entre um grupo de opções e produtos.
+        
+        Args:
+            grupo_id: ID do grupo de opções
+            vinculos: Lista de dicionários com as chaves 'produto_id' e 'obrigatorio'
+            
+        Returns:
+            bool: True se a operação foi bem-sucedida, False caso contrário
+        """
+        if not self.db:
+            return False
+            
+        try:
+            cursor = self.db.db.cursor()
+            
+            # Remove todos os vínculos existentes para o grupo
+            cursor.execute("""
+                DELETE FROM produto_opcoes 
+                WHERE grupo_id = %s
+            """, (grupo_id,))
+            
+            # Adiciona os novos vínculos
+            for vinculo in vinculos:
+                cursor.execute("""
+                    INSERT INTO produto_opcoes 
+                    (produto_id, grupo_id, obrigatorio) 
+                    VALUES (%s, %s, %s)
+                """, (
+                    vinculo['produto_id'],
+                    grupo_id,
+                    vinculo['obrigatorio']
+                ))
+            
+            self.db.db.commit()
+            return True
+            
+        except Exception as e:
+            print(f"Erro ao salvar vínculos do grupo: {e}")
+            self.db.db.rollback()
+            return False
+            
+    def salvar_vinculo_grupo(self, produto_id, grupo_id, obrigatorio=False):
+        """
+        Salva um único vínculo entre produto e grupo.
+        
+        Args:
+            produto_id: ID do produto
+            grupo_id: ID do grupo de opções
+            obrigatorio: Se o grupo é obrigatório para o produto
+            
+        Returns:
+            bool: True se a operação foi bem-sucedida, False caso contrário
+        """
+        if not self.db:
+            return False
+            
+        try:
+            cursor = self.db.db.cursor()
+            
+            # Verifica se o vínculo já existe
+            cursor.execute("""
+                SELECT COUNT(*) FROM produto_opcoes 
+                WHERE produto_id = %s AND grupo_id = %s
+            """, (produto_id, grupo_id))
+            
+            if cursor.fetchone()[0] > 0:
+                # Atualiza o vínculo existente
+                cursor.execute("""
+                    UPDATE produto_opcoes 
+                    SET obrigatorio = %s 
+                    WHERE produto_id = %s AND grupo_id = %s
+                """, (obrigatorio, produto_id, grupo_id))
+            else:
+                # Cria um novo vínculo
+                cursor.execute("""
+                    INSERT INTO produto_opcoes 
+                    (produto_id, grupo_id, obrigatorio) 
+                    VALUES (%s, %s, %s)
+                """, (produto_id, grupo_id, obrigatorio))
+            
+            self.db.db.commit()
+            return True
+            
+        except Exception as e:
+            print(f"Erro ao salvar vínculo: {e}")
             self.db.db.rollback()
             return False
