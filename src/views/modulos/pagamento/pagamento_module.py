@@ -242,7 +242,7 @@ class PagamentoModule:
         style.configure("Treeview.Heading", 
                       font=("Arial", 10, "bold"), 
                       background=self.cores["primaria"],
-                      foreground=self.cores["texto_claro"])
+                      foreground=self.cores["texto"])
         style.map("Treeview", 
                 background=[("selected", "#4a6fa5")],
                 foreground=[("selected", "#ffffff")])
@@ -256,7 +256,7 @@ class PagamentoModule:
         scrollbar.pack(side="right", fill="y")
         
         # Treeview para pagamentos
-        colunas = ('forma', 'valor', 'acao')
+        colunas = ('forma', 'valor')
         self.pagamentos_tree = ttk.Treeview(
             tree_frame, 
             columns=colunas, 
@@ -268,16 +268,24 @@ class PagamentoModule:
         # Configurar colunas
         self.pagamentos_tree.heading('forma', text='Forma de Pagamento')
         self.pagamentos_tree.heading('valor', text='Valor')
-        self.pagamentos_tree.heading('acao', text='Ação')
         
-        self.pagamentos_tree.column('forma', width=150)
-        self.pagamentos_tree.column('valor', width=100, anchor="e")
-        self.pagamentos_tree.column('acao', width=80, anchor="center")
+        self.pagamentos_tree.column('forma', width=200)
+        self.pagamentos_tree.column('valor', width=150, anchor="e")
         
         # Configurar scrollbar
         scrollbar.config(command=self.pagamentos_tree.yview)
         
         self.pagamentos_tree.pack(side="left", fill="both", expand=True)
+        
+        # Criar menu de contexto para remoção de pagamento
+        self.context_menu = tk.Menu(self.pagamentos_tree, tearoff=0)
+        self.context_menu.add_command(
+            label="Remover Pagamento",
+            command=self._remover_pagamento_selecionado
+        )
+        
+        # Vincular evento de clique direito
+        self.pagamentos_tree.bind("<Button-3>", self._mostrar_menu_contexto)
         
         # Botão de finalizar venda
         finalizar_frame = ttk.Frame(coluna_direita)
@@ -833,14 +841,10 @@ class PagamentoModule:
                 iid=item_id,
                 values=(
                     pagamento['forma_nome'],
-                    f"R$ {pagamento['valor']:.2f}".replace('.', ','),
-                    "Remover"
+                    f"R$ {pagamento['valor']:.2f}".replace('.', ',')
                 )
             )
             
-        # Configurar evento de clique para remover pagamento
-        self.pagamentos_tree.bind("<ButtonRelease-1>", self._remover_pagamento_click)
-        
         # Calcular valor restante
         valor_pago = sum(p['valor'] for p in self.pagamentos)
         valor_restante = max(0, self.valor_final - valor_pago)
@@ -854,23 +858,32 @@ class PagamentoModule:
         else:
             self.finalizar_btn.config(state="disabled")
     
-    def _remover_pagamento_click(self, event):
-        """Trata o clique na coluna de remover pagamento."""
-        # Obter o item clicado
+    def _mostrar_menu_contexto(self, event):
+        """Exibe o menu de contexto ao clicar com o botão direito."""
+        # Identificar o item clicado
         item_id = self.pagamentos_tree.identify_row(event.y)
         if not item_id:
             return
             
-        # Obter a coluna clicada
-        coluna = self.pagamentos_tree.identify_column(event.x)
-        if coluna != "#3":  # Coluna 'Ação'
+        # Selecionar o item clicado
+        self.pagamentos_tree.selection_set(item_id)
+        
+        # Exibir o menu de contexto
+        try:
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
+    
+    def _remover_pagamento_selecionado(self):
+        """Remove o pagamento atualmente selecionado na tabela."""
+        # Obter o item selecionado
+        selecionados = self.pagamentos_tree.selection()
+        if not selecionados:
             return
             
+        item_id = selecionados[0]
+        
         # Obter o índice do pagamento
-        tags = self.pagamentos_tree.item(item_id, 'tags')
-        if not tags:
-            return
-            
         try:
             indice = int(item_id.split('_')[1])
             self._remover_pagamento(indice)
@@ -1078,13 +1091,35 @@ class PagamentoModule:
             'valor_total': self.valor_total,
             'desconto': self.desconto,
             'valor_final': self.valor_final,
-            'pagamentos': self.pagamentos,
+            'itens': self.itens_venda,
             'data_venda': datetime.datetime.now()
         }
+        
+        # Preparar os pagamentos no formato esperado
+        pagamentos_formatados = []
+        for pagamento in self.pagamentos:
+            pagamento_formatado = {
+                'forma_id': pagamento['forma_id'],
+                'forma_nome': pagamento['forma_nome'],
+                'valor': pagamento['valor']
+            }
+            
+            # Adicionar informações adicionais, se disponíveis
+            if 'cliente_id' in pagamento:
+                pagamento_formatado['cliente_id'] = pagamento['cliente_id']
+                if 'cliente_nome' in pagamento:
+                    pagamento_formatado['cliente_nome'] = pagamento['cliente_nome']
+                
+                # Adicionar observação para pagamentos vinculados a cliente
+                pagamento_formatado['observacao'] = f"{pagamento['forma_nome']} - Cliente: {pagamento.get('cliente_nome', '')}"
+            else:
+                pagamento_formatado['observacao'] = pagamento['forma_nome']
+                
+            pagamentos_formatados.append(pagamento_formatado)
             
         # Chamar o callback de finalização, se existir
         if self.callback_finalizar:
-            self.callback_finalizar(self.pagamentos)
+            self.callback_finalizar(venda_dados, self.itens_venda, pagamentos_formatados)
         
         # Imprimir o cupom fiscal
         self._imprimir_cupom_fiscal(venda_dados)

@@ -536,8 +536,8 @@ class DeliveryModule:
         aplicar_estilo(finalizar_button, "sucesso")
         finalizar_button.pack(fill="x", pady=5)
         
-        # Vincular duplo clique para remover do carrinho
-        self.carrinho_tree.bind("<Double-1>", self._remover_do_carrinho)
+        # Vincular duplo clique para abrir opções do produto
+        self.carrinho_tree.bind("<Double-1>", self._abrir_opcoes_item_carrinho)
         
         # Barra inferior vazia para manter o layout
         ttk.Frame(container, height=10).grid(row=2, column=0, columnspan=2, sticky="ew")
@@ -1037,34 +1037,6 @@ class DeliveryModule:
         width = janela.winfo_width()
         height = janela.winfo_height()
         
-    def _atualizar_dados_cliente(self, dados_atualizados=None):
-        """Atualiza os dados do cliente na interface."""
-        if dados_atualizados:
-            self.cliente_atual = dados_atualizados
-            
-        if self.cliente_atual:
-            # Atualiza os campos visíveis
-            self.nome_cliente_label.config(text=self.cliente_atual['nome'])
-            self.telefone_cliente_label.config(text=self.cliente_atual['telefone'])
-            
-            # Formata o endereço em múltiplas linhas se necessário
-            endereco = f"{self.cliente_atual['endereco']}, {self.cliente_atual['numero']} - {self.cliente_atual['bairro']}"
-            self.endereco_cliente_label.config(text=endereco)
-            
-            # Atualiza a região e taxa de entrega
-            regiao = self.delivery_controller.obter_regiao_por_bairro(self.cliente_atual.get('bairro', ''))
-            if regiao:
-                self.regiao_entrega_label.config(text=regiao['nome'])
-                self.taxa_entrega_label.config(text=f"R$ {float(regiao['taxa_entrega']):.2f}".replace('.', ','))
-            else:
-                self.regiao_entrega_label.config(text="Região não encontrada")
-                self.taxa_entrega_label.config(text="R$ 0,00")
-        else:
-            # Limpa os campos quando não há cliente selecionado
-            self.nome_cliente_label.config(text="-")
-            self.telefone_cliente_label.config(text="-")
-            self.endereco_cliente_label.config(text="-")
-            self.taxa_entrega_label.config(text="R$ 0,00")
     def _carregar_produtos(self, tipo=None):
         """Carrega todos os produtos ou filtra por tipo"""
         # Limpar a tabela atual
@@ -1372,32 +1344,75 @@ class DeliveryModule:
         self._atualizar_total_pedido()
     
 
+    def _abrir_opcoes_item_carrinho(self, event=None):
+        """Abre as opções do item do carrinho quando o usuário dá um duplo clique"""
+        selecionado = self.carrinho_tree.selection()
+        if not selecionado:
+            return
+            
+        # Obter o ID do item selecionado
+        item_id = selecionado[0]
+        
+        # Verificar se é um item principal ou uma opção
+        item = self.carrinho_tree.item(item_id)
+        
+        # Se for uma opção, obter o item pai
+        if self.carrinho_tree.parent(item_id):
+            item_id = self.carrinho_tree.parent(item_id)
+            item = self.carrinho_tree.item(item_id)
+        
+        # Obter os dados do item no carrinho
+        for item_pedido in self.itens_pedido:
+            if item_pedido.get('id_item') == item_id:
+                # Encontrar o produto no banco de dados
+                produto = self.cadastro_controller.obter_produto_por_id(item_pedido['produto_id'])
+                if produto:
+                    # Remover o item do carrinho temporariamente
+                    self.itens_pedido.remove(item_pedido)
+                    
+                    # Abrir as opções do produto
+                    self._mostrar_opcoes_produto(produto_id=produto['id'])
+                return
+
     def _remover_do_carrinho(self, event=None):
         """Remove o item selecionado do carrinho"""
-        # Obter o item selecionado na tabela do carrinho
         selecionado = self.carrinho_tree.selection()
-        
         if not selecionado:
-            messagebox.showwarning("Aviso", "Selecione um item para remover do carrinho.")
+            messagebox.showwarning("Aviso", "Selecione um item para remover.")
             return
             
-        # Verificar se o item selecionado é um item principal ou uma opção
-        parent = self.carrinho_tree.parent(selecionado[0])
+        # Obter o ID do item selecionado
+        item_id = selecionado[0]
         
-        if parent:  # Se tem parent, é uma opção, então seleciona o item principal
-            messagebox.showinfo("Informação", "Para remover um item com opções, selecione o produto principal, não a opção.")
-            return
+        # Verificar se é um item principal ou uma opção
+        item = self.carrinho_tree.item(item_id)
         
-        # Obter o índice do item no carrinho
-        indice = self.carrinho_tree.index(selecionado[0])
-        
-        if 0 <= indice < len(self.itens_pedido):
-            # Remover o item do carrinho
-            self.itens_pedido.pop(indice)
+        # Se for uma opção (filho), obter o item pai
+        if self.carrinho_tree.parent(item_id):
+            item_pai_id = self.carrinho_tree.parent(item_id)
             
-            # Atualizar a exibição do carrinho
-            self._atualizar_carrinho()
-    
+            # Remover a opção do item no carrinho
+            for i, item_pedido in enumerate(self.itens_pedido):
+                if item_pedido.get('id_item') == item_pai_id:
+                    # Encontrar a opção correspondente
+                    for j, opcao in enumerate(item_pedido.get('opcoes', [])):
+                        if opcao.get('id_item') == item_id:
+                            # Remover a opção
+                            item_pedido['opcoes'].pop(j)
+                            
+                            # Atualizar o preço total do item
+                            item_pedido['total'] -= opcao.get('preco_adicional', 0)
+                            
+                            # Atualizar a exibição
+                            self._atualizar_carrinho()
+                            return
+        else:
+            # Remover o item principal do carrinho
+            for i, item_pedido in enumerate(self.itens_pedido):
+                if item_pedido.get('id_item') == item_id:
+                    self.itens_pedido.pop(i)
+                    self._atualizar_carrinho()
+                    return
     
     def _atualizar_carrinho(self):
         """Atualiza a exibição do carrinho de compras"""
@@ -1707,11 +1722,12 @@ class DeliveryModule:
                 bg=cor,
                 fg='white',
                 selectcolor=cor,
-                activebackground=self._darken_color(cor),
+                activebackground=self._darken_color(cor, 0.3),  # Cor mais clara para o estado ativo
                 activeforeground='white',
                 indicatoron=0,
                 relief='flat',
                 bd=0,
+                highlightthickness=0,  # Remove a borda de foco
                 padx=5,
                 pady=5,
                 wraplength=80,  # Forçar quebra de linha
@@ -1722,9 +1738,22 @@ class DeliveryModule:
             )
             btn.pack(fill='both', expand=True, ipady=8, padx=2, pady=2)
             
+            # Configurar estilo para o estado selecionado
+            btn['selectcolor'] = self._darken_color(cor, 0.3)  # Cor mais clara quando selecionado
+            
             # Efeito hover para os botões de pagamento
-            btn.bind('<Enter>', lambda e, b=btn, c=cor: b.config(bg=self._darken_color(c)))
-            btn.bind('<Leave>', lambda e, b=btn, c=cor: b.config(bg=c))
+            btn.bind('<Enter>', lambda e, b=btn, c=cor: b.config(bg=self._darken_color(c, 0.1)) if forma_pagamento.get() != forma else None)
+            btn.bind('<Leave>', lambda e, b=btn, c=cor: b.config(bg=c) if forma_pagamento.get() != forma else None)
+            
+            # Atualizar a cor quando o botão for selecionado
+            def on_select(forma_btn=forma, btn_ref=btn, c=cor):
+                if forma_pagamento.get() == forma_btn:
+                    btn_ref.config(bg=self._darken_color(c, 0.3))  # Cor mais clara para o selecionado
+                else:
+                    btn_ref.config(bg=c)
+            
+            # Configurar o trace para atualizar a cor quando a seleção mudar
+            forma_pagamento.trace_add('write', lambda *args, f=forma, b=btn, c=cor: on_select(f, b, c))
             
             # Selecionar o primeiro botão por padrão
             if i == 0:

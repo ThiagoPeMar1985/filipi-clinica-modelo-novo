@@ -100,7 +100,7 @@ class VendasModule:
             
         # Inicializar o módulo de status de pedidos
         try:
-            status_module = StatusPedidosModule(self.frame, self.controller)
+            status_module = StatusPedidosModule(self.frame, self.controller, self.controller.db_connection)
             self.current_view = status_module.show()
             
             # Garantir que o frame seja exibido
@@ -108,6 +108,7 @@ class VendasModule:
            
         except Exception as e:
             print(f"Erro ao inicializar módulo de status de pedidos: {e}")
+            messagebox.showerror("Erro", f"Erro ao inicializar módulo de status de pedidos: {e}")
             messagebox.showerror("Erro", f"Erro ao inicializar módulo de status de pedidos: {e}")
     
     def _show_default(self):
@@ -878,11 +879,13 @@ class VendasModule:
         # Configurar evento para quando a janela for fechada
         pagamento_window.protocol("WM_DELETE_WINDOW", pagamento_window.destroy)
         
-    def _processar_venda_finalizada(self, pagamentos):
+    def _processar_venda_finalizada(self, venda_dados, itens_venda, pagamentos):
         """
         Processa a venda finalizada com os pagamentos realizados
         
         Args:
+            venda_dados: Dicionário com os dados da venda
+            itens_venda: Lista de itens da venda
             pagamentos: Lista de dicionários com os dados dos pagamentos
         """
         # Calcular totais
@@ -899,7 +902,7 @@ class VendasModule:
         if len(self.carrinho) > 3:
             descricao_itens += "..."
             
-        descricao = f"Venda avulsa - {descricao_itens}"
+        descricao = f"Venda {venda_dados.get('tipo', 'avulsa')} - {descricao_itens}"
         
         cursor = None
         try:
@@ -938,37 +941,57 @@ class VendasModule:
             
             pedido_id = cursor.lastrowid
             
-            # Registrar o pagamento principal
-            try:
-                # Usar a forma de pagamento do primeiro item da lista (assumindo que há pelo menos um pagamento)
-                forma_pagamento = pagamentos[0].get('forma_nome', 'Desconhecido') if pagamentos else 'Desconhecido'
-                
-                entrada_id = self.financeiro_controller.registrar_entrada(
-                    valor=valor_final,
-                    descricao=descricao,
-                    tipo_entrada=forma_pagamento,  # Usar a forma de pagamento real
-                    usuario_id=usuario_id,
-                    usuario_nome=usuario_nome,
-                    pedido_id=pedido_id
-                )
-                
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                entrada_id = None
+            # Registrar cada pagamento individualmente
+            entrada_ids = []
+            for pagamento in pagamentos:
+                try:
+                    # Obter o nome da forma de pagamento
+                    forma_pagamento = 'Desconhecido'
+                    if 'forma_nome' in pagamento:
+                        forma_pagamento = pagamento['forma_nome']
+                    elif 'forma_id' in pagamento:
+                        # Se tivermos o ID, podemos buscar o nome da forma de pagamento
+                        try:
+                            cursor_pag = self.controller.db_connection.cursor(dictionary=True)
+                            cursor_pag.execute("SELECT nome FROM formas_pagamento WHERE id = %s", (pagamento['forma_id'],))
+                            forma = cursor_pag.fetchone()
+                            if forma:
+                                forma_pagamento = forma['nome']
+                            cursor_pag.close()
+                        except Exception as e:
+                            print(f"Erro ao buscar forma de pagamento: {e}")
+                    
+                    # Registrar entrada financeira para cada pagamento
+                    entrada_id = self.financeiro_controller.registrar_entrada(
+                        valor=pagamento['valor'],
+                        descricao=f"{descricao} - {pagamento.get('observacao', '')}",
+                        tipo_entrada=forma_pagamento,
+                        usuario_id=usuario_id,
+                        usuario_nome=usuario_nome,
+                        pedido_id=pedido_id
+                    )
+                    entrada_ids.append(entrada_id)
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    print(f"Erro ao registrar pagamento: {e}")
+            
+            # Se não conseguiu registrar nenhum pagamento, levantar exceção
+            if not entrada_ids:
+                raise Exception("Não foi possível registrar os pagamentos.")
             
             # Commit das alterações
             self.controller.db_connection.commit()
             
             # Preparar dados da venda para impressão
             venda = {
-                'tipo': 'avulsa',
+                'tipo': venda_dados.get('tipo', 'avulsa'),
                 'valor_total': valor_total,
                 'desconto': desconto,
                 'valor_final': valor_final,
                 'data_venda': datetime.datetime.now(),
                 'pedido_id': pedido_id,
-                'entrada_id': entrada_id if 'entrada_id' in locals() else None
+                'entrada_id': entrada_ids[0] if entrada_ids else None
             }
             
             # Limpar o carrinho

@@ -8,14 +8,20 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from controllers.delivery_controller import DeliveryController
+from controllers.entregador_controller import EntregadorController
 
 class StatusPedidosModule:
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, db):
+        """Inicializa o módulo de status de pedidos."""
         self.parent = parent
         self.controller = controller
-        self.frame = ttk.Frame(parent)
+        self.db = db
+        self.frame = ttk.Frame(parent)  # Inicializa o frame principal
+        self.delivery_controller = DeliveryController()
+        self.entregador_controller = EntregadorController(db)
+        self.pedido_selecionado_id = None
         
-        # Cores do tema
+        # Configuração de cores
         self.cores = {
             "primaria": "#4a6fa5",
             "secundaria": "#28b5f4",
@@ -66,6 +72,21 @@ class StatusPedidosModule:
             btn_frame,
             text="🔄 Atualizar",
             command=self._atualizar_lista_pedidos,
+            bg=self.cores["primaria"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=15,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            font=('Arial', 10, 'bold')
+        ).pack(side='left', padx=5)
+        
+        # Botão para gerenciar entregadores
+        tk.Button(
+            btn_frame,
+            text="🚚 Entregadores",
+            command=self._gerenciar_entregadores,
             bg=self.cores["primaria"],
             fg=self.cores["texto_claro"],
             bd=0,
@@ -178,6 +199,224 @@ class StatusPedidosModule:
         
         # Carregar dados iniciais
         self._atualizar_lista_pedidos()
+    
+    def _gerenciar_entregadores(self):
+        """Abre a janela de gerenciamento de entregadores"""
+        # Criar janela de gerenciamento de entregadores
+        janela = tk.Toplevel(self.frame)
+        janela.title("Gerenciar Entregadores")
+        janela.geometry("800x500")
+        
+        # Frame principal
+        main_frame = ttk.Frame(janela, padding=10)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Título
+        ttk.Label(
+            main_frame,
+            text="🚚 Gerenciamento de Entregadores",
+            font=('Arial', 14, 'bold')
+        ).pack(anchor='w', pady=(0, 15))
+        
+        # Frame para a tabela de entregadores
+        table_frame = ttk.Frame(main_frame)
+        table_frame.pack(fill='both', expand=True)
+        
+        # Criar a tabela de entregadores
+        colunas = ("ID", "Nome", "Telefone", "Veículo", "Placa")
+        tree = ttk.Treeview(
+            table_frame,
+            columns=colunas,
+            show='headings',
+            selectmode='browse'
+        )
+        
+        # Configurar colunas
+        for col in colunas:
+            tree.heading(col, text=col)
+            tree.column(col, width=100)
+        
+        # Ajustar largura das colunas
+        tree.column("ID", width=50)
+        tree.column("Nome", width=200)
+        tree.column("Telefone", width=120)
+        tree.column("Veículo", width=150)
+        tree.column("Placa", width=100)
+        
+        # Adicionar scrollbars
+        vsb = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(table_frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        
+        # Posicionar a tabela e as scrollbars
+        tree.grid(row=0, column=0, sticky='nsew')
+        vsb.grid(row=0, column=1, sticky='ns')
+        hsb.grid(row=1, column=0, sticky='ew')
+        
+        # Configurar o grid para expandir
+        table_frame.grid_rowconfigure(0, weight=1)
+        table_frame.grid_columnconfigure(0, weight=1)
+        
+        # Frame para os botões
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill='x', pady=(15, 0))
+        
+        # Botão para adicionar entregador
+        tk.Button(
+            btn_frame,
+            text="➕ Adicionar Entregador",
+            command=lambda: self._adicionar_entregador(tree),
+            bg=self.cores["primaria"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=15,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            font=('Arial', 10, 'bold')
+        ).pack(side='left', padx=5)
+        
+        # Botão para remover entregador
+        tk.Button(
+            btn_frame,
+            text="🗑️ Remover Selecionado",
+            command=lambda: self._remover_entregador(tree),
+            bg=self.cores["alerta"],
+            fg=self.cores["texto_claro"],
+            bd=0,
+            padx=15,
+            pady=5,
+            relief='flat',
+            cursor='hand2',
+            font=('Arial', 10, 'bold')
+        ).pack(side='left', padx=5)
+        
+        # Centralizar a janela
+        self._centralizar_janela(janela)
+        
+        # Carregar dados iniciais
+        self._carregar_entregadores(tree)
+    
+    def _adicionar_entregador(self, tree):
+        """Abre o diálogo para adicionar um novo entregador"""
+        # Criar janela de diálogo para adicionar entregador
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("Adicionar Entregador")
+        dialog.resizable(False, False)
+        
+        # Variáveis para os campos
+        nome = tk.StringVar()
+        telefone = tk.StringVar()
+        veiculo = tk.StringVar()
+        placa = tk.StringVar()
+        
+        # Função para salvar o entregador
+        def salvar():
+            if not all([nome.get(), telefone.get(), veiculo.get(), placa.get()]):
+                messagebox.showwarning("Atenção", "Todos os campos são obrigatórios.", parent=dialog)
+                return
+                
+            dados = {
+                'nome': nome.get(),
+                'telefone': telefone.get(),
+                'veiculo': veiculo.get(),
+                'placa': placa.get()
+            }
+            
+            sucesso, mensagem = self.entregador_controller.adicionar_entregador(dados)
+            if sucesso:
+                messagebox.showinfo("Sucesso", mensagem, parent=dialog)
+                self._carregar_entregadores(tree)
+                dialog.destroy()
+            else:
+                messagebox.showerror("Erro", mensagem, parent=dialog)
+        
+        # Layout do formulário
+        ttk.Label(dialog, text="Nome:").grid(row=0, column=0, padx=5, pady=5, sticky='e')
+        ttk.Entry(dialog, textvariable=nome, width=30).grid(row=0, column=1, padx=5, pady=5, sticky='w')
+        
+        ttk.Label(dialog, text="Telefone:").grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        ttk.Entry(dialog, textvariable=telefone, width=30).grid(row=1, column=1, padx=5, pady=5, sticky='w')
+        
+        ttk.Label(dialog, text="Veículo:").grid(row=2, column=0, padx=5, pady=5, sticky='e')
+        ttk.Combobox(dialog, textvariable=veiculo, values=["Moto", "Carro", "Bicicleta", "Outro"], width=27).grid(row=2, column=1, padx=5, pady=5, sticky='w')
+        
+        ttk.Label(dialog, text="Placa:").grid(row=3, column=0, padx=5, pady=5, sticky='e')
+        ttk.Entry(dialog, textvariable=placa, width=30).grid(row=3, column=1, padx=5, pady=5, sticky='w')
+        
+        # Botões
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
+        
+        ttk.Button(btn_frame, text="Salvar", command=salvar).pack(side='left', padx=5)
+        ttk.Button(btn_frame, text="Cancelar", command=dialog.destroy).pack(side='left', padx=5)
+        
+        # Centralizar a janela
+        self._centralizar_janela(dialog)
+        
+        # Focar no primeiro campo
+        dialog.focus_set()
+        dialog.grab_set()
+    
+    def _remover_entregador(self, tree):
+        """Remove o entregador selecionado"""
+        # Obter o item selecionado na árvore
+        selecionado = tree.selection()
+        
+        if not selecionado:
+            messagebox.showwarning("Atenção", "Selecione um entregador para remover.")
+            return
+            
+        # Obter o ID do entregador selecionado
+        entregador_id = tree.item(selecionado[0], 'values')[0]
+        
+        # Confirmar a remoção
+        if messagebox.askyesno("Confirmar", "Tem certeza que deseja remover este entregador?"):
+            # Chamar o controlador para remover o entregador
+            sucesso, mensagem = self.entregador_controller.remover_entregador(entregador_id)
+            
+            if sucesso:
+                messagebox.showinfo("Sucesso", mensagem)
+                # Atualizar a lista de entregadores
+                self._carregar_entregadores(tree)
+            else:
+                messagebox.showerror("Erro", mensagem)
+    
+    def _carregar_entregadores(self, tree):
+        """Carrega a lista de entregadores na tabela a partir do banco de dados"""
+        try:
+            # Limpar a tabela
+            for item in tree.get_children():
+                tree.delete(item)
+            
+            # Buscar entregadores no banco de dados
+            entregadores = self.entregador_controller.listar_entregadores(apenas_ativos=True)
+            
+            if not entregadores:
+                messagebox.showinfo("Informação", "Nenhum entregador cadastrado.")
+                return
+            
+            # Preencher a tabela com os dados do banco
+            for entregador in entregadores:
+                tree.insert('', 'end', values=(
+                    entregador['id'],
+                    entregador['nome'],
+                    entregador['telefone'],
+                    entregador['veiculo'],
+                    entregador['placa']
+                ))
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao carregar entregadores: {str(e)}")
+    
+    def _centralizar_janela(self, janela):
+        """Centraliza a janela na tela"""
+        janela.update_idletasks()
+        width = janela.winfo_width()
+        height = janela.winfo_height()
+        x = (janela.winfo_screenwidth() // 2) - (width // 2)
+        y = (janela.winfo_screenheight() // 2) - (height // 2)
+        janela.geometry(f'{width}x{height}+{x}+{y}')
     
     def _atualizar_lista_pedidos(self):
         """Atualiza a lista de pedidos em todas as abas com dados reais do banco de dados"""        

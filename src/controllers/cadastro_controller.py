@@ -39,6 +39,30 @@ class CadastroController:
         except Exception as e:
             raise Exception(f"Erro ao listar produtos: {str(e)}")
             
+    def obter_produto_por_id(self, produto_id):
+        """
+        Obtém um produto pelo seu ID.
+        
+        Args:
+            produto_id: ID do produto a ser buscado
+            
+        Returns:
+            dict: Dicionário com os dados do produto ou None se não encontrado
+        """
+        from src.db.cadastro_db import CadastroDB
+        from src.db.database import DatabaseConnection
+        
+        try:
+            # Obter conexão usando a classe DatabaseConnection
+            connection = DatabaseConnection().get_connection()
+            db = CadastroDB(connection)
+            
+            # Usar o método existente obter_produto
+            return db.obter_produto(produto_id)
+        except Exception as e:
+            print(f"Erro ao obter produto por ID: {str(e)}")
+            return None
+            
     def obter_produto(self, produto_id):
         """Obtém um produto pelo ID."""
         from src.db.cadastro_db import CadastroDB

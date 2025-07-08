@@ -594,14 +594,9 @@ class DeliveryController:
             else:
                 troco_para = 0.0
             
-            # Definir status do pedido com base na forma de pagamento
-            # Se for dinheiro, fica como PENDENTE até confirmar o pagamento
-            # Se for cartão, pode ser marcado como PAGO se a transação for aprovada
+            # Definir status do pedido como PENDENTE por padrão
+            # O status será atualizado posteriormente quando o pagamento for confirmado
             status_pedido = 'PENDENTE'
-            if forma_pagamento != 'dinheiro':
-                # Aqui você pode adicionar lógica para verificar se o pagamento foi aprovado
-                # Por enquanto, vamos assumir que pagamentos não em dinheiro são aprovados automaticamente
-                status_pedido = 'PAGO'
             
             # Preparar os parâmetros para a inserção do pedido
             params_pedido = (
