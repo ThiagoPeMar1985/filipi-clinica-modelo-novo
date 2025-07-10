@@ -65,18 +65,16 @@ class DeliveryModule:
         style.configure('TButton', 
                       font=('Arial', 14),
                       padding=10)
-        style.configure("Treeview", 
-                      background="white",
-                      foreground="black",  
-                      rowheight=25,
-                      fieldbackground="white")
+        
+        # Configurar estilo para a Treeview usando a função global
+        from src.config.estilos import configurar_estilo_tabelas
+        style = configurar_estilo_tabelas()
+        
+        # Configuração adicional para os cabeçalhos
         style.configure("Treeview.Heading", 
                       font=("Arial", 10, "bold"), 
                       background=self.cores["primaria"],
                       foreground=self.cores["texto"])
-        style.map("Treeview", 
-                background=[("selected", "#4a6fa5")],
-                foreground=[("selected", "#ffffff")])
         
         # Título da página
         titulo_frame = tk.Frame(frame, bg=self.cores["fundo"])
@@ -295,10 +293,11 @@ class DeliveryModule:
         colunas_produtos = ("Código", "Produto", "Preço", "Estoque")
         
         # Configurar estilo para a tabela de produtos
-        style = ttk.Style()
+        from src.config.estilos import configurar_estilo_tabelas
+        style = configurar_estilo_tabelas()
+        
+        # Configurações adicionais específicas para esta tabela
         style.configure("Produtos.Treeview",
-            background="#ffffff",
-            fieldbackground="#ffffff",
             borderwidth=0,
             highlightthickness=0
         )
@@ -435,10 +434,11 @@ class DeliveryModule:
         colunas_carrinho = ("Produto", "Qtd", "Unit.", "Total")
         
         # Configurar estilo para a tabela do carrinho
-        style = ttk.Style()
+        from src.config.estilos import configurar_estilo_tabelas
+        style = configurar_estilo_tabelas()
+        
+        # Configurações adicionais específicas para esta tabela
         style.configure("Carrinho.Treeview",
-            background="#ffffff",
-            fieldbackground="#ffffff",
             borderwidth=0,
             highlightthickness=0
         )
@@ -640,10 +640,11 @@ class DeliveryModule:
         columns = ("ID", "Nome", "Telefone", "Endereço")
         
         # Configurar estilo para a tabela de clientes
-        style = ttk.Style()
+        from src.config.estilos import configurar_estilo_tabelas
+        style = configurar_estilo_tabelas()
+        
+        # Configurações adicionais específicas para esta tabela
         style.configure("Clientes.Treeview",
-            background="#ffffff",
-            fieldbackground="#ffffff",
             borderwidth=0,
             highlightthickness=0,
             rowheight=30
@@ -2108,6 +2109,13 @@ class DeliveryModule:
                 dados_pedido['valor_recebido'] = valor_recebido_float
                 dados_pedido['troco'] = valor_recebido_float - valor_total
             
+            # Adicionar o ID do usuário logado aos dados do pedido
+            if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
+                dados_pedido['usuario_id'] = self.controller.usuario.id
+            else:
+                # Se não houver usuário logado, usar um valor padrão (1 = admin)
+                dados_pedido['usuario_id'] = 1
+                
             # Registrar o pedido no banco de dados
             try:
                 sucesso, mensagem, pedido_id = self.delivery_controller.registrar_pedido(dados_pedido)
@@ -2375,10 +2383,11 @@ class DeliveryModule:
         colunas = ("ID", "Nome", "Taxa (R$)", "Tempo Médio (min)", "Status")
         
         # Configurar estilo para a tabela
-        style = ttk.Style()
+        from src.config.estilos import configurar_estilo_tabelas
+        style = configurar_estilo_tabelas()
+        
+        # Configurações adicionais específicas para esta tabela
         style.configure("Regioes.Treeview",
-            background="#ffffff",
-            fieldbackground="#ffffff",
             borderwidth=0,
             highlightthickness=0
         )

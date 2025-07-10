@@ -15,6 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 # Importações locais
 from src.controllers.opcoes_controller import OpcoesController
 from src.views.modulos.base_module import BaseModule
+from src.config.estilos import CORES, FONTES
 
 class OpcoesModule(BaseModule):
     # Dicionário para rastrear estilos já criados
@@ -47,6 +48,11 @@ class OpcoesModule(BaseModule):
                       relief='flat',
                       padding=0)
         
+        # Configura as cores para o estado selecionado
+        style.map(f'{nome_estilo}.Treeview',
+                background=[('selected', CORES['primaria'])],
+                foreground=[('selected', CORES['texto_claro'])])
+        
         style.configure(f'{nome_estilo}.Treeview.Heading',
                       background='#f0f0f0',
                       foreground='black',
@@ -54,10 +60,8 @@ class OpcoesModule(BaseModule):
                       borderwidth=0,
                       relief='flat')
         
-        style.map(f'{nome_estilo}.Treeview',
-                background=[('selected', '#0078d7')],
-                foreground=[('selected', 'white')])
-        
+
+
         cls._estilos_criados[nome_estilo] = True
     
     def __init__(self, parent, controller, db_connection=None):

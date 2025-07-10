@@ -44,7 +44,8 @@ class BaseModule:
             'destaque_hover': '#43a047',  # Verde mais escuro (hover)
             'alerta': '#f44336',          # Vermelho
             'alerta_hover': '#d32f2f',    # Vermelho mais escuro (hover)
-            'borda': '#e0e0e0'
+            'borda': '#e0e0e0',
+            'mesa_card': '#4CAF50'        # Verde para cards de mesa
         }
         
         # Estilo para frames
@@ -126,21 +127,7 @@ class BaseModule:
                  
        
         
-        # Estilo personalizado para Treeview sem relevo 3D
-        style.configure('Custom.Treeview',
-                      background='white',
-                      foreground='#000000',  # Texto preto para melhor legibilidade
-                      fieldbackground='white',
-                      borderwidth=0,
-                      relief='flat')  # Removendo o relevo 3D
-        style.configure('Custom.Treeview.Heading',
-                      background='white',  # Fundo branco para cabeçalho
-                      foreground='#000000',    # Texto preto para contraste
-                      font=('Arial', 10, 'bold'),
-                      relief='flat')  # Removendo o relevo 3D do cabeçalho
-        style.map('Custom.Treeview',
-                 background=[('selected', '#e0e0e0')],
-                 foreground=[('selected', '#000000')])
+     
                  
         # Aplicar o estilo Custom.Treeview como padrão para todas as Treeviews
         style.configure('Treeview',
@@ -152,11 +139,12 @@ class BaseModule:
         style.configure('Treeview.Heading',
                       background='white',  # Fundo branco para cabeçalho
                       foreground='#000000',    # Texto preto para contraste
-                      font=('Arial', 10, 'bold'),
-                      relief='flat')
+                      font=('Arial', 10, 'bold'),  # Texto em negrito
+                      relief='flat',
+                      padding=5)  # Adiciona um pouco de espaço ao redor do texto
         style.map('Treeview',
-                 background=[('selected', '#e0e0e0')],
-                 foreground=[('selected', '#000000')])
+                 background=[('selected', self.cores['primaria'])],
+                 foreground=[('selected', self.cores['texto_claro'])])
     
     def aplicar_estilos(self):
         """Aplica os estilos aos widgets existentes"""

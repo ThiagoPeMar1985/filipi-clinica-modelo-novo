@@ -74,3 +74,21 @@ def aplicar_estilo(widget, estilo):
     if estilo in ESTILOS_BOTAO:
         widget.config(**ESTILOS_BOTAO[estilo])
     return widget
+
+def configurar_estilo_tabelas():
+    """Configura o estilo padrão para todas as tabelas (Treeview) do sistema"""
+    import tkinter.ttk as ttk
+    
+    style = ttk.Style()
+    style.configure("Treeview",
+        background="#FFFFFF",
+        foreground="#000000",
+        fieldbackground="#FFFFFF",
+        borderwidth=0
+    )
+    style.map('Treeview', 
+        background=[('selected', CORES['primaria'])],
+        foreground=[('selected', CORES['texto_claro'])]
+    )
+    
+    return style

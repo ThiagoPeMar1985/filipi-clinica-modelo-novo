@@ -1,8 +1,21 @@
+"""
+Módulo de gerenciamento de mesas do restaurante.
+Permite visualizar, adicionar, editar e remover mesas.
+"""
 import tkinter as tk
 from tkinter import ttk
+from .editarMesas_module import EditarMesasModule
+from .visualizar_module import VisualizarMesasModule
 
 class MesasModule:
     def __init__(self, parent, controller):
+        """
+        Inicializa o módulo de gerenciamento de mesas.
+        
+        Args:
+            parent: Widget pai
+            controller: Controlador principal
+        """
         self.parent = parent
         self.controller = controller
         self.frame = ttk.Frame(parent)
@@ -15,15 +28,30 @@ class MesasModule:
             {"nome": "Editar Mesas", "acao": "editar"},
             {"nome": "Transferir Mesa", "acao": "transferir"}
         ]
-        
+    
     def get_opcoes(self):
-        """Retorna a lista de opções para a barra lateral"""
-        return self.opcoes
+        """
+        Retorna a lista de opções para a barra lateral.
         
+        Returns:
+            list: Lista de dicionários com as opções do menu
+        """
+        return self.opcoes
+    
     def show(self, acao=None):
+        """
+        Exibe a visualização solicitada com base na ação fornecida.
+        
+        Args:
+            acao (str, optional): Ação a ser executada ('visualizar', 'editar', 'transferir'). 
+                                Se None, exibe a visualização padrão.
+        """
+        # Limpar visualização atual se existir
         if self.current_view:
             self.current_view.destroy()
-            
+            self.current_view = None
+        
+        # Exibir a visualização solicitada
         if acao == 'visualizar':
             self._show_visualizar()
         elif acao == 'editar':
@@ -32,36 +60,128 @@ class MesasModule:
             self._show_transferir()
         else:
             self._show_default()
-            
+        
+        # Empacotar o frame principal
         self.frame.pack(fill='both', expand=True)
         return self.frame
     
     def _show_default(self):
-        # Tela inicial do módulo de mesas
-        label = ttk.Label(
-            self.frame, 
-            text="Selecione uma opção de mesas no menu lateral", 
-            font=('Arial', 12)
-        )
-        label.pack(pady=20)
+        """Exibe a tela inicial do módulo de mesas."""
+        frame = ttk.Frame(self.frame, padding=20)
+        
+        ttk.Label(
+            frame, 
+            text="Gerenciamento de Mesas", 
+            font=('Arial', 16, 'bold')
+        ).pack(pady=(20, 10))
+        
+        ttk.Label(
+            frame,
+            text="Selecione uma opção no menu lateral para começar.",
+            font=('Arial', 11)
+        ).pack(pady=(0, 20))
+        
+        # Adicionar ícones ou instruções visuais, se necessário
+        
+        frame.pack(fill='both', expand=True)
+        self.current_view = frame
     
     def _show_visualizar(self):
-        frame = ttk.Frame(self.frame)
-        ttk.Label(frame, text="Visualização de Mesas", font=('Arial', 14, 'bold')).pack(pady=10)
-        # Adicione a visualização de mesas aqui
-        frame.pack(fill='both', expand=True, padx=20, pady=20)
-        self.current_view = frame
+        """Exibe o módulo de visualização de mesas."""
+        try:
+            self.visualizar_module = VisualizarMesasModule(
+                self.frame, 
+                self.controller,
+                db_connection=self.db_connection
+            )
+            self.current_view = self.visualizar_module.frame
+            self.current_view.pack(fill='both', expand=True, padx=20, pady=20)
+        except Exception as e:
+            self._show_error(f"Erro ao carregar visualização de mesas: {str(e)}")
     
     def _show_editar(self):
-        frame = ttk.Frame(self.frame)
-        ttk.Label(frame, text="Edição de Mesas", font=('Arial', 14, 'bold')).pack(pady=10)
-        # Adicione a edição de mesas aqui
-        frame.pack(fill='both', expand=True, padx=20, pady=20)
-        self.current_view = frame
+        """Exibe o módulo de edição de mesas."""
+        try:
+            self.editar_module = EditarMesasModule(
+                self.frame, 
+                self.controller,
+                db_connection=self.db_connection
+            )
+            self.current_view = self.editar_module.frame
+            self.current_view.pack(fill='both', expand=True, padx=20, pady=20)
+        except Exception as e:
+            self._show_error(f"Erro ao carregar edição de mesas: {str(e)}")
     
     def _show_transferir(self):
-        frame = ttk.Frame(self.frame)
-        ttk.Label(frame, text="Transferir Mesa", font=('Arial', 14, 'bold')).pack(pady=10)
-        # Adicione a transferência de mesa aqui
-        frame.pack(fill='both', expand=True, padx=20, pady=20)
+        """Exibe a funcionalidade de transferência de mesas."""
+        frame = ttk.Frame(self.frame, padding=20)
+        
+        ttk.Label(
+            frame, 
+            text="Transferir Mesa", 
+            font=('Arial', 16, 'bold')
+        ).pack(pady=(0, 20))
+        
+        ttk.Label(
+            frame,
+            text="Funcionalidade de transferência de mesa será implementada em breve.",
+            font=('Arial', 11)
+        ).pack(pady=(0, 20))
+        
+        # Adicionar mais elementos da interface de transferência aqui
+        
+        frame.pack(fill='both', expand=True)
+        self.current_view = frame
+    
+    def _show_error(self, message):
+        """
+        Exibe uma mensagem de erro na interface.
+        
+        Args:
+            message (str): Mensagem de erro a ser exibida
+        """
+        error_frame = ttk.Frame(self.frame, padding=20)
+        
+        ttk.Label(
+            error_frame,
+            text="Erro",
+            font=('Arial', 14, 'bold'),
+            foreground='red'
+        ).pack()
+        
+        ttk.Label(
+            error_frame,
+            text=message,
+            font=('Arial', 11),
+            wraplength=400
+        ).pack(pady=10)
+        
+        ttk.Button(
+            error_frame,
+            text="Voltar",
+            command=lambda: self.show()
+        ).pack(pady=(10, 0))
+        
+        error_frame.pack(fill='both', expand=True)
+        self.current_view = error_frame
+    
+    def _show_transferir(self):
+        """Exibe a funcionalidade de transferência de mesas."""
+        frame = ttk.Frame(self.frame, padding=20)
+        
+        ttk.Label(
+            frame, 
+            text="Transferir Mesa", 
+            font=('Arial', 16, 'bold')
+        ).pack(pady=(0, 20))
+        
+        ttk.Label(
+            frame,
+            text="Funcionalidade de transferência de mesa será implementada em breve.",
+            font=('Arial', 11)
+        ).pack(pady=(0, 20))
+        
+        # Adicionar mais elementos da interface de transferência aqui
+        
+        frame.pack(fill='both', expand=True)
         self.current_view = frame

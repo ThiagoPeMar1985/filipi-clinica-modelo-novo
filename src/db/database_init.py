@@ -80,7 +80,7 @@ def criar_tabelas(connection):
             data_fechamento DATETIME,
             status VARCHAR(20) NOT NULL,
             total DECIMAL(10,2) DEFAULT 0.00,
-            garcom_id INT,
+            usuario_id INT,
             tipo ENUM('MESA','AVULSO','DELIVERY') NOT NULL,
             cliente_id INT,
             cliente_nome VARCHAR(255),
@@ -148,7 +148,7 @@ def criar_tabelas(connection):
             valor_unitario DECIMAL(10,2) NOT NULL,
             subtotal DECIMAL(10,2) NOT NULL,
             observacao TEXT,
-            garcom_id INT,
+            usuario_id INT,
             data_hora DATETIME NOT NULL,
             valor_total DECIMAL(10,2) NOT NULL,
             observacoes TEXT,
@@ -216,16 +216,14 @@ def criar_tabelas(connection):
             id INT AUTO_INCREMENT PRIMARY KEY,
             pedido_id INT,
             mesa_numero INT,
-            garcom_id INT,
-            garcom_nome VARCHAR(255),
+            usuario_id INT,
+            usuario_nome VARCHAR(255),
             itens TEXT,
             valor DECIMAL(10,2) NOT NULL,
             data_hora DATETIME NOT NULL,
             tipo_pagamento VARCHAR(50),
             status VARCHAR(20) DEFAULT 'pendente',
-            descricao TEXT,
-            usuario_id INT,
-            usuario_nome VARCHAR(255)
+            descricao TEXT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
         

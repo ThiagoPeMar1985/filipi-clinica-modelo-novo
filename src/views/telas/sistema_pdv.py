@@ -260,6 +260,14 @@ class SistemaPDV:
             {"nome": "🛵 Delivery", "metodo": "delivery"},
             {"nome": "📊 Status Pedidos", "metodo": "status_pedidos"}
         ]
+        
+    def _get_opcoes_mesas(self):
+        """Retorna as opções do módulo de mesas"""
+        return [
+            {"nome": "👁️ Visualizar Mesas", "metodo": "visualizar"},
+            {"nome": "✏️ Editar Mesas", "metodo": "editar"},
+            {"nome": "🔄 Transferir Mesa", "metodo": "transferir"}
+        ]
 
     def configurar_modulos(self):
         """Configura os módulos do sistema"""
@@ -267,6 +275,7 @@ class SistemaPDV:
         opcoes_cadastro = self._get_opcoes_cadastro()
         opcoes_configuracao = self._get_opcoes_configuracao()
         opcoes_vendas = self._get_opcoes_vendas()
+        opcoes_mesas = self._get_opcoes_mesas()
         
         # Configura os comandos para cada opção do cadastro
         for opcao in opcoes_cadastro:
@@ -288,6 +297,13 @@ class SistemaPDV:
             opcao["modulo"] = 'vendas'
             opcao["acao"] = metodo
             opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('vendas', m)
+            
+        # Configura os comandos para cada opção de mesas
+        for opcao in opcoes_mesas:
+            metodo = opcao["metodo"]
+            opcao["modulo"] = 'mesas'
+            opcao["acao"] = metodo
+            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('mesas', m)
         
         # Configura os módulos disponíveis
         self.modulos = {
@@ -304,7 +320,7 @@ class SistemaPDV:
             "mesas": {
                 "nome": "MESAS",
                 "icone": "🍽️",
-                "opcoes": []
+                "opcoes": opcoes_mesas
             },
             "financeiro": {
                 "nome": "FINANCEIRO",
@@ -370,11 +386,12 @@ class SistemaPDV:
                     relief="flat",
                     anchor="w",
                     padx=15,
-                    pady=8,
+                    pady=10,  # Aumentado o padding vertical
+                    width=20,  # Definindo largura fixa para todos os botões
                     activebackground=self.cores["secundaria"],
                     activeforeground=self.cores["texto_claro"]
                 )
-                btn.pack(fill="x", pady=2)
+                btn.pack(fill="x", pady=3)  # Aumentado o espaçamento entre botões
         
         # Atualiza o módulo atual
         self.modulo_atual = modulo_id
@@ -460,6 +477,33 @@ class SistemaPDV:
                         metodo()
                     else:
                         modulo.show(metodo_nome)
+                else:
+                    modulo.show()
+                    
+            elif modulo_id == 'mesas':
+                # Cria um frame para o módulo que ocupa todo o espaço
+                modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
+                modulo_frame.pack(fill='both', expand=True)
+                
+                # Importa o módulo de mesas
+                from src.views.modulos.mesas.mesas_module import MesasModule
+                from src.db.database import db
+                
+                # Obtém a conexão com o banco de dados
+                db_connection = db.get_connection()
+                
+                # Cria a instância do módulo
+                modulo = MesasModule(modulo_frame, self)
+                
+                # Define a conexão com o banco de dados
+                self.db_connection = db_connection
+                
+                # Configura o frame do módulo para ocupar todo o espaço
+                modulo.frame.pack(fill='both', expand=True, padx=10, pady=10)
+                
+                # Se for uma ação específica, chama o método correspondente
+                if metodo_nome and metodo_nome != 'mostrar_inicio':
+                    modulo.show(metodo_nome)
                 else:
                     modulo.show()
                     

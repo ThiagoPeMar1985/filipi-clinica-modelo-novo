@@ -983,6 +983,10 @@ class CadastroModule(BaseModule):
                 # Cabeçalho da tabela
                 colunas = ("ID", "Nome", "Tipo", "Descrição", "Preço", "Unidade", "Estoque Mínimo")
                 
+                # Configurar estilo para a Treeview
+                from src.config.estilos import configurar_estilo_tabelas
+                configurar_estilo_tabelas()
+                
                 # Criando a Treeview
                 self.tree_produtos = ttk.Treeview(
                     tabela_frame, 

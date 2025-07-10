@@ -131,19 +131,30 @@ class VendasModule:
         self.current_view = frame  # Armazenar referência à visualização atual
         
         # Configurar estilo para as tabelas
-        style = ttk.Style()
-        style.configure("Treeview", 
-                      background="white",
-                      foreground=self.cores["texto"],
-                      rowheight=25,
-                      fieldbackground="white")
-        style.configure("Treeview.Heading", 
-                      font=("Arial", 10, "bold"), 
-                      background=self.cores["primaria"],
-                      foreground=self.cores["texto"])
-        style.map("Treeview", 
-                background=[("selected", "#4a6fa5")],
-                foreground=[("selected", "#ffffff")])
+        from src.config.estilos import configurar_estilo_tabelas
+        style = configurar_estilo_tabelas()
+        
+        # Estilo personalizado para a tabela de produtos
+        style.configure("Produtos.Treeview",
+            borderwidth=0,
+            highlightthickness=0
+        )
+        style.configure("Produtos.Treeview.Heading",
+            borderwidth=0,
+            relief="flat"
+        )
+        style.layout("Produtos.Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
+        
+        # Estilo personalizado para a tabela do carrinho
+        style.configure("Carrinho.Treeview",
+            borderwidth=0,
+            highlightthickness=0
+        )
+        style.configure("Carrinho.Treeview.Heading",
+            borderwidth=0,
+            relief="flat"
+        )
+        style.layout("Carrinho.Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
         
         # Título da página
         titulo_frame = tk.Frame(frame, bg=self.cores["fundo"])
@@ -238,7 +249,7 @@ class VendasModule:
         # Tabela de produtos com altura ajustada para aproveitar mais espaço
         colunas = ("Código", "Produto", "Preço", "Estoque")
         
-        self.produtos_tree = ttk.Treeview(tabela_frame, columns=colunas, show="headings", height=20, style="Custom.Treeview")
+        self.produtos_tree = ttk.Treeview(tabela_frame, columns=colunas, show="headings", height=20, style="Produtos.Treeview")
         
         # Configurar menu de contexto para a tabela de produtos (apenas opções)
         self.menu_contexto_produto = tk.Menu(self.produtos_tree, tearoff=0)
@@ -311,7 +322,7 @@ class VendasModule:
         # Tabela do carrinho com altura ajustada
         colunas_carrinho = ("Produto", "Qtd", "Preço Unit.", "Total")
         
-        self.carrinho_tree = ttk.Treeview(tabela_carrinho_frame, columns=colunas_carrinho, show="headings", height=15, style="Custom.Treeview")
+        self.carrinho_tree = ttk.Treeview(tabela_carrinho_frame, columns=colunas_carrinho, show="headings", height=15, style="Carrinho.Treeview")
         
         # Configurar cabeçalhos com larguras proporcionais
         larguras_carrinho = {"Produto": 200, "Qtd": 50, "Preço Unit.": 100, "Total": 100}
@@ -893,9 +904,14 @@ class VendasModule:
         desconto = float(self.desconto_var.get() or 0) if hasattr(self, 'desconto_var') else 0
         valor_final = valor_total - desconto
         
-        # Obter informações do usuário logado
-        usuario_id = getattr(self.controller, 'usuario_id', None)
-        usuario_nome = getattr(self.controller, 'usuario_nome', 'Sistema')
+        # Obter informações do usuário logado do controlador principal
+        usuario_id = getattr(self.controller, 'usuario_atual', {}).get('id', 1)
+        usuario_nome = getattr(self.controller, 'usuario_atual', {}).get('nome', 'Sistema')
+        
+        if not usuario_id:
+            messagebox.showwarning("Aviso", "Usuário não identificado. Usando usuário padrão.")
+            usuario_id = 1
+            usuario_nome = "Sistema"
         
         # Criar descrição dos itens da venda
         descricao_itens = ", ".join([f"{item['quantidade']}x {item['nome']}"[:50] for item in self.carrinho[:3]])
@@ -914,7 +930,7 @@ class VendasModule:
                     data_abertura, 
                     status, 
                     total, 
-                    garcom_id, 
+                    usuario_id, 
                     tipo, 
                     observacao, 
                     cliente_nome,
@@ -934,7 +950,7 @@ class VendasModule:
                 )
             """, (
                 valor_final,  # total
-                usuario_id,   # garcom_id (usando o usuário logado)
+                usuario_id,   # usuario_id (usando o usuário logado)
                 descricao,    # observação com os itens
                 usuario_nome  # cliente_nome (usando o nome do usuário logado)
             ))
@@ -979,6 +995,31 @@ class VendasModule:
             # Se não conseguiu registrar nenhum pagamento, levantar exceção
             if not entrada_ids:
                 raise Exception("Não foi possível registrar os pagamentos.")
+            
+            # Salvar itens do pedido na tabela itens_pedido
+            query_itens = """
+            INSERT INTO itens_pedido (
+                pedido_id, produto_id, quantidade, valor_unitario, 
+                subtotal, observacoes, usuario_id, data_hora,
+                valor_total, status
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            data_hora_atual = datetime.datetime.now()
+            
+            for item in self.carrinho:
+                cursor.execute(query_itens, (
+                    pedido_id,  # pedido_id
+                    item.get('id'),  # produto_id
+                    item.get('quantidade', 1),  # quantidade
+                    item.get('preco', 0),  # valor_unitario
+                    item.get('total', 0),  # subtotal
+                    item.get('observacoes', ''),  # observacoes
+                    usuario_id,  # usuario_id
+                    data_hora_atual,  # data_hora
+                    item.get('total', 0),  # valor_total
+                    'FINALIZADO'  # status
+                ))
             
             # Commit das alterações
             self.controller.db_connection.commit()

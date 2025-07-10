@@ -12,7 +12,7 @@ class FinanceiroDB:
         """Inicializa com uma conexão de banco de dados."""
         self.db = db_connection
         
-    def registrar_entrada(self, valor, descricao, tipo_entrada, usuario_id=None, usuario_nome=None, pedido_id=None, garcom_id=None, garcom_nome=None):
+    def registrar_entrada(self, valor, descricao, tipo_entrada, usuario_id=None, usuario_nome=None, pedido_id=None):
         """
         Registra um pagamento no sistema.
         
@@ -23,8 +23,6 @@ class FinanceiroDB:
             usuario_id: ID do usuário que registrou o pagamento
             usuario_nome: Nome do usuário que registrou o pagamento
             pedido_id: ID do pedido relacionado
-            garcom_id: ID do garçom (opcional)
-            garcom_nome: Nome do garçom (opcional)
             
         Returns:
             int: ID do pagamento registrado ou 0 em caso de erro

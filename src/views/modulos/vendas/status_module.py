@@ -118,8 +118,11 @@ class StatusPedidosModule:
             # Configurar estilo para a treeview
             style = ttk.Style()
             
+            # Criar um estilo personalizado para esta treeview
+            style_name = f"StatusPedidos.Treeview.{status_id}"
+            
             # Configurar o estilo das células
-            style.configure("Treeview", 
+            style.configure(style_name, 
                           background="#ffffff",
                           foreground="#000000",
                           rowheight=25,
@@ -127,8 +130,11 @@ class StatusPedidosModule:
                           borderwidth=1,
                           relief="solid")
             
+            # Configurar o layout para o estilo personalizado
+            style.layout(style_name, [('Treeview.treearea', {'sticky': 'nswe'})])
+            
             # Configurar o estilo do cabeçalho
-            style.configure("Treeview.Heading", 
+            style.configure(f"{style_name}.Heading", 
                           font=("Arial", 10, "bold"), 
                           background=self.cores["primaria"],
                           foreground=self.cores["texto"],
@@ -136,8 +142,8 @@ class StatusPedidosModule:
                           relief="solid")
             
             # Configurar cores de seleção
-            style.map("Treeview", 
-                    background=[("selected", self.cores["secundaria"])],
+            style.map(style_name, 
+                    background=[("selected", self.cores["primaria"])],
                     foreground=[("selected", self.cores["texto_claro"])])
             
             # Criar treeview para listar os pedidos
@@ -155,9 +161,9 @@ class StatusPedidosModule:
             tree = ttk.Treeview(
                 tree_frame,
                 columns=columns,
-                show='headings',
-                selectmode='browse',
-                style="Treeview"
+                show="headings",
+                selectmode="browse",
+                style=style_name
             )
             
             # Configurar colunas
@@ -224,11 +230,44 @@ class StatusPedidosModule:
         
         # Criar a tabela de entregadores
         colunas = ("ID", "Nome", "Telefone", "Veículo", "Placa")
+        
+        # Configurar estilo personalizado para a tabela de entregadores
+        style = ttk.Style()
+        style_name = "Entregadores.Treeview"
+        
+        # Configurar o estilo das células
+        style.configure(style_name, 
+                      background="#ffffff",
+                      foreground="#000000",
+                      rowheight=25,
+                      fieldbackground="#ffffff",
+                      borderwidth=1,
+                      relief="solid")
+                      
+        # Configurar o layout para o estilo personalizado
+        style.layout(style_name, [('Treeview.treearea', {'sticky': 'nswe'})])
+        
+        # Configurar o estilo do cabeçalho
+        style.configure(f"{style_name}.Heading", 
+                      font=("Arial", 10, "bold"), 
+                      background=self.cores["primaria"],
+                      foreground=self.cores["texto"],  # Alterado para texto escuro
+                      borderwidth=1,
+                      relief="solid")
+        
+        # Configurar cores de seleção
+        style.map(style_name, 
+                background=[("selected", self.cores["primaria"])],
+                foreground=[("selected", self.cores["texto_claro"]),
+                          ("!selected", "#000000")])
+        
+        # Criar a treeview com o estilo personalizado
         tree = ttk.Treeview(
             table_frame,
             columns=colunas,
             show='headings',
-            selectmode='browse'
+            selectmode='browse',
+            style=style_name
         )
         
         # Configurar colunas

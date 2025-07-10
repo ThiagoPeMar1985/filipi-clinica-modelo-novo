@@ -556,8 +556,9 @@ class DeliveryController:
                 tipo, status, cliente_id, cliente_nome, cliente_telefone,
                 cliente_endereco, taxa_entrega, total, data_abertura,
                 tipo_cliente, observacao, status_entrega, regiao_id,
-                previsao_entrega, entregador_id, forma_pagamento, troco_para
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                previsao_entrega, entregador_id, forma_pagamento, troco_para,
+                usuario_id
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             # Obter dados do cliente (assumindo que estão disponíveis em dados_pedido)
@@ -586,13 +587,12 @@ class DeliveryController:
             
             # Obter dados do pagamento
             forma_pagamento = dados_pedido.get('forma_pagamento', 'dinheiro')
-            # Usar o valor do troco passado em dados_pedido, ou calcular com base no valor recebido
-            if 'troco' in dados_pedido and dados_pedido['troco'] is not None:
-                troco_para = float(dados_pedido['troco'])
-            elif 'valor_recebido' in dados_pedido and dados_pedido['valor_recebido'] is not None:
-                troco_para = float(dados_pedido['valor_recebido']) - float(dados_pedido.get('valor_total', 0))
-            else:
-                troco_para = 0.0
+            
+            # Obter o ID do usuário logado ou usar 1 como padrão
+            usuario_id = dados_pedido.get('usuario_id', 1)
+            
+            # Obter o valor para troco, se fornecido
+            troco_para = dados_pedido.get('troco_para')
             
             # Definir status do pedido como PENDENTE por padrão
             # O status será atualizado posteriormente quando o pagamento for confirmado
@@ -616,7 +616,8 @@ class DeliveryController:
                 previsao_entrega,  # previsao_entrega
                 None,  # entregador_id (pode ser definido posteriormente)
                 forma_pagamento,  # forma_pagamento
-                troco_para  # troco_para
+                troco_para,  # troco_para
+                usuario_id  # usuario_id do usuário logado
             )
             
             # Executar a inserção do pedido
@@ -635,9 +636,9 @@ class DeliveryController:
             query_itens = """
             INSERT INTO itens_pedido (
                 pedido_id, produto_id, quantidade, valor_unitario, 
-                subtotal, observacoes, garcom_id, data_hora,
+                subtotal, observacoes, usuario_id, data_hora,
                 valor_total, status
-            ) VALUES (%s, %s, %s, %s, %s, %s, NULL, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             # Preparar os parâmetros dos itens e opções
@@ -673,7 +674,7 @@ class DeliveryController:
                         valor_unitario,  # valor_unitario
                         subtotal,  # subtotal
                         str(item.get('observacoes', '')),  # observacoes
-                        # garcom_id é NULL para pedidos de delivery
+                        dados_pedido.get('usuario_id', 1),  # usuario_id do usuário logado
                         data_hora_atual,  # data_hora
                         valor_total,  # valor_total
                         'PENDENTE'  # status
