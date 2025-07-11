@@ -128,6 +128,15 @@ class PedidosMesasModule(BaseModule):
         self.itens_pedido = []
         self.pedido_atual = None
         
+        # Checkbox para ativar/desativar a taxa de serviço
+        # Verificar se o pedido atual tem informação sobre a taxa de serviço
+        taxa_ativada = True  # Valor padrão é ativada
+        if self.pedido_atual and 'taxa_servico' in self.pedido_atual:
+            # Converter para booleano (0 = False, qualquer outro valor = True)
+            taxa_ativada = bool(self.pedido_atual.get('taxa_servico', 1))
+        
+        self.taxa_servico_var = tk.BooleanVar(value=taxa_ativada)
+        
         # Inicializa variáveis de controle
         self.quantidade_var = tk.StringVar(value="1")
         self.desconto_var = tk.StringVar(value="0.00")

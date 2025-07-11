@@ -524,5 +524,5 @@ class SistemaPDV:
     
     def sair(self):
         """Fecha a aplicação"""
-        if messagebox.askyesno("Sair", "Deseja realmente sair do sistema?"):
+        if True:
             self.root.destroy()

@@ -43,7 +43,7 @@ class VisualizarMesasModule(BaseModule):
         if not self.db_connection:
             messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados!")
             return
-        
+            
         try:
             cursor = self.db_connection.cursor(dictionary=True)
             query = "SELECT * FROM mesas ORDER BY numero"
@@ -67,22 +67,42 @@ class VisualizarMesasModule(BaseModule):
         try:
             cursor = self.db_connection.cursor(dictionary=True)
             
-            # Buscar pedido ativo para a mesa
+            # Verificar se a tabela pedidos existe
+            cursor.execute("SHOW TABLES LIKE 'pedidos'")
+            if not cursor.fetchone():
+                return 0
+            
+            # Busca por pedidos com status 'em andamento' ou 'aberto'
             query = """
-            SELECT p.total FROM pedidos p 
-            WHERE p.mesa_id = %s AND p.status = 'aberto' 
+            SELECT p.id, p.total, p.status 
+            FROM pedidos p 
+            WHERE p.mesa_id = %s AND (p.status = 'em andamento' OR p.status = 'aberto')
             ORDER BY p.data_abertura DESC LIMIT 1
             """
             
             cursor.execute(query, (mesa_id,))
             resultado = cursor.fetchone()
-            cursor.close()
             
-            if resultado and 'total' in resultado:
-                return resultado['total']
+            # Se não encontrar com status 'em andamento' ou 'aberto', tenta encontrar qualquer pedido ativo
+            if not resultado:
+                query = """
+                SELECT p.id, p.total, p.status 
+                FROM pedidos p 
+                WHERE p.mesa_id = %s
+                ORDER BY p.data_abertura DESC LIMIT 1
+                """
+                cursor.execute(query, (mesa_id,))
+                resultado = cursor.fetchone()
+            
+            if resultado and 'total' in resultado and resultado['total'] is not None:
+                try:
+                    return float(resultado['total'])
+                except (ValueError, TypeError):
+                    return 0
+                    
             return 0
         except Exception as e:
-            print(f"Erro ao buscar valor do pedido: {str(e)}")
+            print(f"DEBUG - Erro ao buscar valor do pedido: {e}")
             return 0
     
     def setup_ui(self):
@@ -205,16 +225,20 @@ class VisualizarMesasModule(BaseModule):
             # Impedir que o frame mude de tamanho
             mesa_frame.pack_propagate(False)
             
-            # Adicionar evento de clique na mesa com feedback visual
+            # Adicionar eventos de clique na mesa
             mesa_frame.bind("<Button-1>", lambda event, m=mesa, frame=mesa_frame: self._clique_mesa(m, frame))
+            
+            # Adicionar menu de contexto com botão direito
+            mesa_frame.bind("<Button-3>", lambda event, m=mesa, frame=mesa_frame: self._mostrar_menu_contexto(event, m, frame))
             
             # Frame para conteúdo da mesa
             status_cor = self.cores_status.get(mesa["status"].lower(), CORES['destaque'])
             conteudo_mesa = tk.Frame(mesa_frame, bg=status_cor, padx=10, pady=10)
             conteudo_mesa.pack(fill="both", expand=True)
             
-            # Adicionar evento de clique também no conteúdo da mesa
+            # Adicionar eventos de clique também no conteúdo da mesa
             conteudo_mesa.bind("<Button-1>", lambda event, m=mesa, frame=mesa_frame: self._clique_mesa(m, frame))
+            conteudo_mesa.bind("<Button-3>", lambda event, m=mesa, frame=mesa_frame: self._mostrar_menu_contexto(event, m, frame))
             
             # Número da mesa
             status_cor = self.cores_status.get(mesa["status"].lower(), CORES['destaque'])
@@ -247,8 +271,11 @@ class VisualizarMesasModule(BaseModule):
             ).pack(pady=(0, 5))
             
             # Valor do pedido (se existir)
-            if mesa.get('valor_pedido', 0) > 0:
-                valor_formatado = f"R$ {mesa['valor_pedido']:.2f}".replace('.', ',')
+            valor = float(mesa.get('valor_pedido', 0) or 0)
+            
+            if valor > 0:
+                valor_formatado = f"R$ {valor:,.2f}"
+                valor_formatado = valor_formatado.replace('.', 'v').replace(',', '.').replace('v', ',')
                 tk.Label(
                     conteudo_mesa,
                     text=f"Valor: {valor_formatado}",
@@ -626,17 +653,116 @@ class VisualizarMesasModule(BaseModule):
         # Recriar apenas o grid de mesas
         self.criar_grid_mesas(self.frame)
         
+    def _mostrar_menu_contexto(self, event, mesa, frame):
+        """Exibe o menu de contexto para alterar o status da mesa"""
+        menu = tk.Menu(self.frame, tearoff=0)
+        
+        # Adicionar opções de status disponíveis
+        status_options = ["Livre", "Reservada", "Inativa"]
+        
+        # Se a mesa estiver ocupada, não permitir mudar o status
+        if mesa['status'].lower() == 'ocupada':
+            menu.add_command(label=f"Mesa ocupada - não pode ser alterada", state='disabled')
+        else:
+            for status in status_options:
+                # Se for o status atual, marcar como selecionado
+                if status.lower() == mesa['status'].lower():
+                    menu.add_command(
+                        label=f"✓ {status}",
+                        command=lambda s=status: self._alterar_status_mesa(mesa, s.lower(), frame)
+                    )
+                else:
+                    menu.add_command(
+                        label=f"   {status}",
+                        command=lambda s=status: self._alterar_status_mesa(mesa, s.lower(), frame)
+                    )
+        
+        # Exibir o menu na posição do clique
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            # Garantir que o menu seja fechado ao soltar o botão
+            menu.grab_release()
+    
+    def _alterar_status_mesa(self, mesa, novo_status, frame):
+        """Altera o status de uma mesa no banco de dados"""
+        if not self.db_connection:
+            messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados!")
+            return
+            
+        try:
+            cursor = self.db_connection.cursor()
+            
+            # Atualizar o status da mesa
+            query = "UPDATE mesas SET status = %s WHERE id = %s"
+            cursor.execute(query, (novo_status.lower(), mesa['id']))
+            
+            # Se a mesa estiver sendo marcada como ocupada, verificar se há pedido ativo
+            if novo_status.lower() == 'ocupada':
+                cursor.execute("""
+                    SELECT id FROM pedidos 
+                    WHERE mesa_id = %s 
+                    AND status = 'EM_ANDAMENTO' 
+                    ORDER BY data_hora DESC 
+                    LIMIT 1
+                """, (mesa['id'],))
+                
+                pedido = cursor.fetchone()
+                
+                if not pedido:
+                    # Se não houver pedido ativo, criar um novo
+                    from datetime import datetime
+                    cursor.execute("""
+                        INSERT INTO pedidos (mesa_id, status, data_hora, total)
+                        VALUES (%s, 'EM_ANDAMENTO', %s, 0)
+                    """, (mesa['id'], datetime.now()))
+                    
+                    pedido_id = cursor.lastrowid
+                    
+                    # Atualizar a mesa com o ID do pedido
+                    cursor.execute("""
+                        UPDATE mesas 
+                        SET pedido_atual_id = %s 
+                        WHERE id = %s
+                    """, (pedido_id, mesa['id']))
+            
+            # Confirmar as alterações
+            self.db_connection.commit()
+            
+            # Atualizar a lista de mesas do banco de dados
+            self.carregar_mesas()
+            
+            # Reconstruir a interface
+            for widget in self.frame.winfo_children():
+                widget.destroy()
+            self.setup_ui()
+            
+            messagebox.showinfo("Sucesso", f"Status da mesa {mesa['numero']} alterado para {novo_status.capitalize()}")
+            
+            # Focar na janela principal
+            self.frame.focus_set()
+            
+        except Exception as e:
+            self.db_connection.rollback()
+            messagebox.showerror("Erro", f"Erro ao alterar status da mesa: {str(e)}")
+        finally:
+            cursor.close()
+    
+    def _atualizar_apos_mudanca_status(self):
+        """Método mantido para compatibilidade, mas não é mais usado"""
+        pass
+    
     def _restaurar_cor_frame(self, frame, cor):
         """Restaura a cor de um frame verificando se ele ainda existe"""
-        try:
-            # Verificar se o frame ainda existe antes de tentar modificá-lo
-            if frame.winfo_exists():
-                frame.config(bg=cor)
-        except Exception:
-            # Ignora qualquer erro se o frame não existir mais
-            pass
+        if frame.winfo_exists():
+            frame.configure(bg=cor)
+            for child in frame.winfo_children():
+                if hasattr(child, 'configure') and 'bg' in child.keys():
+                    child.configure(bg=cor)
     
     def show(self):
         """Mostra o módulo"""
-        self.frame.pack(fill="both", expand=True)
-        return self.frame
+        if hasattr(self, 'frame') and self.frame:
+            self.frame.pack(fill="both", expand=True, padx=20, pady=20)
+            return self.frame
+        return None

@@ -55,7 +55,7 @@ ESTILOS_BOTAO = {
     "sucesso": {
         "bg": CORES["destaque"],
         "fg": CORES["texto_claro"],
-        "font": ('Arial', 14, 'bold'),
+        "font": FONTES["normal"],
         "relief": "flat",
         "bd": 0,
         "padx": 20,

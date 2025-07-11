@@ -205,8 +205,7 @@ def main():
         
         # Configura o que acontece ao fechar a janela principal
         def on_closing():
-            if messagebox.askokcancel("Sair", "Deseja realmente sair do sistema?"):
-                root.destroy()
+            root.destroy()
         
         root.protocol("WM_DELETE_WINDOW", on_closing)
         
