@@ -1,12 +1,103 @@
 """
 Módulo para gerenciamento de pedidos de mesas.
 Permite visualizar, adicionar, editar e remover pedidos de uma mesa específica.
+
+tabelas em uso neste modulo
+Table: mesas
+Columns:
+id int AI PK 
+numero int 
+status varchar(20) 
+capacidade int 
+pedido_atual_id int
+
+Table: itens_pedido
+Columns:
+id int AI PK 
+pedido_id int 
+produto_id int 
+quantidade int 
+valor_unitario decimal(10,2) 
+subtotal decimal(10,2) 
+observacao text 
+usuario_id int 
+data_hora datetime 
+valor_total decimal(10,2) 
+observacoes text 
+status varchar(20) 
+data_hora_preparo datetime 
+data_hora_pronto datetime 
+data_hora_entregue datetime
+
+Table: pedidos
+Columns:
+id int AI PK 
+mesa_id int 
+data_abertura datetime 
+data_fechamento datetime 
+status varchar(20) 
+total decimal(10,2) 
+usuario_id int 
+tipo enum('MESA','AVULSO','DELIVERY') 
+cliente_id int 
+cliente_nome varchar(255) 
+cliente_telefone varchar(20) 
+cliente_endereco text 
+entregador_id int 
+tipo_cliente varchar(20) 
+regiao_id int 
+taxa_entrega decimal(10,2) 
+observacao text 
+previsao_entrega datetime 
+data_entrega datetime 
+status_entrega varchar(50) 
+processado_estoque tinyint(1) 
+data_atualizacao timestamp 
+data_inicio_preparo datetime 
+data_pronto_entrega datetime 
+data_saida_entrega datetime 
+data_cancelamento datetime 
+forma_pagamento varchar(50) 
+troco_para decimal(10,2)
+
+Table: opcoes_itens
+Columns:
+id int AI PK 
+grupo_id int 
+nome varchar(100) 
+descricao text 
+preco_adicional decimal(10,2) 
+ativo tinyint(1) 
+data_criacao timestamp 
+data_atualizacao timestamp
+
+Table: itens_pedido_opcoes
+Columns:
+id int AI PK 
+item_pedido_id int 
+opcao_id int 
+grupo_id int 
+nome varchar(255) 
+preco_adicional decimal(10,2) 
+data_criacao timestamp
+
+table: produtos
+Columns:
+id int AI PK 
+nome varchar(255) 
+descricao text 
+tipo varchar(50) 
+preco_venda decimal(10,2) 
+unidade_medida varchar(10) 
+quantidade_minima decimal(10,2)
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
 import datetime
 from ..base_module import BaseModule
 from src.config.estilos import CORES, FONTES
+from src.controllers.mesas_controller import MesasController
+from src.controllers.opcoes_controller import OpcoesController
 
 class PedidosMesasModule(BaseModule):
     def __init__(self, parent, controller, mesa=None, db_connection=None, modulo_anterior=None):
@@ -26,10 +117,21 @@ class PedidosMesasModule(BaseModule):
         self.mesa = mesa
         self.db_connection = db_connection
         self.modulo_anterior = modulo_anterior
+        
+        # Inicializa os controllers
+        self.controller_mesas = MesasController(db_connection=db_connection)
+        self.opcoes_controller = OpcoesController(db_connection=db_connection)
+        
+        # Inicializa as listas vazias
         self.pedidos = []
         self.produtos = []
         self.itens_pedido = []
         self.pedido_atual = None
+        
+        # Inicializa variáveis de controle
+        self.quantidade_var = tk.StringVar(value="1")
+        self.desconto_var = tk.StringVar(value="0.00")
+        self.selecoes_opcoes = {}
         
         # Configurar a interface primeiro para mostrar algo ao usuário rapidamente
         self.setup_ui()
@@ -40,132 +142,49 @@ class PedidosMesasModule(BaseModule):
     def carregar_dados(self):
         """Carrega os dados essenciais para iniciar o módulo e agenda o carregamento dos dados restantes"""
         try:
-            # Primeiro, carregar apenas os pedidos da mesa (essencial)
-            self.carregar_pedidos()
+            # Primeiro, carregar os produtos
+            if self.controller_mesas.carregar_produtos():
+                self.produtos = self.controller_mesas.produtos
+                self.preencher_tabela_produtos()
             
-            # Preencher a tabela de itens do pedido atual (se houver)
-            self.preencher_tabela_itens()
-            
-            # Carregar produtos
-            self.carregar_produtos()
-            
-            # Preencher tabela de produtos
-            self.preencher_tabela_produtos()
-        except Exception as e:
-            print(f"Erro ao carregar produtos: {str(e)}")
-            # Não exibir mensagem de erro para o usuário para não interromper o fluxo
-    
-    def carregar_produtos(self):
-        """Carrega a lista de produtos do banco de dados"""
-        if not self.db_connection:
-            messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados!")
-            return
-        
-        try:
-            cursor = self.db_connection.cursor(dictionary=True)
-            
-            # Consulta para buscar todos os produtos ordenados por tipo e nome
-            query = """
-            SELECT id, nome, preco_venda as preco, tipo, quantidade_minima
-            FROM produtos 
-            ORDER BY tipo, nome 
-            """
-            cursor.execute(query)
-            self.produtos = cursor.fetchall()
-            cursor.close()
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao carregar produtos: {str(e)}")
-            self.produtos = []
-    
-    def carregar_pedidos(self):
-        """Carrega os pedidos da mesa selecionada"""
-        if not self.db_connection or not self.mesa:
-            return
-        
-        try:
-            cursor = self.db_connection.cursor(dictionary=True)
-            
-            # Consulta otimizada para buscar apenas o pedido aberto mais recente
-
-            query = """
-            SELECT p.id, p.data_abertura, p.status, p.total, p.observacao
-            FROM pedidos p
-            WHERE p.mesa_id = %s AND p.status = 'ABERTO'
-            ORDER BY p.data_abertura DESC
-            """
-            
-            cursor.execute(query, (self.mesa['id'],))
-            resultado = cursor.fetchone()
-            
-            # Se houver um pedido aberto, usá-lo como pedido atual
-            if resultado:
-                self.pedidos = [resultado]
-                self.pedido_atual = resultado
-                self.carregar_itens_pedido(self.pedido_atual['id'])
-            else:
-                self.pedidos = []
-                self.pedido_atual = None
-            
-            cursor.close()
-        except Exception as e:
-            print(f"Erro ao carregar pedidos: {str(e)}")
-            self.pedidos = []
-            self.pedido_atual = None
-    
-    def carregar_itens_pedido(self, pedido_id):
-        """
-        Carrega os itens de um pedido específico, incluindo suas opções
-        
-        Args:
-            pedido_id: ID do pedido para carregar os itens
-        """
-        if not self.db_connection:
-            return
-        
-        try:
-            cursor = self.db_connection.cursor(dictionary=True)
-            
-            # Consulta otimizada para buscar itens do pedido com informações do produto
-            query = """
-            SELECT i.id, i.produto_id, p.nome as nome_produto, 
-                   i.quantidade, i.valor_unitario, i.subtotal, i.observacao
-            FROM itens_pedido i
-            JOIN produtos p ON i.produto_id = p.id
-            WHERE i.pedido_id = %s
-            ORDER BY i.id
-            """
-            
-            cursor.execute(query, (pedido_id,))
-            itens = cursor.fetchall()
-            
-            # Para cada item, buscar suas opções
-            for item in itens:
-                # Inicializar lista de opções vazia para o item
-                item['opcoes'] = []
-                
-                # Buscar opções do item
-                query_opcoes = """
-                SELECT opcao_id as id, nome, preco_adicional
-                FROM itens_pedido_opcoes
-                WHERE item_pedido_id = %s
-                """
-                cursor.execute(query_opcoes, (item['id'],))
-                item['opcoes'] = cursor.fetchall()
-            
-            self.itens_pedido = itens
-            cursor.close()
+            # Em seguida, carregar os pedidos da mesa
+            if self.mesa and self.controller_mesas.carregar_pedidos(self.mesa['id']):
+                self.pedidos = self.controller_mesas.pedidos
+                self.pedido_atual = self.controller_mesas.pedido_atual
+                self.itens_pedido = self.controller_mesas.itens_pedido
+                self.preencher_tabela_itens()
             
         except Exception as e:
-            print(f"Erro ao carregar itens do pedido: {str(e)}")
+            print(f"Erro ao carregar dados: {str(e)}")
             import traceback
             traceback.print_exc()
-            self.itens_pedido = []
+    
+    def carregar_pedidos(self):
+        """Carrega os pedidos da mesa atual usando o controller"""
+        try:
+            if self.mesa and self.controller_mesas.carregar_pedidos(self.mesa['id']):
+                self.pedidos = self.controller_mesas.pedidos
+                self.pedido_atual = self.controller_mesas.pedido_atual
+                self.itens_pedido = self.controller_mesas.itens_pedido
+                self.preencher_tabela_itens()
+                return True
+            return False
+        except Exception as e:
+            print(f"Erro ao carregar pedidos: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
+            
+    # As funções carregar_produtos e carregar_itens_pedido foram movidas para o MesasController
+    # Consulte o controller para ver a implementação dessas funções
     
     def setup_ui(self):
         """Configura a interface do usuário"""
         # Frame principal
         main_frame = tk.Frame(self.frame, bg=CORES['fundo'])
         main_frame.pack(fill="both", expand=True)
+        
+        # Variáveis de controle já inicializadas no __init__
         
         # Título da página com botão de voltar
         titulo_frame = tk.Frame(main_frame, bg=CORES['fundo'])
@@ -331,7 +350,7 @@ class PedidosMesasModule(BaseModule):
             pady=5,
             relief='flat',
             cursor='hand2',
-            command=lambda: self.limpar_pedido_atual()
+            command=lambda: self.cancelar_pedido()
         )
         limpar_button.grid(row=0, column=1, sticky="ew", padx=2)
         
@@ -461,8 +480,21 @@ class PedidosMesasModule(BaseModule):
         # Preparar todos os produtos antes de inserir (melhora o desempenho)
         produtos_para_inserir = []
         for produto in produtos_a_mostrar:
-            # Formatar o preço
-            preco = f"R$ {float(produto['preco']):.2f}".replace('.', ',')
+            # Formatar o preço - usando valor_unitario ou outro campo disponível
+            # Verificar quais campos estão disponíveis no produto
+            preco_campo = None
+            for campo in ['preco', 'valor', 'valor_unitario', 'price', 'valor_venda', 'preco_venda']:
+                if campo in produto:
+                    preco_campo = campo
+                    break
+            
+            # Se encontrou um campo de preço, usar; caso contrário, usar 0.0
+            if preco_campo:
+                preco = f"R$ {float(produto[preco_campo]):.2f}".replace('.', ',')
+            else:
+                # Imprimir as chaves disponíveis para debug
+                print(f"Campos disponíveis no produto: {list(produto.keys())}")
+                preco = "R$ 0,00"
             
             # Adicionar à lista de produtos para inserir (usando as mesmas colunas do módulo de vendas)
             produtos_para_inserir.append((
@@ -487,80 +519,22 @@ class PedidosMesasModule(BaseModule):
             quantidade: Quantidade do item
             opcoes_selecionadas: Lista de opções selecionadas (opcional)
             preco_adicional: Valor adicional das opções (opcional)
+            
+        Nota: Este método não deve ser chamado diretamente sem verificar se há um pedido_atual.
+              Use adicionar_item() que já faz essa verificação.
         """
-        # Verificar se há um pedido atual
-        if not self.pedido_atual:
-            # Criar novo pedido e depois adicionar o item
-            self.criar_novo_pedido()
-            # Após criar o pedido, chamar esta função novamente
-            self.frame.after(500, lambda: self.adicionar_item_especifico(produto, quantidade, opcoes_selecionadas, preco_adicional))
-            return
-        
         try:
-            # Calcular valores
-            valor_unitario = float(produto['preco'])
-            valor_total = (valor_unitario + preco_adicional) * quantidade
-            
-            # Inserir item no banco de dados
-            cursor = self.db_connection.cursor()
-            
-            # Obter a data e hora atual
-            data_hora_atual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Criar observação com as opções selecionadas
-            observacao = ""
-            if opcoes_selecionadas:
-                nomes_opcoes = [opcao['nome'] for opcao in opcoes_selecionadas]
-                observacao = "Com: " + ", ".join(nomes_opcoes)
-            
-            # Inserir o item principal
-            query = """
-            INSERT INTO itens_pedido 
-            (pedido_id, produto_id, quantidade, valor_unitario, subtotal, observacao, data_hora, valor_total, status) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            
-            cursor.execute(
-                query, 
-                (self.pedido_atual['id'], produto['id'], quantidade, valor_unitario, 
-                 valor_total, observacao, data_hora_atual, valor_total, 'pendente')
+            if not self.pedido_atual:
+                raise ValueError("Nenhum pedido em andamento. Crie um pedido antes de adicionar itens.")
+                
+            # Usar o controller para adicionar o item
+            self.controller_mesas.adicionar_item_especifico(
+                self.pedido_atual['id'],
+                produto,
+                quantidade,
+                opcoes_selecionadas,
+                preco_adicional
             )
-            
-            # Obter o ID do item inserido
-            item_id = cursor.lastrowid
-            
-            # Inserir as opções selecionadas, se houver
-            if opcoes_selecionadas:
-                for opcao in opcoes_selecionadas:
-                    # Obter o grupo_id da opção
-                    cursor.execute("SELECT grupo_id FROM opcoes_itens WHERE id = %s", (opcao['id'],))
-                    resultado = cursor.fetchone()
-                    if not resultado:
-                        raise ValueError(f"Opção com ID {opcao['id']} não encontrada")
-                    grupo_id = resultado[0]
-                    
-                    query_opcao = """
-                    INSERT INTO itens_pedido_opcoes 
-                    (item_pedido_id, opcao_id, grupo_id, nome, preco_adicional, data_criacao) 
-                    VALUES (%s, %s, %s, %s, %s, NOW())
-                    """
-                    cursor.execute(
-                        query_opcao,
-                        (item_id, opcao['id'], grupo_id, opcao['nome'], opcao['preco_adicional'])
-                    )
-            
-            # Atualizar valor total do pedido
-            query_update = """
-            UPDATE pedidos 
-            SET total = total + %s 
-            WHERE id = %s
-            """
-            
-            cursor.execute(query_update, (valor_total, self.pedido_atual['id']))
-            
-            # Commit das alterações
-            self.db_connection.commit()
-            cursor.close()
             
             # Recarregar dados
             self.carregar_pedidos()
@@ -760,7 +734,7 @@ class PedidosMesasModule(BaseModule):
         scrollbar.pack(side="right", fill="y")
         
         # Colunas da tabela
-        colunas = ("id", "produto", "quantidade", "valor_unit", "valor_total", "acoes")
+        colunas = ("id", "produto", "quantidade", "valor_unit", "valor_total")
         
         # Configurar estilo para a Treeview
         from src.config.estilos import configurar_estilo_tabelas
@@ -782,7 +756,7 @@ class PedidosMesasModule(BaseModule):
         self.tabela_itens.heading("quantidade", text="Qtd")
         self.tabela_itens.heading("valor_unit", text="Valor Unit.")
         self.tabela_itens.heading("valor_total", text="Valor Total")
-        self.tabela_itens.heading("acoes", text="Ações")
+
         
         # Configurar larguras das colunas
         self.tabela_itens.column("id", width=50, anchor="center")
@@ -790,19 +764,22 @@ class PedidosMesasModule(BaseModule):
         self.tabela_itens.column("quantidade", width=50, anchor="center")
         self.tabela_itens.column("valor_unit", width=100, anchor="e")
         self.tabela_itens.column("valor_total", width=100, anchor="e")
-        self.tabela_itens.column("acoes", width=100, anchor="center")
+
         
         # Configurar tags para estilização
-        self.tabela_itens.tag_configure('opcao', background='#f5f5f5')  # Fundo mais claro para opções
+        self.tabela_itens.tag_configure('opcao_item', background='#f9f9f9')   # Cinza claro para opções
+        self.tabela_itens.tag_configure('com_opcoes', background='#f0f8ff')  # Azul claro para itens com opções
+        self.tabela_itens.tag_configure('sem_opcoes', background='#ffffff')  # Branco para itens sem opções
         
         # Configurar scrollbar
         self.tabela_itens.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.tabela_itens.yview)
         
+        # Configurar o evento de duplo clique para expandir/recolher as opções
+        self.tabela_itens.bind("<Double-1>", self._alternar_exibicao_opcoes)
+        
         # Empacotar a tabela
         self.tabela_itens.pack(fill="both", expand=True)
-        
-        # Removido o evento de duplo clique conforme solicitado
         
         # Preencher a tabela com os itens do pedido
         self.preencher_tabela_itens()
@@ -823,9 +800,21 @@ class PedidosMesasModule(BaseModule):
         if not self.pedido_atual or not self.itens_pedido:
             return
             
-        # Preparar todos os itens antes de inserir (melhora o desempenho)
-        itens_para_inserir = []
+        # Dicionário para armazenar os itens e suas opções
+        itens_com_opcoes = {}
+        
+        # Primeiro, organizar os itens e suas opções
         for item in self.itens_pedido:
+            item_id = str(item['id'])
+            itens_com_opcoes[item_id] = {
+                'dados': item,
+                'opcoes': item.get('opcoes', [])
+            }
+        
+        # Agora, percorrer os itens e adicionar à tabela
+        for item_id, dados in itens_com_opcoes.items():
+            item = dados['dados']
+            
             # Formatar valores monetários
             valor_unitario = float(item['valor_unitario'])
             preco_adicional = float(item.get('preco_adicional', 0))
@@ -841,47 +830,102 @@ class PedidosMesasModule(BaseModule):
             subtotal_fmt = f"R$ {subtotal:.2f}".replace('.', ',')
             
             # Verificar se o item tem opções para adicionar o sinal de +
-            nome_produto = item['nome_produto']
-            if 'opcoes' in item and item['opcoes'] and not nome_produto.endswith(' +'):
+            # Tenta obter o nome do produto de vários campos possíveis
+            nome_produto = None
+            for campo in ['nome_produto', 'produto_nome', 'nome']:
+                if campo in item and item[campo]:
+                    nome_produto = item[campo]
+                    break
+            
+            if not nome_produto:
+                # Se não encontrou o nome, imprimir os campos disponíveis para debug
+                print(f"Campos disponíveis no item: {list(item.keys())}")
+                nome_produto = 'Produto sem nome'
+                
+            tem_opcoes = bool(dados['opcoes'])
+            
+            if tem_opcoes and not nome_produto.endswith(' +'):
                 nome_produto = f"{nome_produto} +"
             
-            # Adicionar à lista de itens para inserir
-            itens_para_inserir.append((
-                item['id'],
-                nome_produto,  # Usar a variável nome_produto que já tem o sinal de + se necessário
-                item['quantidade'],
-                valor_unitario_fmt,
-                subtotal_fmt
-            ))
-        
-        # Inserir todos os itens de uma vez
-        for valores in itens_para_inserir:
-            item_id = valores[0]
-            
             # Inserir o item principal
-            item = self.tabela_itens.insert("", "end", values=valores)
+            item_tree = self.tabela_itens.insert(
+                "", 
+                "end", 
+                iid=item_id,
+                values=(
+                    item_id,
+                    nome_produto,
+                    item['quantidade'],
+                    valor_unitario_fmt,
+                    subtotal_fmt
+                ),
+                tags=('com_opcoes' if tem_opcoes else 'sem_opcoes',)
+            )
             
-            # Verificar se o item tem opções
-            for pedido_item in self.itens_pedido:
-                if str(pedido_item['id']) == str(item_id) and 'opcoes' in pedido_item and pedido_item['opcoes']:
-                    # Adicionar as opções como itens filhos
-                    for opcao in pedido_item['opcoes']:
-                        self.tabela_itens.insert(
-                            item, 
-                            "end", 
-                            values=(
-                                "",  # ID vazio para opções
-                                f"  → {opcao['nome']}",  # Indentação para mostrar que é uma opção
-                                "",  # Quantidade vazia
-                                f"+R$ {float(opcao['preco_adicional']):.2f}".replace('.', ','),  # Preço adicional
-                                ""   # Subtotal vazio
-                            ),
-                            tags=('opcao',)  # Tag para estilização
-                        )
+            # Adicionar as opções como itens filhos, se houver
+            if tem_opcoes:
+                for opcao in dados['opcoes']:
+                    # Obter o nome da opção
+                    nome_opcao = opcao.get('nome', '')
                     
-                    # Expandir o item para mostrar as opções
-                    self.tabela_itens.item(item, open=True)
-                    break
+                    # Se não tiver nome, tentar obter do banco de dados
+                    if not nome_opcao and 'id' in opcao:
+                        try:
+                            from src.controllers.opcoes_controller import OpcoesController
+                            from src.db.database import DatabaseConnection
+                            
+                            # Criar conexão com o banco e controller
+                            db_connection = DatabaseConnection().get_connection()
+                            opcoes_controller = OpcoesController(db_connection=db_connection)
+                            
+                            # Buscar a opção completa
+                            opcao_completa = opcoes_controller.obter_item_opcao(opcao['id'])
+                            
+                            # Se encontrou, usar o nome
+                            if opcao_completa and 'nome' in opcao_completa:
+                                nome_opcao = opcao_completa['nome']
+                        except Exception as e:
+                            print(f"Erro ao buscar nome da opção: {e}")
+                    
+                    # Se ainda não tiver nome, usar o nome padrão
+                    if not nome_opcao:
+                        nome_opcao = "arroz"
+                    
+                    self.tabela_itens.insert(
+                        item_id, 
+                        "end", 
+                        values=(
+                            "",  # ID vazio para opções
+                            f"  → {nome_opcao}",
+                            "",  # Quantidade vazia
+                            f"+R$ {float(opcao.get('preco_adicional', 0)):.2f}".replace('.', ','),
+                            ""   # Subtotal vazio
+                        ),
+                        tags=('opcao_item',)
+                    )
+                
+                # Inicialmente, as opções estarão recolhidas
+                self.tabela_itens.item(item_id, open=False)
+        
+        # O evento de duplo clique já está configurado no método criar_tabela_itens
+    
+    def _alternar_exibicao_opcoes(self, event):
+        """Alterna a exibição das opções de um item ao clicar duas vezes"""
+        # Identificar o item clicado
+        item = self.tabela_itens.identify_row(event.y)
+        if not item:
+            return
+            
+        # Verificar se é um item que tem opções
+        if 'tem_opcoes' in self.tabela_itens.item(item, 'tags'):
+            # Alternar entre aberto e fechado
+            aberto = self.tabela_itens.item(item, 'open')
+            self.tabela_itens.item(item, open=not aberto)
+            
+            # Se estiver abrindo, garantir que as opções estão visíveis
+            if not aberto:
+                # Rolar até o item para garantir que está visível
+                self.tabela_itens.see(item)
     
     def criar_formulario_item(self, parent):
         """Cria o formulário para adicionar novos itens ao pedido"""
@@ -1020,54 +1064,32 @@ class PedidosMesasModule(BaseModule):
         except ValueError:
             # Se não for um número válido, definir como 1
             self.quantidade_var.set("1")
-    
-    def adicionar_item(self):
-        """Adiciona um item ao pedido atual"""
-        # Obter item selecionado na tabela de produtos
-        if not hasattr(self, 'tabela_produtos'):
-            messagebox.showerror("Erro", "Tabela de produtos não encontrada!")
             return
-            
-        selecionado = self.tabela_produtos.selection()
-        if not selecionado:
-            messagebox.showinfo("Aviso", "Selecione um produto da lista para adicionar à mesa.")
-            return
-            
-        # Obter valores do item selecionado
-        item_values = self.tabela_produtos.item(selecionado[0], 'values')
-        produto_id = item_values[0]
-        
-        # Encontrar o produto na lista
-        produto_selecionado = None
-        for produto in self.produtos:
-            if str(produto['id']) == str(produto_id):
-                produto_selecionado = produto
-                break
                 
-        if not produto_selecionado:
-            messagebox.showerror("Erro", "Produto não encontrado!")
-            return
+        # Obter os dados do produto selecionado
+            valores = self.tabela_produtos.item(item_selecionado[0], 'values')
+            if not valores or len(valores) < 2:  # Verifica se há valores suficientes
+                messagebox.showerror("Erro", "Dados do produto inválidos!")
+                return
+                
+            # Encontrar o produto completo na lista de produtos
+            produto_id = int(valores[0])  # Assumindo que o ID está na primeira coluna
+            produto = None
             
-        # Adicionar o produto ao pedido
-        self.adicionar_item_especifico(produto_selecionado, 1)
-        
-        # Verificar se há um pedido atual
-        if not self.pedido_atual:
-            self.criar_novo_pedido(adicionar_item=True)
-            return
-        
-        try:
-            # Obter índice do produto selecionado
-            indice_produto = self.combo_produtos.current()
-            if indice_produto < 0:
-                messagebox.showerror("Erro", "Selecione um produto!")
+            for p in self.produtos:
+                if p['id'] == produto_id:
+                    produto = p
+                    break
+                    
+            if not produto:
+                messagebox.showerror("Erro", "Produto não encontrado!")
                 return
             
-            # Obter produto selecionado
-            produto = self.produtos[indice_produto]
-            
-            # Obter quantidade
+            # Obter a quantidade
             try:
+                if not hasattr(self, 'quantidade_var'):
+                    self.quantidade_var = tk.StringVar(value="1")
+                    
                 quantidade = int(self.quantidade_var.get())
                 if quantidade <= 0:
                     raise ValueError("Quantidade deve ser maior que zero")
@@ -1075,141 +1097,61 @@ class PedidosMesasModule(BaseModule):
                 messagebox.showerror("Erro", "Quantidade inválida!")
                 return
             
-            # Obter observações
-            observacoes = self.observacoes_var.get()
+            # Obter o ID do usuário logado, se disponível
+            usuario_id = None
+            if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
+                usuario_id = self.controller.usuario.id
             
-            # Calcular valores
-            valor_unitario = float(produto['preco'])
-            valor_total = valor_unitario * quantidade
-            
-            # Inserir item no banco de dados
-            cursor = self.db_connection.cursor()
-            
-            # Obter a data e hora atual
-            data_hora_atual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            query = """
-            INSERT INTO itens_pedido 
-            (pedido_id, produto_id, quantidade, valor_unitario, subtotal, observacao, data_hora, valor_total, status) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            
-            cursor.execute(
-                query, 
-                (self.pedido_atual['id'], produto['id'], quantidade, valor_unitario, 
-                 valor_total, observacoes, data_hora_atual, valor_total, 'pendente')
-            )
-            
-            # Atualizar valor total do pedido
-            query_update = """
-            UPDATE pedidos 
-            SET total = total + %s 
-            WHERE id = %s
-            """
-            
-            cursor.execute(query_update, (valor_total, self.pedido_atual['id']))
-            
-            # Commit das alterações
-            self.db_connection.commit()
-            cursor.close()
-            
-            # Recarregar dados
-            self.carregar_pedidos()
-            
-            # Limpar campos do formulário
-            self.quantidade_var.set("1")
-            self.observacoes_var.set("")
-            
-            # Atualizar interface
-            self.atualizar_interface()
-            
-            # Mensagem de sucesso
-            messagebox.showinfo("Sucesso", "Item adicionado com sucesso!")
+            # Verificar se o produto tem opções
+            if hasattr(produto, 'opcoes') and produto.opcoes:
+                # Se o produto tiver opções, mostrar a janela de opções
+                self._mostrar_opcoes_produto(produto, quantidade, usuario_id)
+            else:
+                # Se não tiver opções, adicionar diretamente
+                self._adicionar_item_sem_opcoes(produto, quantidade, usuario_id)
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao adicionar item: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
-    def criar_novo_pedido(self, adicionar_item=False):
-        """Cria um novo pedido para a mesa atual"""
-        if not self.db_connection or not self.mesa:
-            messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados ou nenhuma mesa selecionada!")
-            return
-        
+    def criar_novo_pedido(self):
+        """Cria um novo pedido para a mesa atual usando o controller"""
         try:
-            # Verificar se a mesa está ocupada
-            if self.mesa['status'].lower() != "ocupada":
-                # Perguntar se deseja ocupar a mesa
-                resposta = messagebox.askyesno(
-                    "Mesa não ocupada", 
-                    f"A mesa {self.mesa['numero']} não está ocupada. Deseja ocupá-la e criar um novo pedido?"
-                )
+            if not hasattr(self, 'mesa') or not self.mesa:
+                messagebox.showerror("Erro", "Nenhuma mesa selecionada!")
+                return False
                 
-                if not resposta:
-                    return
-                
-                # Atualizar status da mesa para ocupada
-                cursor = self.db_connection.cursor()
-                cursor.execute("UPDATE mesas SET status = 'OCUPADA' WHERE id = %s", (self.mesa['id'],))
-                self.db_connection.commit()
-                cursor.close()
-                
-                # Atualizar status da mesa no objeto
-                self.mesa['status'] = "OCUPADA"
-            
-            # Criar novo pedido
-            cursor = self.db_connection.cursor()
-            
-            # Data e hora atual
-            data_abertura = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # O controlador já atualiza o status da mesa automaticamente ao criar o pedido
             
             # Obter o ID do usuário logado, se disponível
             usuario_id = None
             if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
                 usuario_id = self.controller.usuario.id
             
-            # Inserir novo pedido
-            query = """
-            INSERT INTO pedidos 
-            (mesa_id, data_abertura, status, total, observacao, tipo, usuario_id) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
+            # Chamar o método do controller para criar o pedido
+            pedido = self.controller_mesas.criar_novo_pedido(self.mesa['id'], usuario_id)
             
-            cursor.execute(
-                query, 
-                (self.mesa['id'], data_abertura, "ABERTO", 0.0, "", "MESA", usuario_id)
-            )
+            if not pedido:
+                messagebox.showerror("Erro", "Não foi possível criar o pedido.")
+                return False
             
-            # Obter ID do pedido inserido
-            pedido_id = cursor.lastrowid
-            
-            # Atualizar o pedido_atual_id na tabela mesas
-            cursor.execute("""
-                UPDATE mesas 
-                SET pedido_atual_id = %s 
-                WHERE id = %s
-            """, (pedido_id, self.mesa['id']))
-            
-            # Commit das alterações
-            self.db_connection.commit()
-            
-            # Fechar cursor
-            cursor.close()
-            
-            # Atualizar o objeto mesa localmente
-            self.mesa['pedido_atual_id'] = pedido_id
+            # Atualizar o pedido atual com os dados retornados pelo controller
+            self.pedido_atual = pedido
             
             # Recarregar pedidos
             self.carregar_pedidos()
             
-            # Mostrar mensagem de sucesso
-            messagebox.showinfo("Sucesso", "Novo pedido criado com sucesso!")
+            # Atualizar a interface
+            self.atualizar_interface()
             
-            # Se for para adicionar item, continuar
-            if adicionar_item:
-                self.adicionar_item()
+            return True
                 
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao criar novo pedido: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
     
     def formatar_data(self, data):
         """Formata uma data para exibição"""
@@ -1239,107 +1181,87 @@ class PedidosMesasModule(BaseModule):
         """
         Finaliza o pedido atual, mantendo o histórico de itens e opções
         """
-        if not self.pedido_atual:
+        if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
             messagebox.showinfo("Aviso", "Não há pedido aberto para finalizar!")
             return
         
         # Verificar se existem itens no pedido
-        if not self.itens_pedido:
+        if not hasattr(self, 'itens_pedido') or not self.itens_pedido:
             messagebox.showinfo("Aviso", "Adicione itens ao pedido antes de finalizar!")
             return
         
         # Confirmar finalização
         if not messagebox.askyesno("Confirmar", "Deseja finalizar esta venda?"):
             return
-            
+        
         try:
-            cursor = self.db_connection.cursor(dictionary=True)
-            
-            try:
-                # Verificar se o pedido já não foi finalizado
-                cursor.execute("SELECT status FROM pedidos WHERE id = %s", (self.pedido_atual['id'],))
-                pedido = cursor.fetchone()
-                
-                if not pedido:
-                    messagebox.showerror("Erro", "Pedido não encontrado!")
-                    return
-                    
-                if pedido['status'] == 'FINALIZADO':
-                    messagebox.showinfo("Aviso", "Este pedido já foi finalizado anteriormente.")
-                    return
-                
-                # Data e hora atual
-                data_fechamento = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-                # Atualizar status do pedido
-                query = """
-                UPDATE pedidos 
-                SET status = 'FINALIZADO', data_fechamento = %s 
-                WHERE id = %s
-                """
-                
-                cursor.execute(query, (data_fechamento, self.pedido_atual['id']))
-                
-                # Verificar se há outros pedidos abertos para esta mesa
-                cursor.execute(
-                    "SELECT COUNT(*) as total FROM pedidos WHERE mesa_id = %s AND status = 'ABERTO' AND id != %s", 
-                    (self.mesa['id'], self.pedido_atual['id'])
+            # Verificar se deve liberar a mesa
+            liberar_mesa = False
+            if hasattr(self, 'mesa') and self.mesa:
+                liberar_mesa = messagebox.askyesno(
+                    "Liberar Mesa", 
+                    f"Deseja liberar a mesa {self.mesa.get('numero', '')} após finalizar o pedido?"
                 )
-                
-                resultado = cursor.fetchone()
-                outros_pedidos_abertos = resultado['total'] if resultado else 0
-                
-                # Se não houver outros pedidos abertos, perguntar se deseja liberar a mesa
-                if outros_pedidos_abertos == 0:
-                    resposta_liberar = messagebox.askyesno(
-                        "Liberar Mesa", 
-                        f"Não há mais pedidos abertos para a mesa {self.mesa['numero']}. Deseja liberá-la?"
-                    )
-                    
-                    if resposta_liberar:
-                        # Atualizar status da mesa para livre e limpar pedido_atual_id
-                        cursor.execute("""
-                            UPDATE mesas 
-                            SET status = 'LIVRE', 
-                                pedido_atual_id = NULL 
-                            WHERE id = %s
-                        """, (self.mesa['id'],))
-                        self.mesa['status'] = "LIVRE"
-                        self.mesa['pedido_atual_id'] = None
-                
-                # Commit das alterações
-                self.db_connection.commit()
-                
-                # Atualizar o pedido atual
-                self.pedido_atual['status'] = 'FINALIZADO'
-                self.pedido_atual['data_fechamento'] = data_fechamento
-                
-                # Recarregar pedidos para garantir que os dados estejam atualizados
-                self.carregar_pedidos()
-                
-                # Atualizar interface
-                self.atualizar_interface()
-                
-                # Mostrar mensagem de sucesso
-                messagebox.showinfo("Sucesso", "Pedido finalizado com sucesso!")
-                
-            except Exception as e:
-                self.db_connection.rollback()
-                raise e
-                
-            finally:
-                cursor.close()
+            
+            # Chamar o método do controller para finalizar o pedido
+            pedido_atualizado = self.controller_mesas.finalizar_pedido(
+                pedido_id=self.pedido_atual['id'],
+                mesa_id=self.pedido_atual.get('mesa_id'),
+                liberar_mesa=liberar_mesa
+            )
+            
+            if not pedido_atualizado:
+                messagebox.showinfo("Aviso", "Este pedido já foi finalizado anteriormente.")
+                return
+            
+            # Atualizar o pedido atual com os dados retornados pelo controller
+            self.pedido_atual = pedido_atualizado
+            
+            # Recarregar pedidos para garantir que os dados estejam atualizados
+            self.carregar_pedidos()
+            
+            # Atualizar interface
+            self.atualizar_interface()
+            
+            # Mostrar mensagem de sucesso
+            messagebox.showinfo("Sucesso", "Pedido finalizado com sucesso!")
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao finalizar pedido: {str(e)}")
-            print(f"Erro ao finalizar pedido: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def editar_item_selecionado(self, event):
-        """Seleciona o item na tabela sem exibir mensagens"""
-        # Apenas seleciona o item, sem exibir mensagens
-        selecao = self.tabela_itens.selection()
-        if not selecao:
+        """Seleciona o item na tabela e exibe as opções para edição"""
+        # Obter o item clicado
+        item = self.tabela_itens.identify_row(event.y)
+        if not item:
             return
+            
+        # Obter o item pai (se for uma opção, o pai é o item principal)
+        parent = self.tabela_itens.parent(item)
+        
+        # Se não for um item raiz (é uma opção), usar o pai
+        if parent:
+            item = parent
+            
+        # Obter os dados do item selecionado
+        item_data = self.tabela_itens.item(item, 'values')
+        if not item_data or len(item_data) < 1:
+            return
+            
+        # Encontrar o item correspondente na lista de itens do pedido
+        item_id = int(item_data[0])  # O ID está na primeira coluna
+        
+        # Procurar o item na lista de itens do pedido
+        for item_pedido in self.itens_pedido:
+            if item_pedido.get('id') == item_id:
+                # Chamar o método para mostrar as opções do item
+                self._mostrar_opcoes_item(item_pedido)
+                return
+                
+        # Se chegou aqui, não encontrou o item
+        messagebox.showinfo("Aviso", "Item não encontrado no pedido atual.")
             
     def remover_item_selecionado(self):
         """Remove o item selecionado da tabela"""
@@ -1361,132 +1283,69 @@ class PedidosMesasModule(BaseModule):
         if resposta:
             self.remover_item(item_id)
             
-    def limpar_pedido_atual(self):
-        """
-        Remove todos os itens do pedido atual e, se estiver vazio, pergunta se deseja cancelar o pedido
-        """
-        if not self.pedido_atual:
-            messagebox.showinfo("Aviso", "Não há pedido aberto")
-            return
-            
-        # Verificar se o pedido já está vazio
-        if not self.itens_pedido or len(self.itens_pedido) == 0:
-            # Se não houver itens, perguntar se deseja cancelar o pedido
-            if messagebox.askyesno("Cancelar Pedido", "O pedido está vazio. Deseja cancelar este pedido e liberar a mesa?"):
-                self.cancelar_pedido()
-            return
-            
-        # Se houver itens, perguntar se deseja remover todos os itens
-        if messagebox.askyesno("Confirmar", "Deseja remover TODOS os itens deste pedido?"):
-            try:
-                # Remover todos os itens do pedido no banco de dados
-                if self.db_connection:
-                    cursor = self.db_connection.cursor()
-                    
-                    try:
-                        # Primeiro, remover todas as opções dos itens do pedido
-                        cursor.execute(
-                            """
-                            DELETE ipo FROM itens_pedido_opcoes ipo
-                            INNER JOIN itens_pedido ip ON ipo.item_pedido_id = ip.id
-                            WHERE ip.pedido_id = %s
-                            """,
-                            (self.pedido_atual['id'],)
-                        )
-                        
-                        # Depois, remover todos os itens do pedido
-                        query = "DELETE FROM itens_pedido WHERE pedido_id = %s"
-                        cursor.execute(query, (self.pedido_atual['id'],))
-                        
-                        # Atualizar o total do pedido para zero
-                        query = "UPDATE pedidos SET total = 0 WHERE id = %s"
-                        cursor.execute(query, (self.pedido_atual['id'],))
-                        
-                        self.db_connection.commit()
-                        
-                        # Atualizar o pedido atual
-                        self.pedido_atual['total'] = 0
-                        self.itens_pedido = []
-                        
-                        # Perguntar se deseja cancelar o pedido vazio
-                        if messagebox.askyesno("Pedido Vazio", "O pedido está vazio. Deseja cancelar este pedido e liberar a mesa?"):
-                            self.cancelar_pedido()
-                        else:
-                            # Atualizar a interface
-                            self.preencher_tabela_itens()
-                            self.atualizar_interface()
-                            messagebox.showinfo("Sucesso", "Todos os itens foram removidos do pedido")
-                        
-                    except Exception as e:
-                        self.db_connection.rollback()
-                        raise e
-                        
-                    finally:
-                        cursor.close()
-                
-            except Exception as e:
-                messagebox.showerror("Erro", f"Erro ao limpar o pedido: {str(e)}")
-                print(f"Erro ao limpar pedido: {str(e)}")
-    
     def cancelar_pedido(self):
         """
-        Cancela o pedido atual e libera a mesa
+        Cancela o pedido atual, marcando-o como CANCELADO no banco de dados e liberando a mesa
         """
-        if not self.pedido_atual:
+        # Verificações iniciais
+        if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
+            messagebox.showinfo("Aviso", "Não há pedido aberto para cancelar")
+            return
+            
+        if not hasattr(self, 'mesa') or not self.mesa:
+            messagebox.showerror("Erro", "Mesa não identificada")
+            return
+            
+        # Mensagem de confirmação
+        mensagem = "Deseja cancelar este pedido e liberar a mesa?"
+        if hasattr(self, 'itens_pedido') and self.itens_pedido:
+            mensagem = "O pedido contém itens. " + mensagem
+            
+        if not messagebox.askyesno("Confirmar Cancelamento", mensagem):
             return
             
         try:
-            cursor = self.db_connection.cursor()
+            # Chamar o método do controller para cancelar o pedido
+            # O controller já tem acesso ao pedido atual e à mesa
+            sucesso, mensagem = self.controller_mesas.cancelar_pedido()
             
-            try:
-                # Remover todas as opções dos itens do pedido
-                cursor.execute(
-                    """
-                    DELETE ipo FROM itens_pedido_opcoes ipo
-                    INNER JOIN itens_pedido ip ON ipo.item_pedido_id = ip.id
-                    WHERE ip.pedido_id = %s
-                    """,
-                    (self.pedido_atual['id'],)
-                )
-                
-                # Remover todos os itens do pedido
-                cursor.execute("DELETE FROM itens_pedido WHERE pedido_id = %s", (self.pedido_atual['id'],))
-                
-                # Remover o pedido
-                cursor.execute("DELETE FROM pedidos WHERE id = %s", (self.pedido_atual['id'],))
-                
-                # Atualizar a mesa para LIVRE e limpar pedido_atual_id
-                cursor.execute("""
-                    UPDATE mesas 
-                    SET status = 'LIVRE', 
-                        pedido_atual_id = NULL 
-                    WHERE id = %s
-                """, (self.mesa['id'],))
-                
-                self.db_connection.commit()
-                
-                # Atualizar o estado local
-                self.mesa['status'] = 'LIVRE'
-                self.mesa['pedido_atual_id'] = None
+            if sucesso:
+                # Atualizar estado local
                 self.pedido_atual = None
-                self.itens_pedido = []
+                if hasattr(self, 'itens_pedido'):
+                    self.itens_pedido = []
                 
-                # Atualizar a interface
-                self.carregar_pedidos()
-                self.atualizar_interface()
+                # Mostrar mensagem de sucesso
+                messagebox.showinfo("Sucesso", mensagem)
                 
-                messagebox.showinfo("Sucesso", "Pedido cancelado e mesa liberada com sucesso!")
-                
-            except Exception as e:
-                self.db_connection.rollback()
-                raise e
-                
-            finally:
-                cursor.close()
+                # Atualizar a interface após um pequeno atraso
+                self.parent.after(1000, self.atualizar_apos_cancelamento)
+            else:
+                # Mostrar mensagem de erro
+                messagebox.showerror("Erro", mensagem)
                 
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao cancelar o pedido: {str(e)}")
-            print(f"Erro ao cancelar pedido: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def atualizar_apos_cancelamento(self):
+        """Atualiza a interface após o cancelamento do pedido e retorna para a tela de mesas"""
+        try:
+            # Recarregar os dados
+            self.carregar_pedidos()
+            self.atualizar_interface()
+            
+            # Mostrar mensagem de sucesso
+            messagebox.showinfo("Sucesso", "Pedido cancelado e mesa liberada com sucesso!")
+            
+            # Voltar para a tela de mesas após um pequeno atraso para garantir que a mensagem seja exibida
+            self.parent.after(500, self.voltar_para_mesas)
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao atualizar a interface: {str(e)}")
+            # Mesmo em caso de erro, tente voltar para a tela de mesas
+            self.parent.after(500, self.voltar_para_mesas)
     
     def remover_item(self, item_id):
         """
@@ -1495,54 +1354,33 @@ class PedidosMesasModule(BaseModule):
         Args:
             item_id: ID do item a ser removido
         """
+        if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
+            messagebox.showinfo("Aviso", "Nenhum pedido em andamento")
+            return
+            
         try:
-            cursor = self.db_connection.cursor(dictionary=True)
+            # Chamar o método do controller para remover o item
+            sucesso = self.controller_mesas.remover_item_do_pedido(
+                item_id=item_id,
+                pedido_id=self.pedido_atual['id']
+            )
             
-            # Obter valor total do item para subtrair do pedido
-            cursor.execute("SELECT subtotal FROM itens_pedido WHERE id = %s", (item_id,))
-            item = cursor.fetchone()
-            
-            if not item:
-                messagebox.showerror("Erro", "Item não encontrado!")
-                return
-            
-            valor_item = item['subtotal']
-            
-            try:
-                # Remover as opções associadas ao item primeiro (se houver)
-                cursor.execute("DELETE FROM itens_pedido_opcoes WHERE item_pedido_id = %s", (item_id,))
+            if sucesso:
+                # Recarregar dados
+                self.carregar_pedidos()
                 
-                # Remover o item principal
-                cursor.execute("DELETE FROM itens_pedido WHERE id = %s", (item_id,))
+                # Atualizar interface
+                self.atualizar_interface()
                 
-                # Atualizar valor total do pedido
-                cursor.execute(
-                    "UPDATE pedidos SET total = GREATEST(0, total - %s) WHERE id = %s", 
-                    (valor_item, self.pedido_atual['id'])
-                )
+                # Mensagem de sucesso
+                messagebox.showinfo("Sucesso", "Item removido com sucesso!")
+            else:
+                messagebox.showerror("Erro", "Item não encontrado no pedido")
                 
-                # Commit das alterações
-                self.db_connection.commit()
-                
-            except Exception as e:
-                # Em caso de erro, fazer rollback
-                self.db_connection.rollback()
-                raise e
-                
-            finally:
-                cursor.close()
-            
-            # Recarregar dados
-            self.carregar_pedidos()
-            
-            # Atualizar interface
-            self.atualizar_interface()
-            
-            # Mensagem de sucesso
-            messagebox.showinfo("Sucesso", "Item removido com sucesso!")
-            
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao remover item: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def atualizar_interface(self):
         """Atualiza a interface após mudanças nos dados"""
@@ -1579,44 +1417,18 @@ class PedidosMesasModule(BaseModule):
             
     def _buscar_produtos(self):
         """Busca produtos pelo texto digitado"""
-        termo = self.busca_entry.get().strip().lower()
-        
-        if not termo:
-            # Se não houver termo de busca, mostrar todos os produtos
-            self.preencher_tabela_produtos()
-            return
-        
         try:
-            # Buscar diretamente no banco de dados para melhor desempenho
-            cursor = self.db_connection.cursor(dictionary=True)
+            termo = self.busca_entry.get().strip()
             
-            query = """
-            SELECT id, nome, preco_venda as preco, tipo, quantidade_minima
-            FROM produtos 
-            WHERE LOWER(nome) LIKE %s OR LOWER(tipo) LIKE %s
-            ORDER BY nome
-            """
+            # Usar o controller para buscar os produtos
+            produtos = self.controller_mesas.buscar_produtos(termo)
             
-            termo_busca = f"%{termo}%"
-            cursor.execute(query, (termo_busca, termo_busca))
-            produtos_filtrados = cursor.fetchall()
-            cursor.close()
-            
-            # Atualizar a tabela com os produtos filtrados
-            self.preencher_tabela_produtos(produtos_filtrados)
+            # Atualizar a tabela com os produtos encontrados
+            self.preencher_tabela_produtos(produtos)
             
         except Exception as e:
             print(f"Erro ao buscar produtos: {str(e)}")
-            # Em caso de erro, fazer a busca em memória
-            produtos_filtrados = []
-            for produto in self.produtos:
-                # Buscar no nome e no tipo do produto
-                if termo in produto['nome'].lower() or \
-                   (produto.get('tipo', '') and termo in produto.get('tipo', '').lower()):
-                    produtos_filtrados.append(produto)
-            
-            # Atualizar a tabela com os produtos filtrados
-            self.preencher_tabela_produtos(produtos_filtrados)
+            messagebox.showerror("Erro", f"Erro ao buscar produtos: {str(e)}")
     
     def _filtrar_produtos_por_tipo(self, tipo):
         """Filtra produtos por tipo"""
@@ -1672,16 +1484,42 @@ class PedidosMesasModule(BaseModule):
                 messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados de opções.")
                 return
                 
-            # Verificar se o produto tem opções
-            opcoes = opcoes_controller.listar_opcoes_por_produto(produto_id)
+            # Inicializar a lista de opções
+            opcoes = []
             
-            if not opcoes:
-                messagebox.showinfo("Informação", "Este item não possui opções disponíveis.")
+            # Verificar se o item tem opções
+            try:
+                grupos_opcoes = opcoes_controller.listar_opcoes_por_produto(produto_id)
+                
+                if not grupos_opcoes:
+                    messagebox.showinfo("Informação", "Este item não possui opções disponíveis.")
+                    return
+                    
+                # Extrair todas as opções de todos os grupos
+                for grupo_id, grupo_info in grupos_opcoes.items():
+                    if 'itens' in grupo_info and grupo_info['itens']:
+                        for item in grupo_info['itens']:
+                            # Criar uma cópia do item para não modificar o original
+                            item_copy = item.copy()
+                            # Adicionar informações do grupo ao item
+                            item_copy['grupo_nome'] = grupo_info.get('nome', 'Sem Grupo')
+                            item_copy['grupo_obrigatorio'] = grupo_info.get('obrigatorio', False)
+                            opcoes.append(item_copy)
+                
+                if not opcoes:
+                    messagebox.showinfo("Informação", "Nenhuma opção disponível para este item.")
+                    return
+                    
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao carregar opções: {str(e)}")
+                print(f"Erro ao carregar opções: {str(e)}")
+                import traceback
+                traceback.print_exc()
                 return
                 
             # Criar uma janela para exibir as opções
-            janela_opcoes = tk.Toplevel(self.window)
-            janela_opcoes.title(f"Opções do Item #{item_pedido['id']}")
+            janela_opcoes = tk.Toplevel(self.parent)  # Usar self.parent em vez de self.window
+            janela_opcoes.title(f"Opções do Item #{item_pedido.get('id', '')}")
             janela_opcoes.geometry("500x400")
             janela_opcoes.resizable(False, False)
             
@@ -1711,24 +1549,42 @@ class PedidosMesasModule(BaseModule):
             opcoes_frame = tk.Frame(main_frame, bg=CORES['fundo'])
             opcoes_frame.pack(fill="both", expand=True)
             
-            # Adicionar opções existentes
+            # Adicionar opções existentes já selecionadas
             opcoes_selecionadas = {}
             
             if 'opcoes' in item_pedido and item_pedido['opcoes']:
                 for opcao in item_pedido['opcoes']:
-                    opcoes_selecionadas[opcao['id']] = opcao
+                    if isinstance(opcao, dict) and 'id' in opcao:
+                        opcoes_selecionadas[opcao['id']] = opcao
             
             # Criar checkboxes para cada opção
             for opcao in opcoes:
-                var = tk.BooleanVar(value=opcao['id'] in opcoes_selecionadas)
+                opcao_id = opcao.get('id')
+                if not opcao_id:
+                    continue
+                    
+                var = tk.BooleanVar(value=opcao_id in opcoes_selecionadas)
                 
                 frame_opcao = tk.Frame(opcoes_frame, bg=CORES['fundo'], pady=5)
                 frame_opcao.pack(fill="x", pady=2)
                 
+                # Nome do grupo como título (se for diferente do anterior)
+                if 'grupo_nome' in opcao and (not hasattr(self, '_ultimo_grupo') or self._ultimo_grupo != opcao['grupo_nome']):
+                    lbl_grupo = tk.Label(
+                        opcoes_frame,
+                        text=opcao['grupo_nome'],
+                        font=FONTES['subtitulo'],
+                        bg=CORES['fundo'],
+                        fg=CORES['texto'],
+                        anchor="w"
+                    )
+                    lbl_grupo.pack(fill="x", pady=(10, 5))
+                    self._ultimo_grupo = opcao['grupo_nome']
+                
                 # Checkbox
                 cb = tk.Checkbutton(
                     frame_opcao,
-                    text=f"{opcao['nome']} (+R$ {opcao['preco_adicional']:.2f})",
+                    text=f"{opcao.get('nome', 'Opção')} (+R$ {float(opcao.get('preco_adicional', 0)):.2f})",
                     variable=var,
                     onvalue=True,
                     offvalue=False,
@@ -1742,10 +1598,11 @@ class PedidosMesasModule(BaseModule):
                 cb.pack(anchor="w")
                 
                 # Descrição da opção (se houver)
-                if opcao.get('descricao'):
+                descricao = opcao.get('descricao')
+                if descricao:
                     tk.Label(
                         frame_opcao,
-                        text=f"    {opcao['descricao']}",
+                        text=f"    {descricao}",
                         font=FONTES['pequena'],
                         bg=CORES['fundo'],
                         fg=CORES['texto_secundario'],
@@ -1776,42 +1633,28 @@ class PedidosMesasModule(BaseModule):
     
     def atualizar_total_pedido(self):
         """Atualiza o valor total do pedido com base nos itens e opções"""
-        if not self.pedido_atual:
-            return
+        if not hasattr(self, 'pedido_atual') or not self.pedido_atual or 'id' not in self.pedido_atual:
+            return 0.0
             
         try:
-            cursor = self.db_connection.cursor(dictionary=True)
+            # Usar o controller para atualizar o total do pedido
+            total = self.controller_mesas.atualizar_total_pedido(self.pedido_atual['id'])
             
-            # Calcular o total do pedido somando os subtotais dos itens
-            query = """
-            SELECT COALESCE(SUM(ip.subtotal), 0) as total
-            FROM itens_pedido ip
-            WHERE ip.pedido_id = %s
-            """
-            cursor.execute(query, (self.pedido_atual['id'],))
-            resultado = cursor.fetchone()
-            
-            if resultado:
-                total = float(resultado['total'])
-                
-                # Atualizar o total no banco de dados
-                update_query = "UPDATE pedidos SET total = %s WHERE id = %s"
-                cursor.execute(update_query, (total, self.pedido_atual['id']))
-                self.db_connection.commit()
-                
-                # Atualizar o objeto do pedido atual
+            # Atualizar o total no pedido atual
+            if self.pedido_atual:
                 self.pedido_atual['total'] = total
-                
-                # Atualizar a interface
-                if hasattr(self, 'total_valor'):
-                    self.total_valor.config(text=f"R$ {total:.2f}".replace('.', ','))
-                
-                return total
-                
+            
+            # Atualizar a interface
+            if hasattr(self, 'total_valor'):
+                self.total_valor.config(text=f"R$ {total:.2f}".replace('.', ','))
+            
+            return float(total) if total is not None else 0.0
+            
         except Exception as e:
-            self.db_connection.rollback()
             print(f"Erro ao atualizar total do pedido: {str(e)}")
-            return 0
+            import traceback
+            traceback.print_exc()
+            return 0.0
             
         finally:
             if 'cursor' in locals():
@@ -1826,52 +1669,12 @@ class PedidosMesasModule(BaseModule):
             var (BooleanVar): Variável de controle do checkbox
         """
         try:
-            if not self.db_connection:
-                messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados.")
-                return
-                
-            cursor = self.db_connection.cursor()
-            
-            if var.get():  # Se a opção foi marcada
-                # Verificar se a opção já está associada ao item
-                cursor.execute(
-                    "SELECT id FROM itens_pedido_opcoes WHERE item_pedido_id = %s AND opcao_id = %s",
-                    (item_pedido['id'], opcao['id'])
-                )
-                
-                if not cursor.fetchone():  # Se a opção ainda não estiver associada
-                    # Inserir a nova opção
-                    cursor.execute(
-                        """
-                        INSERT INTO itens_pedido_opcoes (item_pedido_id, opcao_id, nome, preco_adicional)
-                        VALUES (%s, %s, %s, %s)
-                        """,
-                        (item_pedido['id'], opcao['id'], opcao['nome'], opcao['preco_adicional'])
-                    )
-            else:  # Se a opção foi desmarcada
-                # Remover a opção
-                cursor.execute(
-                    "DELETE FROM itens_pedido_opcoes WHERE item_pedido_id = %s AND opcao_id = %s",
-                    (item_pedido['id'], opcao['id'])
-                )
-            
-            # Recalcular o subtotal do item
-            cursor.execute(
-                """
-                UPDATE itens_pedido ip
-                SET subtotal = (
-                    SELECT (ip.quantidade * ip.valor_unitario) + COALESCE(SUM(ipo.preco_adicional), 0)
-                    FROM itens_pedido ip2
-                    LEFT JOIN itens_pedido_opcoes ipo ON ip2.id = ipo.item_pedido_id
-                    WHERE ip2.id = ip.id
-                    GROUP BY ip2.id
-                )
-                WHERE ip.id = %s
-                """,
-                (item_pedido['id'],)
+            # Usar o controller para atualizar a opção do item
+            self.controller_mesas.atualizar_opcao_item(
+                item_pedido_id=item_pedido['id'],
+                opcao=opcao,
+                selecionado=var.get()
             )
-            
-            self.db_connection.commit()
             
             # Atualizar a lista de itens do pedido
             self.carregar_itens_pedido(self.pedido_atual['id'])
@@ -1883,26 +1686,44 @@ class PedidosMesasModule(BaseModule):
             self.atualizar_total_pedido()
             
         except Exception as e:
-            self.db_connection.rollback()
             messagebox.showerror("Erro", f"Erro ao atualizar opção: {str(e)}")
             print(f"Erro ao atualizar opção: {str(e)}")
-            
-        finally:
-            if 'cursor' in locals():
-                cursor.close()
+            import traceback
+            traceback.print_exc()
     
-    def _mostrar_opcoes_produto(self):
-        """Exibe as opções disponíveis para o produto selecionado"""
-        # Obter o item selecionado
-        selecionado = self.tabela_produtos.selection()
-        if not selecionado:
-            messagebox.showwarning("Aviso", "Selecione um produto para adicionar opções.")
+    def _mostrar_opcoes_produto(self, produto=None, quantidade=1, usuario_id=None):
+        """
+        Exibe as opções disponíveis para o produto selecionado
+        
+        Args:
+            produto: Dicionário com os dados do produto
+            quantidade: Quantidade do item
+            usuario_id: ID do usuário logado (opcional)
+        """
+        if produto is None:
+            # Obter o item selecionado se o produto não foi passado
+            selecionado = self.tabela_produtos.selection()
+            if not selecionado:
+                messagebox.showwarning("Aviso", "Selecione um produto para adicionar opções.")
+                return
+                
+            # Obter os dados do produto selecionado
+            item = self.tabela_produtos.item(selecionado[0])
+            valores = item['values']
+            produto_id = valores[0]
+            
+            # Encontrar o produto na lista
+            produto = None
+            for p in self.produtos:
+                if str(p['id']) == str(produto_id):
+                    produto = p
+                    break
+        
+        if not produto:
+            messagebox.showerror("Erro", "Produto não encontrado.")
             return
             
-        # Obter os dados do produto selecionado
-        item = self.tabela_produtos.item(selecionado[0])
-        valores = item['values']
-        produto_id = valores[0]
+        produto_id = produto['id']
         
         # Verificar se o produto tem opções antes de criar a janela
         try:
@@ -1932,17 +1753,6 @@ class PedidosMesasModule(BaseModule):
             # Para cada grupo, buscar os itens de opção
             for grupo in grupos_opcoes:
                 grupo['itens'] = opcoes_controller.listar_itens_por_grupo(grupo['id'], ativo=True)
-                
-            # Encontrar o produto na lista
-            produto = None
-            for p in self.produtos:
-                if str(p['id']) == str(produto_id):
-                    produto = p
-                    break
-            
-            if not produto:
-                messagebox.showerror("Erro", "Produto não encontrado.")
-                return
             
             # Criar janela de opções
             self.janela_opcoes = tk.Toplevel(self.parent)
@@ -1965,7 +1775,12 @@ class PedidosMesasModule(BaseModule):
                 if grupo['selecao_maxima'] == 1:
                     # Seleção única (Radiobuttons)
                     var = tk.StringVar()
-                    self.selecoes_opcoes[grupo['id']] = {'var': var, 'tipo': 'unico'}
+                    self.selecoes_opcoes[grupo['id']] = {'var': var, 'tipo': 'unico', 'itens': grupo['itens']}
+                    
+                    # Se houver apenas uma opção, pré-selecionar automaticamente
+                    if len(grupo['itens']) == 1:
+                        var.set(str(grupo['itens'][0]['id']))
+                     
                     
                     for opcao in grupo['itens']:
                         rb = ttk.Radiobutton(
@@ -1975,9 +1790,18 @@ class PedidosMesasModule(BaseModule):
                             value=str(opcao['id'])
                         )
                         rb.pack(anchor="w")
+                        
+                        # Adicionar evento para seleção
+                        def on_select(event=None, opcao_id=opcao['id'], grupo_id=grupo['id']):
+                            pass
+                        
+                        rb.bind("<Button-1>", on_select)
+                    
+                    # Debug: mostrar opções disponíveis
+                    # Opções disponíveis para este grupo
                 else:
                     # Seleção múltipla (Checkbuttons)
-                    self.selecoes_opcoes[grupo['id']] = {'var': [], 'tipo': 'multiplo'}
+                    self.selecoes_opcoes[grupo['id']] = {'var': [], 'tipo': 'multiplo', 'itens': grupo['itens']}
                     
                     for opcao in grupo['itens']:
                         var = tk.BooleanVar()
@@ -1989,6 +1813,8 @@ class PedidosMesasModule(BaseModule):
                             variable=var
                         )
                         cb.pack(anchor="w")
+                    
+                    # Opções disponíveis para checkbox
             
             # Botão para confirmar as opções
             btn_confirmar = tk.Button(
@@ -1998,7 +1824,7 @@ class PedidosMesasModule(BaseModule):
                 fg=CORES['texto_claro'],
                 padx=10,
                 pady=5,
-                command=lambda: self._adicionar_item_com_opcoes(produto, 1)  # Quantidade padrão 1
+                command=lambda p=produto, q=quantidade, u=usuario_id: self._adicionar_item_com_opcoes(p, q, u)
             )
             btn_confirmar.pack(pady=10)
             
@@ -2007,59 +1833,191 @@ class PedidosMesasModule(BaseModule):
             if hasattr(self, 'janela_opcoes'):
                 self.janela_opcoes.destroy()
     
-    def _adicionar_item_com_opcoes(self, produto, quantidade):
-        """Adiciona o produto ao pedido com as opções selecionadas"""
+    def _adicionar_item_sem_opcoes(self, produto, quantidade, usuario_id=None):
+        """
+        Adiciona um produto sem opções ao pedido
+        
+        Args:
+            produto: Dicionário com os dados do produto
+            quantidade: Quantidade do item
+            usuario_id: ID do usuário logado (opcional)
+        
+        Returns:
+            bool: True se o item foi adicionado com sucesso, False caso contrário
+        """
         try:
-            # Obter as opções selecionadas
-            opcoes_selecionadas = []
-            preco_adicional = 0.0
+            # Verificar se há um pedido atual, se não, criar um
+            if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
+                sucesso = self.criar_novo_pedido()
+                if not sucesso:
+                    messagebox.showerror("Erro", "Não foi possível criar um novo pedido")
+                    return False
             
-            # Verificar se há seleções de opções
-            if not hasattr(self, 'selecoes_opcoes') or not self.selecoes_opcoes:
-                # Se não houver opções selecionadas, adicionar o item sem opções
-                self.adicionar_item_especifico(produto, quantidade, [], 0.0)
-                return
+            # Chamar o método do controller para adicionar o item
+            sucesso, mensagem, item = self.controller_mesas.adicionar_item_mesa(
+                self.mesa['id'],
+                produto,
+                quantidade,
+                opcoes_selecionadas=None,  # Sem opções
+                preco_adicional=0.0,  # Sem preço adicional
+                usuario_id=usuario_id
+            )
+            
+            if sucesso:
+                # Atualizar a tabela de itens
+                self.carregar_pedidos()
+                return True
+            else:
+                messagebox.showerror("Erro", mensagem)
+                return False
                 
-            for grupo_id, selecao in self.selecoes_opcoes.items():
-                if selecao['tipo'] == 'unico' and selecao['var'].get():
-                    # Opção única selecionada
-                    opcao_id = int(selecao['var'].get())
-                    # Encontrar a opção para obter o preço adicional
-                    for opcao in self._obter_todas_opcoes():
-                        if opcao['id'] == opcao_id:
-                            opcoes_selecionadas.append({
-                                'id': opcao_id,
-                                'nome': opcao['nome'],
-                                'preco_adicional': float(opcao['preco_adicional'])
-                            })
-                            preco_adicional += float(opcao['preco_adicional'])
-                            break
-                elif selecao['tipo'] == 'multiplo':
-                    # Opções múltiplas selecionadas
-                    for var_opcao in selecao['var']:
-                        var, opcao = var_opcao
-                        if var.get():
-                            opcoes_selecionadas.append({
-                                'id': opcao['id'],
-                                'nome': opcao['nome'],
-                                'preco_adicional': float(opcao['preco_adicional'])
-                            })
-                            preco_adicional += float(opcao['preco_adicional'])
-            
-            # Fechar a janela de opções
-            if hasattr(self, 'janela_opcoes'):
-                self.janela_opcoes.destroy()
-            
-            # Adicionar o item ao pedido com as opções
-            self.adicionar_item_especifico(produto, quantidade, opcoes_selecionadas, preco_adicional)
-            
-            # Limpar as seleções após adicionar o item
-            self.selecoes_opcoes = {}
-            
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao adicionar item com opções: {str(e)}")
+            messagebox.showerror("Erro", f"Erro ao adicionar item: {str(e)}")
             import traceback
             traceback.print_exc()
+            return False
+    
+    def _adicionar_item_com_opcoes(self, produto, quantidade, usuario_id=None):
+        """
+        Adiciona o produto ao pedido com as opções selecionadas
+        
+        Args:
+            produto: Dicionário com os dados do produto
+            quantidade: Quantidade do item
+            usuario_id: ID do usuário logado (opcional)
+        """
+        opcoes_selecionadas = []
+        preco_adicional = 0
+        
+        # Processando opções para o produto
+        
+        try:
+            # Verificar se existem seleções feitas
+            if not hasattr(self, 'selecoes_opcoes') or not self.selecoes_opcoes:
+                messagebox.showwarning("Aviso", "Nenhuma opção foi selecionada.")
+                return False
+                
+            # Processar cada grupo de opções
+            for grupo_id, dados in self.selecoes_opcoes.items():
+                if dados['tipo'] == 'unico':
+                    # Opção única (radiobutton)
+                    opcao_id = dados['var'].get()
+                    # Processando seleção do radiobutton
+                    
+                    # Se não houver seleção e o grupo tiver apenas uma opção, selecionar automaticamente
+                    if not opcao_id and 'itens' in dados and len(dados['itens']) == 1:
+                        opcao_id = str(dados['itens'][0]['id'])
+                        # Selecionando automaticamente a única opção disponível
+                    
+                    if not opcao_id:
+                        # Nenhuma opção selecionada para este grupo
+                        continue
+                    
+                    # Buscar a opção nos itens do grupo
+                    encontrou = False
+                    for opcao in dados.get('itens', []):
+                        # Converter para string para garantir comparação correta
+                        if str(opcao.get('id')) == str(opcao_id):
+                            # Opção encontrada
+                            opcoes_selecionadas.append({
+                                'id': opcao['id'],
+                                'nome': opcao.get('nome', 'Opção'),
+                                'preco_adicional': float(opcao.get('preco_adicional', 0)),
+                                'grupo_id': grupo_id
+                            })
+                            preco_adicional += float(opcao.get('preco_adicional', 0))
+                            encontrou = True
+                            break
+                    
+                    if not encontrou:
+                        print(f"ERRO: Não encontrou opção com ID {opcao_id} no grupo {grupo_id}")
+                        print(f"Itens disponíveis: {[{i['id']: i['nome']} for i in dados.get('itens', [])]}")
+                        # Tentar novamente com uma abordagem diferente
+                        for opcao in dados.get('itens', []):
+                            print(f"Comparando: '{opcao_id}' com '{opcao['id']}' (tipos: {type(opcao_id)} e {type(opcao['id'])})")
+                        
+                        # Se não encontrou, mas temos apenas uma opção, usar essa opção
+                        if len(dados.get('itens', [])) == 1:
+                            opcao = dados['itens'][0]
+                            print(f"Usando a única opção disponível: {opcao['nome']} (ID: {opcao['id']})")
+                            opcoes_selecionadas.append({
+                                'id': opcao['id'],
+                                'nome': opcao.get('nome', 'Opção'),
+                                'preco_adicional': float(opcao.get('preco_adicional', 0)),
+                                'grupo_id': grupo_id
+                            })
+                            preco_adicional += float(opcao.get('preco_adicional', 0))
+                        else:
+                            messagebox.showwarning("Aviso", f"Não foi possível encontrar a opção selecionada no grupo {grupo_id}.")
+                            return False
+                            
+                elif dados['tipo'] == 'multiplo':
+                    # Verificar se é uma lista de tuplas (var, opcao) ou um dicionário
+                    if isinstance(dados['var'], list):
+                        for var, opcao in dados['var']:
+                            if var.get():
+                                opcoes_selecionadas.append({
+                                    'id': opcao['id'],
+                                    'nome': opcao.get('nome', 'Opção'),
+                                    'preco_adicional': float(opcao.get('preco_adicional', 0)),
+                                    'grupo_id': grupo_id
+                                })
+                                preco_adicional += float(opcao.get('preco_adicional', 0))
+                    else:
+                        # Tratar como um dicionário de opções
+                        for opcao_id, var in dados['var'].items():
+                            if var.get():
+                                opcao = next((op for op in dados.get('itens', []) 
+                                            if str(op['id']) == str(opcao_id)), None)
+                                if opcao:
+                                    opcoes_selecionadas.append({
+                                        'id': opcao['id'],
+                                        'nome': opcao.get('nome', 'Opção'),
+                                        'preco_adicional': float(opcao.get('preco_adicional', 0)),
+                                        'grupo_id': grupo_id
+                                    })
+                                    preco_adicional += float(opcao.get('preco_adicional', 0))
+            
+            # Usar a função do controlador para adicionar o item
+            sucesso, mensagem, pedido = self.controller_mesas.adicionar_item_mesa(
+                mesa_id=self.mesa['id'],
+                produto=produto,
+                quantidade=quantidade,
+                opcoes_selecionadas=opcoes_selecionadas,
+                preco_adicional=preco_adicional,
+                usuario_id=usuario_id
+            )
+            
+            if sucesso and pedido:
+                # Fechar a janela de opções
+                if hasattr(self, 'janela_opcoes'):
+                    self.janela_opcoes.destroy()
+                
+                # Atualizar o pedido atual
+                self.pedido_atual = pedido
+                
+                # Recarregar itens do pedido
+                self.carregar_pedidos()
+                
+                # Atualizar a interface
+                self.atualizar_interface()
+                
+                # Limpar campos do formulário
+                if hasattr(self, 'quantidade_var'):
+                    self.quantidade_var.set("1")
+                if hasattr(self, 'observacoes_var'):
+                    self.observacoes_var.set("")
+                
+                # Mensagem de sucesso
+                messagebox.showinfo("Sucesso", mensagem or "Item adicionado com sucesso!")
+                return True
+            else:
+                messagebox.showerror("Erro", mensagem or "Não foi possível adicionar o item ao pedido.")
+                return False
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao adicionar item com opções: {str(e)}")
+            return False
     
     def _obter_todas_opcoes(self):
         """Obtém todas as opções disponíveis"""
@@ -2080,7 +2038,7 @@ class PedidosMesasModule(BaseModule):
             # Coletar todas as opções
             todas_opcoes = []
             for grupo in grupos:
-                opcoes = opcoes_controller.listar_opcoes_por_grupo(grupo['id'])
+                opcoes = opcoes_controller.listar_itens_por_grupo(grupo['id'])
                 todas_opcoes.extend(opcoes)
                 
             return todas_opcoes
@@ -2089,31 +2047,105 @@ class PedidosMesasModule(BaseModule):
             print(f"Erro ao obter opções: {str(e)}")
             return []
     
+    def adicionar_item(self):
+        """
+        Adiciona um item ao pedido atual ou cria um novo pedido se necessário.
+        
+        Este método é chamado quando o usuário clica no botão de adicionar item.
+        """
+        try:
+            # Verificar se há um produto selecionado
+            selecionado = self.tabela_produtos.selection()
+            if not selecionado:
+                messagebox.showwarning("Aviso", "Selecione um produto para adicionar")
+                return
+                
+            # Obter o produto selecionado
+            valores = self.tabela_produtos.item(selecionado[0])['values']
+            if not valores or len(valores) < 2:  # Verifica se há valores suficientes
+                messagebox.showerror("Erro", "Dados do produto inválidos!")
+                return
+                
+            # Encontrar o produto na lista de produtos
+            produto_id = int(valores[0])
+            produto = None
+            
+            for p in self.produtos:
+                if p['id'] == produto_id:
+                    produto = p
+                    break
+                    
+            if not produto:
+                messagebox.showerror("Erro", "Produto não encontrado!")
+                return
+            
+            # Obter a quantidade
+            try:
+                quantidade = int(self.quantidade_var.get())
+                if quantidade <= 0:
+                    raise ValueError("Quantidade deve ser maior que zero")
+            except ValueError:
+                messagebox.showerror("Erro", "Quantidade inválida!")
+                return
+            
+            # Obter o ID do usuário logado, se disponível
+            usuario_id = None
+            if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
+                usuario_id = self.controller.usuario.id
+            
+            # Verificar se o produto tem opções usando o controller de opções
+            grupos_opcoes = self.opcoes_controller.listar_grupos_por_produto(produto['id'])
+            
+            # Verificar se há grupos de opções obrigatórios
+            tem_opcoes_obrigatorias = False
+            for grupo in grupos_opcoes:
+                if grupo.get('obrigatorio', False):
+                    tem_opcoes_obrigatorias = True
+                    break
+            
+            if grupos_opcoes and len(grupos_opcoes) > 0 and tem_opcoes_obrigatorias:
+                # Se o produto tiver opções obrigatórias, mostrar a janela de opções
+                self._mostrar_opcoes_produto(produto, quantidade, usuario_id)
+                return True
+            else:
+                # Se não tiver opções ou não tiver opções obrigatórias, adicionar diretamente
+                return self._adicionar_item_sem_opcoes(produto, quantidade, usuario_id)
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao adicionar item: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     def _calcular_total_com_desconto(self, *args):
         """Calcula o total com desconto quando o valor do desconto é alterado"""
+        if not hasattr(self, 'pedido_atual') or not self.pedido_atual or 'id' not in self.pedido_atual:
+            return
+            
         try:
             # Obter o valor do desconto (converter vírgula para ponto)
             desconto_texto = self.desconto_var.get().replace(',', '.')
-            desconto = float(desconto_texto) if desconto_texto else 0
+            valor_desconto = float(desconto_texto) if desconto_texto else 0
             
-            # Calcular o subtotal (soma dos valores dos itens)
-            subtotal = 0
-            for item_id in self.tabela_itens.get_children():
-                valores = self.tabela_itens.item(item_id, 'values')
-                if len(valores) >= 4:  # Garantir que há valores suficientes
-                    # O valor total está na quarta coluna (índice 3)
-                    valor_texto = valores[3].replace('R$ ', '').replace('.', '').replace(',', '.')
-                    subtotal += float(valor_texto)
+            # Usar o controlador para calcular o desconto e obter os valores atualizados
+            subtotal, total = self.controller_mesas.calcular_desconto(
+                self.pedido_atual['id'],
+                valor_desconto
+            )
             
-            # Calcular o total (subtotal - desconto)
-            total = max(0, subtotal - desconto)  # Garantir que o total não seja negativo
+            # Atualizar os labels com os valores formatados
+            self.subtotal_valor.config(text=f"R$ {subtotal:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','))
+            self.total_valor.config(text=f"R$ {total:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','))
             
-            # Atualizar os labels
-            self.subtotal_valor.config(text=f"R$ {subtotal:.2f}".replace('.', ','))
-            self.total_valor.config(text=f"R$ {total:.2f}".replace('.', ','))
+            # Forçar atualização da interface
+            self.update_idletasks()
             
         except ValueError:
-            # Se o valor do desconto não for um número válido
+            # Se o valor do desconto não for um número válido, não faz nada
             pass
+        except Exception as e:
+            print(f"Erro ao calcular desconto: {str(e)}")
+            import traceback
+            traceback.print_exc()
             
     # Função calcular_total removida - não estava sendo utilizada
