@@ -29,7 +29,7 @@ class VisualizarMesasModule(BaseModule):
             "livre": CORES["primaria"],     # Azul claro para mesas livres
             "ocupada": CORES["secundaria"], # Azul escuro para mesas ocupadas
             "reservada": CORES["atencao"],  # Amarelo
-            "inativa": CORES["bordo"]       # Cinza
+            "inativa": CORES["inativo"]     # Cinza muito escuro
         }
         
         # Carregar mesas do banco de dados
@@ -361,7 +361,7 @@ class VisualizarMesasModule(BaseModule):
         # Barra de status na parte superior
         status_bar = tk.Frame(
             conteudo_frame,
-            bg=self.cores_status.get(mesa["status"].lower(), CORES['bordo']),
+            bg=self.cores_status.get(mesa["status"].lower(), CORES['inativo']),
             height=8
         )
         status_bar.pack(fill="x")
@@ -434,7 +434,7 @@ class VisualizarMesasModule(BaseModule):
         status_frame.grid(row=3, column=1, sticky="w", pady=8, padx=10)
         
         # Indicador de status colorido
-        status_cor = self.cores_status.get(mesa["status"].lower(), CORES['bordo'])
+        status_cor = self.cores_status.get(mesa["status"].lower(), CORES['inativo'])
         canvas = tk.Canvas(status_frame, width=15, height=15, bg=CORES['fundo_conteudo'], highlightthickness=0)
         canvas.create_rectangle(0, 0, 15, 15, fill=status_cor, outline="")
         canvas.pack(side="left")
@@ -736,8 +736,6 @@ class VisualizarMesasModule(BaseModule):
             for widget in self.frame.winfo_children():
                 widget.destroy()
             self.setup_ui()
-            
-            messagebox.showinfo("Sucesso", f"Status da mesa {mesa['numero']} alterado para {novo_status.capitalize()}")
             
             # Focar na janela principal
             self.frame.focus_set()

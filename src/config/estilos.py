@@ -14,6 +14,7 @@ CORES = {
     "destaque": "#4caf50",      # Verde
     "alerta": "#f44336",        # Vermelho
     "bordo": "#e0e0e0",         # Cinza claro
+    "inativo": "#505050",       # Cinza (RGB 80, 80, 80)
     "sucesso": "#4caf50",       # Verde
     "atencao": "#ff9800",       # Laranja
 }

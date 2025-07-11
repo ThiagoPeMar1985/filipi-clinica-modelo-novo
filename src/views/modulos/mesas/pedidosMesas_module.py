@@ -338,7 +338,7 @@ class PedidosMesasModule(BaseModule):
         remover_button = tk.Button(
             botoes_carrinho, 
             text="Remover Item", 
-            bg=CORES["alerta"],
+            bg=CORES["terciaria"],
             fg=CORES["texto_claro"],
             bd=0,
             padx=10,
@@ -743,7 +743,7 @@ class PedidosMesasModule(BaseModule):
         scrollbar.pack(side="right", fill="y")
         
         # Colunas da tabela
-        colunas = ("id", "produto", "quantidade", "valor_unit", "valor_total")
+        colunas = ("id", "produto", "quantidade", "valor_unit", "valor_total", "hora")
         
         # Configurar estilo para a Treeview
         from src.config.estilos import configurar_estilo_tabelas
@@ -765,14 +765,16 @@ class PedidosMesasModule(BaseModule):
         self.tabela_itens.heading("quantidade", text="Qtd")
         self.tabela_itens.heading("valor_unit", text="Valor Unit.")
         self.tabela_itens.heading("valor_total", text="Valor Total")
+        self.tabela_itens.heading("hora", text="Hora")
 
         
         # Configurar larguras das colunas
         self.tabela_itens.column("id", width=50, anchor="center")
-        self.tabela_itens.column("produto", width=200, anchor="w")
+        self.tabela_itens.column("produto", width=190, anchor="w")
         self.tabela_itens.column("quantidade", width=50, anchor="center")
-        self.tabela_itens.column("valor_unit", width=100, anchor="e")
-        self.tabela_itens.column("valor_total", width=100, anchor="e")
+        self.tabela_itens.column("valor_unit", width=90, anchor="e")
+        self.tabela_itens.column("valor_total", width=90, anchor="e")
+        self.tabela_itens.column("hora", width=60, anchor="center")
 
         
         # Configurar tags para estilização
@@ -856,6 +858,22 @@ class PedidosMesasModule(BaseModule):
             if tem_opcoes and not nome_produto.endswith(' +'):
                 nome_produto = f"{nome_produto} +"
             
+            # Formatar a hora do item
+            hora_item = ''
+            if 'data_hora' in item and item['data_hora']:
+                try:
+                    # Converter para objeto datetime se for string
+                    if isinstance(item['data_hora'], str):
+                        from datetime import datetime
+                        data_hora = datetime.strptime(item['data_hora'], '%Y-%m-%d %H:%M:%S')
+                    else:
+                        data_hora = item['data_hora']
+                    
+                    # Formatar apenas a hora:minuto
+                    hora_item = data_hora.strftime('%H:%M')
+                except Exception as e:
+                    print(f"Erro ao formatar data_hora: {e}")
+            
             # Inserir o item principal
             item_tree = self.tabela_itens.insert(
                 "", 
@@ -866,7 +884,8 @@ class PedidosMesasModule(BaseModule):
                     nome_produto,
                     item['quantidade'],
                     valor_unitario_fmt,
-                    subtotal_fmt
+                    subtotal_fmt,
+                    hora_item
                 ),
                 tags=('com_opcoes' if tem_opcoes else 'sem_opcoes',)
             )
@@ -908,7 +927,8 @@ class PedidosMesasModule(BaseModule):
                             f"  → {nome_opcao}",
                             "",  # Quantidade vazia
                             f"+R$ {float(opcao.get('preco_adicional', 0)):.2f}".replace('.', ','),
-                            ""   # Subtotal vazio
+                            "",  # Subtotal vazio
+                            ""   # Hora vazia para opções
                         ),
                         tags=('opcao_item',)
                     )
@@ -1305,12 +1325,18 @@ class PedidosMesasModule(BaseModule):
             messagebox.showerror("Erro", "Mesa não identificada")
             return
             
-        # Mensagem de confirmação
+        # Primeira mensagem de confirmação
         mensagem = "Deseja cancelar este pedido e liberar a mesa?"
         if hasattr(self, 'itens_pedido') and self.itens_pedido:
             mensagem = "O pedido contém itens. " + mensagem
             
         if not messagebox.askyesno("Confirmar Cancelamento", mensagem):
+            return
+        
+        # Segunda mensagem de confirmação
+        if not messagebox.askyesno("Confirmação Final", 
+                                 "ATENÇÃO: Esta ação irá apagar TODOS os itens do pedido e liberar a mesa.\n\n"
+                                 "Deseja realmente prosseguir com o cancelamento?"):
             return
             
         try:
@@ -1323,9 +1349,6 @@ class PedidosMesasModule(BaseModule):
                 self.pedido_atual = None
                 if hasattr(self, 'itens_pedido'):
                     self.itens_pedido = []
-                
-                # Mostrar mensagem de sucesso
-                messagebox.showinfo("Sucesso", mensagem)
                 
                 # Atualizar a interface após um pequeno atraso
                 self.parent.after(1000, self.atualizar_apos_cancelamento)
@@ -1345,11 +1368,8 @@ class PedidosMesasModule(BaseModule):
             self.carregar_pedidos()
             self.atualizar_interface()
             
-            # Mostrar mensagem de sucesso
-            messagebox.showinfo("Sucesso", "Pedido cancelado e mesa liberada com sucesso!")
-            
-            # Voltar para a tela de mesas após um pequeno atraso para garantir que a mensagem seja exibida
-            self.parent.after(500, self.voltar_para_mesas)
+            # Voltar para a tela de mesas
+            self.voltar_para_mesas()
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao atualizar a interface: {str(e)}")
@@ -2017,8 +2037,7 @@ class PedidosMesasModule(BaseModule):
                 if hasattr(self, 'observacoes_var'):
                     self.observacoes_var.set("")
                 
-                # Mensagem de sucesso
-                messagebox.showinfo("Sucesso", mensagem or "Item adicionado com sucesso!")
+                # Retornar sucesso sem mostrar mensagem
                 return True
             else:
                 messagebox.showerror("Erro", mensagem or "Não foi possível adicionar o item ao pedido.")
