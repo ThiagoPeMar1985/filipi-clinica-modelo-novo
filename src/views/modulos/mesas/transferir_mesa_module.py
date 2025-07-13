@@ -36,17 +36,12 @@ class TransferirMesaModule:
     
     def show(self):
         """Configura e retorna o frame principal do módulo"""
-        print("\n=== INÍCIO show() ===")
-        print(f"Tipo do frame: {type(self.frame)}")
-        print(f"Configuração do frame: {self.frame.config()}")
-        
         # Garantir que o frame ocupe todo o espaço disponível
         self.frame.pack(fill='both', expand=True)
         
         # Forçar atualização da interface
         self.frame.update_idletasks()
         
-        print("=== FIM show() ===\n")
         return self.frame
     
     def _setup_ui(self):
@@ -109,7 +104,6 @@ class TransferirMesaModule:
             self.lista_livres.config(yscrollcommand=scroll_livres.set)
             
             # Frame para botões
-            print("Criando frame dos botões...")
             botoes_frame = ttk.Frame(self.frame)
             botoes_frame.pack(fill='x', pady=10)
             
@@ -122,7 +116,6 @@ class TransferirMesaModule:
             btn_pady = 8
             
             # Botão de transferir (estilo padrão - azul)
-            print("Criando botão transferir...")
             self.btn_transferir = tk.Button(
                 botoes_frame, 
                 text="TRANSFERIR",
@@ -134,7 +127,6 @@ class TransferirMesaModule:
             self.btn_transferir.pack(side='right', padx=10, pady=5, ipadx=btn_padx, ipady=btn_pady)
             
             # Botão de cancelar
-            print("Criando botão cancelar...")
             btn_cancelar = tk.Button(
                 botoes_frame,
                 text="CANCELAR",
@@ -146,8 +138,6 @@ class TransferirMesaModule:
             
             # Estilo para o frame dos botões
             botoes_frame.configure(style='Botoes.TFrame')
-            
-            print("=== FIM _setup_ui ===\n")
             
         except Exception as e:
             print(f"ERRO em _setup_ui: {str(e)}")

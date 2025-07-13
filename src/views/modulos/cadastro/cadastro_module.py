@@ -114,7 +114,7 @@ class CadastroModule(BaseModule):
                 return
                 
             # Carrega os dados da empresa
-            self.dados_empresa = self.db.obter_empresa()
+            self.dados_empresa = self.db.obter_empresa() or {}
             
             # Frame principal
             main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
@@ -138,44 +138,86 @@ class CadastroModule(BaseModule):
             
             # Estilo dos labels e campos
             label_style = {'font': ('Arial', 10, 'bold'), 'bg': '#f0f2f5', 'anchor': 'w'}
-            entry_style = {'font': ('Arial', 10), 'bd': 0, 'relief': 'flat', 'width': 40, 'bg': 'white'}
+            entry_style = {'font': ('Arial', 10), 'bd': 0, 'relief': 'flat', 'bg': 'white'}
+            
+            # Inicializa os atributos dos campos como None
+            self.empresa_nome = None
+            self.empresa_razao = None
+            self.empresa_cnpj = None
+            self.empresa_ie = None
+            self.empresa_telefone = None
+            self.empresa_endereco = None
+            self.empresa_cep = None
+            self.empresa_bairro = None
+            self.empresa_cidade = None
+            self.empresa_estado = None
+            self.empresa_numero = None
             
             # Dados da Empresa
             tk.Label(form_frame, text="Dados da Empresa", font=('Arial', 12, 'bold'), bg='#f0f2f5').grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
             
-            # Nome Fantasia (obrigatório)
+            # Nome Fantasia
             tk.Label(form_frame, text="Nome Fantasia*:", **label_style).grid(row=1, column=0, padx=10, pady=5, sticky='w')
-            self.empresa_nome = tk.Entry(form_frame, **entry_style)
+            self.empresa_nome = tk.Entry(form_frame, **entry_style, width=50)
             self.empresa_nome.grid(row=1, column=1, padx=10, pady=5, sticky='w')
             
             # Razão Social
             tk.Label(form_frame, text="Razão Social:", **label_style).grid(row=2, column=0, padx=10, pady=5, sticky='w')
-            self.empresa_razao = tk.Entry(form_frame, **entry_style)
+            self.empresa_razao = tk.Entry(form_frame, **entry_style, width=50)
             self.empresa_razao.grid(row=2, column=1, padx=10, pady=5, sticky='w')
             
-            # CNPJ (obrigatório)
+            # CNPJ
             tk.Label(form_frame, text="CNPJ*:", **label_style).grid(row=3, column=0, padx=10, pady=5, sticky='w')
-            self.empresa_cnpj = tk.Entry(form_frame, **entry_style)
+            self.empresa_cnpj = tk.Entry(form_frame, **entry_style, width=25)
             self.empresa_cnpj.grid(row=3, column=1, padx=10, pady=5, sticky='w')
             
             # Inscrição Estadual
             tk.Label(form_frame, text="Inscrição Estadual:", **label_style).grid(row=4, column=0, padx=10, pady=5, sticky='w')
-            self.empresa_ie = tk.Entry(form_frame, **entry_style)
+            self.empresa_ie = tk.Entry(form_frame, **entry_style, width=25)
             self.empresa_ie.grid(row=4, column=1, padx=10, pady=5, sticky='w')
             
             # Telefone
             tk.Label(form_frame, text="Telefone:", **label_style).grid(row=5, column=0, padx=10, pady=5, sticky='w')
-            self.empresa_telefone = tk.Entry(form_frame, **entry_style)
+            self.empresa_telefone = tk.Entry(form_frame, **entry_style, width=25)
             self.empresa_telefone.grid(row=5, column=1, padx=10, pady=5, sticky='w')
             
-            # Endereço (texto livre)
-            tk.Label(form_frame, text="Endereço Completo:", **label_style).grid(row=6, column=0, padx=10, pady=5, sticky='nw')
-            self.empresa_endereco = tk.Text(form_frame, width=40, height=5, font=('Arial', 10), bd=0, relief='flat', bg='white')
-            self.empresa_endereco.grid(row=6, column=1, padx=10, pady=5, sticky='w')
+            # CEP
+            tk.Label(form_frame, text="CEP:", **label_style).grid(row=6, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_cep = tk.Entry(form_frame, **entry_style, width=15)
+            self.empresa_cep.grid(row=6, column=1, padx=10, pady=5, sticky='w')
+            
+            # Endereço
+            tk.Label(form_frame, text="Endereço:", **label_style).grid(row=7, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_endereco = tk.Entry(form_frame, **entry_style, width=50)
+            self.empresa_endereco.grid(row=7, column=1, padx=10, pady=5, sticky='w')
+            
+            # Número
+            tk.Label(form_frame, text="Número:", **label_style).grid(row=8, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_numero = tk.Entry(form_frame, **entry_style, width=10)
+            self.empresa_numero.grid(row=8, column=1, padx=10, pady=5, sticky='w')
+            
+            # Bairro
+            tk.Label(form_frame, text="Bairro:", **label_style).grid(row=9, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_bairro = tk.Entry(form_frame, **entry_style, width=40)
+            self.empresa_bairro.grid(row=9, column=1, padx=10, pady=5, sticky='w')
+            
+            # Cidade
+            tk.Label(form_frame, text="Cidade:", **label_style).grid(row=10, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_cidade = tk.Entry(form_frame, **entry_style, width=30)
+            self.empresa_cidade.grid(row=10, column=1, padx=10, pady=5, sticky='w')
+            
+            # Estado (UF)
+            tk.Label(form_frame, text="UF:", **label_style).grid(row=11, column=0, padx=10, pady=5, sticky='w')
+            self.empresa_estado = ttk.Combobox(form_frame, values=[
+                'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 
+                'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 
+                'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+            ], state='readonly', font=('Arial', 10), width=5)
+            self.empresa_estado.grid(row=11, column=1, padx=10, pady=5, sticky='w')
             
             # Frame para os botões (abaixo dos campos)
             btn_frame = tk.Frame(form_frame, bg='#f0f2f5')
-            btn_frame.grid(row=7, column=0, columnspan=2, pady=(20, 10), sticky='w')
+            btn_frame.grid(row=12, column=0, columnspan=2, pady=(20, 10), sticky='w')
             
             # Botão Salvar
             btn_salvar = tk.Button(
@@ -1704,7 +1746,12 @@ class CadastroModule(BaseModule):
                 'cnpj': (self.empresa_cnpj, 'insert'),
                 'inscricao_estadual': (self.empresa_ie, 'insert'),
                 'telefone': (self.empresa_telefone, 'insert'),
-                'endereco': (self.empresa_endereco, 'insert_text')
+                'endereco': (self.empresa_endereco, 'insert'),
+                'cep': (self.empresa_cep, 'insert'),
+                'bairro': (self.empresa_bairro, 'insert'),
+                'cidade': (self.empresa_cidade, 'insert'),
+                'estado': (self.empresa_estado, 'set'),
+                'numero': (self.empresa_numero, 'insert')
             }
             
             # Preenche cada campo com o valor correspondente, se existir
@@ -1714,6 +1761,8 @@ class CadastroModule(BaseModule):
                     if method == 'insert':
                         widget.delete(0, tk.END)
                         widget.insert(0, valor)
+                    elif method == 'set':
+                        widget.set(valor)
                     elif method == 'insert_text':
                         widget.delete('1.0', tk.END)
                         widget.insert('1.0', valor)
@@ -1730,7 +1779,12 @@ class CadastroModule(BaseModule):
                 'cnpj': self.empresa_cnpj.get().strip(),
                 'inscricao_estadual': self.empresa_ie.get().strip() or None,
                 'telefone': self.empresa_telefone.get().strip() or None,
-                'endereco': self.empresa_endereco.get('1.0', 'end-1c').strip() or None
+                'endereco': self.empresa_endereco.get().strip() or None,
+                'cep': self.empresa_cep.get().strip() or None,
+                'bairro': self.empresa_bairro.get().strip() or None,
+                'cidade': self.empresa_cidade.get().strip() or None,
+                'estado': self.empresa_estado.get().strip() or None,
+                'numero': self.empresa_numero.get().strip() or None
             }
             
             # Validação do campo obrigatório

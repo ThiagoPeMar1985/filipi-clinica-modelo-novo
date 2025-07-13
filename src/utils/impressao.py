@@ -134,7 +134,6 @@ class GerenciadorImpressao:
                     conteudo = self._gerar_conteudo_comanda(venda, itens_tipo, tipo)
                     
                     # Imprimir na impressora correspondente
-                    print(f"Enviando para impressora {tipo_impressora} ({impressora}): {len(itens_tipo)} itens do tipo {tipo}")
                     self._imprimir_texto(impressora, conteudo)
                 else:
                     print(f"Aviso: Nenhuma impressora configurada para o tipo: {tipo}")
@@ -156,51 +155,112 @@ class GerenciadorImpressao:
         Returns:
             str: Conteúdo formatado da comanda
         """
+        # Largura padrão para a comanda
+        largura = 50
+        
         # Cabeçalho
         conteudo = []
-        conteudo.append("=" * 40)
-        conteudo.append(f"COMANDA - {tipo_produto.upper()}".center(40))
-        conteudo.append("=" * 40)
+        conteudo.append("=" * largura)
+        # Garantir que o número da mesa seja exibido corretamente
+        mesa_num = venda.get('mesa_numero') or venda.get('numero_mesa') or venda.get('num_mesa') or venda.get('mesa')
+        if not mesa_num:
+            # Se ainda não encontrou, tenta buscar pelo ID do pedido na tabela pedidos e depois na tabela mesas
+            if 'id' in venda:
+                try:
+                    import mysql.connector
+                    from src.db.config import get_db_config
+                    
+                    db_config = get_db_config()
+                    conn = mysql.connector.connect(**db_config)
+                    cursor = conn.cursor(dictionary=True)
+                    
+                    # Primeiro busca o ID da mesa na tabela pedidos
+                    cursor.execute("SELECT mesa_id FROM pedidos WHERE id = %s", (venda['id'],))
+                    pedido = cursor.fetchone()
+                    
+                    if pedido and pedido['mesa_id']:
+                        # Agora busca o número da mesa na tabela mesas
+                        cursor.execute("SELECT numero FROM mesas WHERE id = %s", (pedido['mesa_id'],))
+                        mesa = cursor.fetchone()
+                        if mesa:
+                            mesa_num = mesa['numero']
+                    
+                    cursor.close()
+                    conn.close()
+                except Exception as e:
+                    print(f"Erro ao buscar número da mesa: {e}")
+                    mesa_num = 'X'
+            else:
+                mesa_num = 'X'
+        
+        conteudo.append(f"MESA  {mesa_num} - {tipo_produto.upper()}".center(largura))
+        conteudo.append("=" * largura)
         
         # Data e hora
         data_hora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         conteudo.append(f"Data/Hora: {data_hora}")
         
-        # Tipo de venda
-        tipo_venda = venda.get('tipo', 'avulsa').upper()
-        conteudo.append(f"Venda: {tipo_venda}")
+        # Usuário que lançou o pedido
+        # Como não temos acesso ao módulo de sessão, usamos uma informação genérica
+        nome_usuario = venda.get('usuario_nome', 'Não identificado')
+        conteudo.append(f"Pedido lançado por: {nome_usuario}")
         
-        # Referência (mesa, delivery, etc)
-        if venda.get('referencia'):
-            conteudo.append(f"Ref: {venda['referencia']}")
-            
-        # Cliente (se houver)
-        if venda.get('cliente_nome'):
-            conteudo.append(f"Cliente: {venda['cliente_nome']}")
-        
-        conteudo.append("-" * 40)
-        conteudo.append("ITEM  DESCRIÇÃO                  QTD")
-        conteudo.append("-" * 40)
+        conteudo.append("-" * largura)
+        conteudo.append("ITEM  DESCRIÇÃO                             QTD")
+        conteudo.append("-" * largura)
         
         # Itens
         for i, item in enumerate(itens, 1):
-            nome = item.get('nome', '')[:25]  # Limita o tamanho do nome
-            qtd = item.get('quantidade', 0)
+            # Tenta obter o nome do item de diferentes maneiras
+            nome = item.get('nome') or item.get('produto_nome') or item.get('nome_produto') or 'Produto sem nome'
+            
+            # Se ainda não tiver nome, tenta buscar pelo ID do produto
+            if nome == 'Produto sem nome' and 'produto_id' in item:
+                try:
+                    import mysql.connector
+                    from src.db.config import get_db_config
+                    
+                    db_config = get_db_config()
+                    conn = mysql.connector.connect(**db_config)
+                    cursor = conn.cursor(dictionary=True)
+                    
+                    cursor.execute("SELECT nome FROM produtos WHERE id = %s", (item['produto_id'],))
+                    produto = cursor.fetchone()
+                    if produto:
+                        nome = produto['nome']
+                    
+                    cursor.close()
+                    conn.close()
+                except Exception as e:
+                    print(f"Erro ao buscar nome do produto: {e}")
+                    nome = f"Produto ID: {item.get('produto_id', 'N/A')}"
+            
+            # Limita o tamanho do nome para 30 caracteres
+            nome = str(nome)[:30]
+            qtd = item.get('quantidade', 1)
             
             # Formata a linha do item
-            linha = f"{i:02d}    {nome:<25} {qtd:>5}"
+            linha = f"{i:02d}    {nome:<30} {qtd:>3}"
             conteudo.append(linha)
             
-            # Adicionar opções do item, se houver
+            # Adicionar opções ou observações do item
+            # Primeiro verifica opções
             if 'opcoes' in item and item['opcoes']:
                 for opcao in item['opcoes']:
-                    nome_opcao = opcao.get('nome', '')[:20]
-                    conteudo.append(f"      → {nome_opcao}")
+                    nome_opcao = str(opcao.get('nome', 'Opção sem nome'))[:30]
+                    conteudo.append(f"    → {nome_opcao}")
+            
+            # Depois verifica observações
+            if 'observacoes' in item and item['observacoes']:
+                observacoes = str(item['observacoes']).split('\n')
+                for obs in observacoes:
+                    if obs.strip():
+                        conteudo.append(f"    → {obs[:30]}")
         
         # Rodápé
-        conteudo.append("=" * 40)
-        conteudo.append(f"Total de itens: {len(itens)}".center(40))
-        conteudo.append("=" * 40)
+        conteudo.append("=" * largura)
+        conteudo.append(f"Total de itens: {len(itens)}".center(largura))
+        conteudo.append("=" * largura)
         
         return "\n".join(conteudo)
     
@@ -341,12 +401,26 @@ class GerenciadorImpressao:
         conteudo.append("-" * largura)
         
         # Totais
-        subtotal = sum(item.get('quantidade', 0) * item.get('valor_unitario', 0) for item in itens)
+        # Calcula o subtotal usando os mesmos campos de preço que usamos para exibir os itens
+        subtotal = 0
+        for item in itens:
+            qtd = item.get('quantidade', 0)
+            preco_unitario = 0
+            # Busca o preço em diferentes campos possíveis
+            for campo_preco in ['valor_unitario', 'preco_unitario', 'preco', 'valor', 'valor_venda', 'preco_venda']:
+                if campo_preco in item and item[campo_preco] is not None:
+                    preco_unitario = float(item[campo_preco])
+                    break
+            subtotal += qtd * preco_unitario
+        
+        # Calcula a taxa de serviço de 10%
+        taxa_servico = subtotal * 0.1
         taxa_entrega = venda.get('taxa_entrega', 0)
-        total = subtotal + taxa_entrega
+        total = subtotal + taxa_servico + taxa_entrega
         
         # Formata os totais alinhados à direita
         conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
+        conteudo.append(f"{'Taxa de serviço (10%):':<40} R$ {taxa_servico:>7.2f}")
         if taxa_entrega > 0:
             conteudo.append(f"{'Taxa de entrega:':<40} R$ {taxa_entrega:>7.2f}")
         conteudo.append("-" * largura)
@@ -413,9 +487,25 @@ class GerenciadorImpressao:
         
         # Itens
         for i, item in enumerate(itens, 1):
-            nome = item.get('nome', '')[:25]  # Aumentado para 25 caracteres
+            # Buscar o nome do produto em diferentes campos possíveis
+            nome = None
+            for campo_nome in ['nome', 'nome_produto', 'produto_nome']:
+                if campo_nome in item and item[campo_nome]:
+                    nome = item[campo_nome]
+                    break
+            
+            if nome is None:
+                nome = 'Produto sem nome'
+                
+            nome = nome[:25]  # Limitar a 25 caracteres
             qtd = item.get('quantidade', 0)
-            preco = item.get('preco', 0)
+            
+            # Buscar o preço em diferentes campos possíveis
+            preco = 0
+            for campo_preco in ['valor_unitario', 'preco_unitario', 'preco', 'valor', 'valor_venda', 'preco_venda']:
+                if campo_preco in item and item[campo_preco] is not None:
+                    preco = float(item[campo_preco])
+                    break
             
             # Formata a linha do item
             linha = f"{i:02d}  {nome:<25} {qtd:>2}  R$ {preco:>6.2f}"
@@ -432,12 +522,26 @@ class GerenciadorImpressao:
         conteudo.append("")
         
         # Totais
-        subtotal = sum(item.get('total', 0) for item in itens)
+        # Calcula o subtotal usando os mesmos campos de preço que usamos para exibir os itens
+        subtotal = 0
+        for item in itens:
+            qtd = item.get('quantidade', 0)
+            preco_unitario = 0
+            # Busca o preço em diferentes campos possíveis
+            for campo_preco in ['valor_unitario', 'preco_unitario', 'preco', 'valor', 'valor_venda', 'preco_venda']:
+                if campo_preco in item and item[campo_preco] is not None:
+                    preco_unitario = float(item[campo_preco])
+                    break
+            subtotal += qtd * preco_unitario
+        
+        # Calcula a taxa de serviço de 10%
+        taxa_servico = subtotal * 0.1
         desconto = venda.get('desconto', 0)
-        total = venda.get('valor_final', subtotal - desconto)
+        total = venda.get('valor_final', subtotal + taxa_servico - desconto)
         
         # Formata os totais alinhados à direita
         conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
+        conteudo.append(f"{'Taxa de serviço (10%):':<40} R$ {taxa_servico:>7.2f}")
         if desconto > 0:
             conteudo.append(f"{'Desconto:':<40} R$ {desconto:>7.2f}")
         conteudo.append("-" * largura)

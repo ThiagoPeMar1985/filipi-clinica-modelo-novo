@@ -1160,6 +1160,9 @@ class PagamentoModule:
             # Obter os itens da venda (produtos)
             itens = self._obter_itens_venda()
             
+            # Verificar estrutura e valores dos itens
+            # (Debug prints removidos)
+            
             # Obter o controlador de configurações
             config_controller = None
             if hasattr(self, 'config_controller'):
@@ -1171,13 +1174,22 @@ class PagamentoModule:
             # Imprimir o cupom fiscal
             sucesso_cupom = gerenciador.imprimir_cupom_fiscal(venda_dados, itens, self.pagamentos)
             
-            # Imprimir as comandas por tipo de produto separadamente
-            sucesso_comandas = gerenciador.imprimir_comandas_por_tipo(venda_dados, itens)
+            # Verificar o tipo de venda
+            tipo_venda = venda_dados.get('tipo', '').lower()
+            
+            # Imprimir as comandas por tipo de produto separadamente APENAS se NÃO for um pedido de mesa
+            # No caso de mesas, os pedidos já foram impressos quando foram adicionados
+            sucesso_comandas = True
+            if tipo_venda != 'mesa':
+                sucesso_comandas = gerenciador.imprimir_comandas_por_tipo(venda_dados, itens)
+            else:
+                # Para vendas do tipo mesa, as comandas já foram impressas quando os itens foram adicionados
+                pass
             
             if not sucesso_cupom:
-                print("Não foi possível imprimir o cupom fiscal.")
-            if not sucesso_comandas:
-                print("Não foi possível imprimir as comandas.")
+                messagebox.showerror("Erro", "Não foi possível imprimir o cupom fiscal.")
+            if not sucesso_cupom and tipo_venda != 'mesa' and not sucesso_comandas:
+                messagebox.showerror("Erro", "Não foi possível imprimir as comandas.")
         except Exception as e:
             print(f"Erro ao imprimir cupom fiscal: {e}")
             

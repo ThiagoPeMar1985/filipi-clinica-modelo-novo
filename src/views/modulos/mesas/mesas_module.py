@@ -127,21 +127,14 @@ class MesasModule:
     def _show_transferir(self):
         """Exibe a funcionalidade de transferência de mesas."""
         try:
-            print("\n=== INÍCIO _show_transferir ===")
-            print(f"Tipo de self.frame: {type(self.frame)}")
-            print(f"Tipo de self.controller: {type(self.controller)}")
-            print(f"Conexão com banco: {'Sim' if self.db_connection else 'Não'}")
-            
             # Limpar visualização atual se existir
             if self.current_view:
-                print("Destruindo visualização atual...")
                 self.current_view.destroy()
             
             # Criar um novo frame para o conteúdo
             content_frame = ttk.Frame(self.frame)
             content_frame.pack(fill='both', expand=True, padx=10, pady=10)
             
-            print("Criando TransferirMesaModule...")
             # Inicializar o módulo de transferência
             self.transferir_module = TransferirMesaModule(
                 content_frame,  # Usar o novo frame como pai
@@ -149,20 +142,14 @@ class MesasModule:
                 db_connection=self.db_connection
             )
             
-            print("Chamando show() do TransferirMesaModule...")
             # Exibir o módulo
             self.current_view = self.transferir_module.show()
-            print(f"Tipo do retorno de show(): {type(self.current_view)}")
             
             # Forçar atualização da interface
             self.frame.update_idletasks()
             
-            print("=== FIM _show_transferir ===\n")
-            
         except Exception as e:
             import traceback
-            error_msg = f"ERRO em _show_transferir: {str(e)}\n{traceback.format_exc()}"
-            print(error_msg)
             self._show_error(f"Erro ao carregar transferência de mesas: {str(e)}")
     
     def _show_error(self, message):

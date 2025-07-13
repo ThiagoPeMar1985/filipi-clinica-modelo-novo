@@ -264,7 +264,7 @@ class SistemaPDV:
     def _get_opcoes_mesas(self):
         """Retorna as opções do módulo de mesas"""
         return [
-            {"nome": "👁️ Visualizar Mesas", "metodo": "visualizar"},
+            {"nome": "👁 Visualizar Mesas", "metodo": "visualizar"},
             {"nome": "✏️ Editar Mesas", "metodo": "editar"},
             {"nome": "🔄 Transferir Mesa", "metodo": "transferir"}
         ]
