@@ -333,20 +333,93 @@ class GerenciadorImpressao:
         # Largura padrão para papel de 80mm (aproximadamente 48 caracteres)
         largura = 48
         
+        # Buscar dados da empresa no banco de dados
+        try:
+            from src.db.cadastro_db import CadastroDB
+            from src.db.config import get_db_config
+            import mysql.connector
+            
+            db_config = get_db_config()
+            conn = mysql.connector.connect(**db_config)
+            cadastro_db = CadastroDB(conn)
+            empresa = cadastro_db.obter_empresa()
+            conn.close()
+            
+            # Se não encontrou a empresa, usa valores padrão
+            if not empresa:
+                empresa = {
+                    'nome_fantasia': 'QUIOSQUE AQUARIUS',
+                    'cnpj': '00.000.000/0001-00',
+                    'endereco': '',
+                    'cidade': '',
+                    'estado': '',
+                    'telefone': ''
+                }
+        except Exception as e:
+            print(f"Erro ao buscar dados da empresa: {e}")
+            empresa = {
+                'nome_fantasia': 'QUIOSQUE AQUARIUS',
+                'cnpj': '00.000.000/0001-00',
+                'endereco': '',
+                'cidade': '',
+                'estado': '',
+                'telefone': ''
+            }
+        
+        # Formata o endereço completo
+        endereco_completo = []
+        if empresa.get('endereco'):
+            endereco_completo.append(empresa['endereco'])
+            if empresa.get('numero'):
+                endereco_completo[-1] += f", {empresa['numero']}"
+        if empresa.get('bairro'):
+            endereco_completo.append(empresa['bairro'])
+        if empresa.get('cidade') and empresa.get('estado'):
+            endereco_completo.append(f"{empresa['cidade']}/{empresa['estado']}")
+        elif empresa.get('cidade'):
+            endereco_completo.append(empresa['cidade'])
+        elif empresa.get('estado'):
+            endereco_completo.append(empresa['estado'])
+        
+        endereco_formatado = " - ".join(endereco_completo)
+        
         # Cabeçalho
         conteudo = []
         conteudo.append("=" * largura)
-        conteudo.append("QUIOSQUE AQUARIUS".center(largura))
-        conteudo.append("CNPJ: 00.000.000/0001-00".center(largura))
-        conteudo.append("=" * largura)
-        conteudo.append("DEMONSTRATIVO DE DELIVERY".center(largura))
+        conteudo.append(empresa['nome_fantasia'].upper().center(largura))
+        conteudo.append(f"CNPJ: {empresa.get('cnpj', '00.000.000/0001-00')}".center(largura))
+        if endereco_formatado:
+            # Divide o endereço em duas linhas
+            partes = endereco_formatado.split(" - ")
+            if len(partes) >= 2:
+                linha1 = partes[0] + " - " + partes[1]
+                linha2 = partes[2]
+                
+                # Limita cada linha ao tamanho máximo
+                if len(linha1) > largura:
+                    linha1 = linha1[:largura-3] + '...'
+                if len(linha2) > largura:
+                    linha2 = linha2[:largura-3] + '...'
+                
+                # Adiciona as linhas centralizadas
+                conteudo.append(linha1.center(largura))
+                conteudo.append(linha2.center(largura))
+            else:
+                conteudo.append(endereco_formatado.center(largura))
+        if empresa.get('telefone'):
+            conteudo.append(f"Tel: {empresa['telefone']}".center(largura))
         conteudo.append("=" * largura)
         
         # Data e hora
         data_hora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         conteudo.append(f"Data/Hora: {data_hora}")
         
-        # Usuário que lançou o pedido
+        # Tipo de venda
+        tipo_venda = venda.get('tipo', 'delivery')
+        tipo_display = 'DELIVERY'
+        conteudo.append(f"Tipo: {tipo_display}")
+        
+        # Atendente
         nome_usuario = venda.get('usuario_nome', 'Não identificado')
         if isinstance(nome_usuario, dict):
             nome_usuario = nome_usuario.get('nome', 'Não identificado')
@@ -391,24 +464,104 @@ class GerenciadorImpressao:
         conteudo.append("-" * largura)
         conteudo.append("ITENS DO PEDIDO".center(largura))
         conteudo.append("-" * largura)
-        conteudo.append("ITEM  DESCRIÇÃO" + " " * 25 + "QTD   VALOR")
+        conteudo.append("ITEM  DESCRIÇÃO" + " " * 20 + "QTD   VALOR")
         conteudo.append("-" * largura)
         
         # Lista de itens
         for i, item in enumerate(itens, 1):
-            nome = item.get('nome', '')[:25]  # Limita a 25 caracteres
+            nome = item.get('nome', '')[:28]  # Limita a 25 caracteres
             qtd = item.get('quantidade', 0)
             preco = item.get('valor_unitario', 0)
             valor_total = qtd * preco
             
             # Formata a linha do item
-            linha = f"{i:02d}  {nome:<25} {qtd:>2}  R$ {preco:>6.2f}"
+            linha = f"{i:02d}  {nome:<28} {qtd:>2}  R$ {preco:>6.2f}"
             conteudo.append(linha)
             
             # Adiciona opções do item, se houver
             if 'opcoes' in item and item['opcoes']:
                 for opcao in item['opcoes']:
                     nome_opcao = opcao.get('nome', '')[:20]
+                    preco_adicional = opcao.get('preco_adicional', 0)
+                    if preco_adicional > 0:
+                        conteudo.append(f"    → {nome_opcao} (+ R$ {preco_adicional:.2f})")
+                    else:
+                        conteudo.append(f"    → {nome_opcao}")
+            
+            # Adiciona observações do item, se houver
+            if 'observacoes' in item and item['observacoes']:
+                obs = f"    → {item['observacoes']}"
+                conteudo.append(obs[:largura])  # Limita ao tamanho máximo
+        
+        conteudo.append("-" * largura)
+        
+        # Totais
+        subtotal = 0
+        for item in itens:
+            qtd = item.get('quantidade', 0)
+            preco = item.get('valor_unitario', 0)
+            subtotal += qtd * preco
+        
+        taxa_entrega = venda.get('taxa_entrega', 0)
+        total = subtotal + taxa_entrega
+        
+        conteudo.append(f"{'Subtotal:':<35} R$ {subtotal:>7.2f}")
+        if taxa_entrega > 0:
+            conteudo.append(f"{'Taxa de entrega:':<35} R$ {taxa_entrega:>7.2f}")
+        conteudo.append("-" * largura)
+        conteudo.append(f"{'TOTAL:':<35} R$ {total:>7.2f}")
+        
+        # Forma de pagamento
+        conteudo.append("-" * largura)
+        conteudo.append("FORMA DE PAGAMENTO".center(largura))
+        conteudo.append("-" * largura)
+        
+        # Mapeamento das formas de pagamento para nomes formatados
+        FORMAS_PAGAMENTO = {
+            'credito': 'Cartão de Crédito',
+            'debito': 'Cartão de Débito',
+            'pix': 'Pix',
+            'dinheiro': 'Dinheiro'
+        }
+        
+        for pagamento in pagamentos:
+            forma = pagamento.get('forma_nome', '').lower()
+            forma_formatada = FORMAS_PAGAMENTO.get(forma, forma)
+            valor = pagamento.get('valor', 0)
+            conteudo.append(f"{forma_formatada:<15} R$ {valor:>6.2f}")
+        
+        # Rodapé
+        conteudo.append("")
+        conteudo.append("=" * largura)
+        conteudo.append("Obrigado pela preferência!".center(largura))
+        conteudo.append("Volte sempre!".center(largura))
+        conteudo.append("")
+        conteudo.append(f"{datetime.datetime.now().strftime('Impresso em %d/%m/%Y %H:%M')}".center(largura))
+        
+        return "\n".join(conteudo)
+        
+        # Itens do pedido
+        conteudo.append("-" * largura)
+        conteudo.append("ITENS DO PEDIDO".center(largura))
+        conteudo.append("-" * largura)
+        conteudo.append("ITEM  DESCRIÇÃO" + " " * 25 + "QTD   VALOR")
+        conteudo.append("-" * largura)
+        
+        # Lista de itens
+        for i, item in enumerate(itens, 1):
+            nome = item.get('nome', '')[:28]  # Limita a 25 caracteres
+            qtd = item.get('quantidade', 0)
+            preco = item.get('valor_unitario', 0)
+            valor_total = qtd * preco
+            
+            # Formata a linha do item
+            linha = f"{i:02d}  {nome:<28} {qtd:>2}  R$ {preco:>6.2f}"
+            conteudo.append(linha)
+            
+            # Adiciona opções do item, se houver
+            if 'opcoes' in item and item['opcoes']:
+                for opcao in item['opcoes']:
+                    nome_opcao = opcao.get('nome', '')[:25]
                     preco_adicional = opcao.get('preco_adicional', 0)
                     if preco_adicional > 0:
                         conteudo.append(f"    → {nome_opcao} (+ R$ {preco_adicional:.2f})")
@@ -440,22 +593,31 @@ class GerenciadorImpressao:
         total = subtotal + taxa_entrega
         
         # Formata os totais alinhados à direita
-        conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
+        conteudo.append(f"{'Subtotal:':<35} R$ {subtotal:>7.2f}")
         # Apenas mostra a taxa de entrega se for maior que zero
         if taxa_entrega > 0:
-            conteudo.append(f"{'Taxa de entrega:':<40} R$ {taxa_entrega:>7.2f}")
+            conteudo.append(f"{'Taxa de entrega:':<35} R$ {taxa_entrega:>7.2f}")
         conteudo.append("-" * largura)
-        conteudo.append(f"{'TOTAL:':<40} R$ {total:>7.2f}")
+        conteudo.append(f"{'TOTAL:':<35} R$ {total:>7.2f}")
         
         # Forma de pagamento
         conteudo.append("-" * largura)
         conteudo.append("FORMA DE PAGAMENTO".center(largura))
         conteudo.append("-" * largura)
         
+        # Mapeamento das formas de pagamento para nomes formatados
+        FORMAS_PAGAMENTO = {
+            'credito': 'Cartão de Crédito',
+            'debito': 'Cartão de Débito',
+            'pix': 'Pix',
+            'dinheiro': 'Dinheiro'
+        }
+        
         for pagamento in pagamentos:
-            forma = pagamento.get('forma_nome', '')[:15]
+            forma = pagamento.get('forma_nome', '').lower()
+            forma_formatada = FORMAS_PAGAMENTO.get(forma, forma)
             valor = pagamento.get('valor', 0)
-            conteudo.append(f"{forma:<15} R$ {valor:>6.2f}")
+            conteudo.append(f"{forma_formatada:<15} R$ {valor:>6.2f}")
         
         # Rodapé
         conteudo.append("")
@@ -538,7 +700,23 @@ class GerenciadorImpressao:
         conteudo.append(empresa['nome_fantasia'].upper().center(largura))
         conteudo.append(f"CNPJ: {empresa.get('cnpj', '00.000.000/0001-00')}".center(largura))
         if endereco_formatado:
-            conteudo.append(endereco_formatado.center(largura))
+            # Divide o endereço em duas linhas
+            partes = endereco_formatado.split(" - ")
+            if len(partes) >= 2:
+                linha1 = partes[0] + " - " + partes[1]
+                linha2 = partes[2]
+                
+                # Limita cada linha ao tamanho máximo
+                if len(linha1) > largura:
+                    linha1 = linha1[:largura-3] + '...'
+                if len(linha2) > largura:
+                    linha2 = linha2[:largura-3] + '...'
+                
+                # Adiciona as linhas centralizadas
+                conteudo.append(linha1.center(largura))
+                conteudo.append(linha2.center(largura))
+            else:
+                conteudo.append(endereco_formatado.center(largura))
         if empresa.get('telefone'):
             conteudo.append(f"Tel: {empresa['telefone']}".center(largura))
         conteudo.append("=" * largura)
@@ -547,7 +725,6 @@ class GerenciadorImpressao:
         data_hora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         conteudo.append(f"Data/Hora: {data_hora}")
         
-        # Removida a exibição do nome do atendente conforme solicitado
         
         # Tipo de venda
         tipo_venda = venda.get('tipo', 'avulsa')
@@ -561,7 +738,7 @@ class GerenciadorImpressao:
         
         conteudo.append("-" * largura)
         # Cabeçalho da tabela de itens
-        conteudo.append("ITEM  DESCRIÇÃO" + " " * 25 + "QTD   VALOR")
+        conteudo.append("ITEM  DESCRIÇÃO" + " " * 20 + "QTD   VALOR")
         conteudo.append("-" * largura)
         
         # Itens
@@ -587,7 +764,7 @@ class GerenciadorImpressao:
                     break
             
             # Formata a linha do item
-            linha = f"{i:02d}  {nome:<25} {qtd:>2}  R$ {preco:>6.2f}"
+            linha = f"{i:02d}  {nome:<30} {qtd:>2}  R$ {preco:>6.2f}"
             conteudo.append(linha)
             
             # Adiciona opções do item, se houver
@@ -624,7 +801,6 @@ class GerenciadorImpressao:
             subtotal += qtd * preco_unitario
         
         # Inicializa variáveis
-        desconto = venda.get('desconto', 0)
         taxa_entrega = venda.get('taxa_entrega', 0)
         
         # Calcula totais de acordo com o tipo de venda
@@ -636,37 +812,31 @@ class GerenciadorImpressao:
                 taxa_servico_flag = taxa_servico_flag.lower() == 'true' or taxa_servico_flag == '1'
                 
             taxa_servico = subtotal * 0.1 if taxa_servico_flag else 0.0
-            total = subtotal + taxa_servico - desconto
+            total = subtotal + taxa_servico
             
             # Exibe os totais
-            conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
+            conteudo.append(f"{'Subtotal:':<35} R$ {subtotal:>7.2f}")
             # Garantir que a taxa de serviço seja exibida quando aplicada
             if taxa_servico > 0:
-                conteudo.append(f"{'Taxa de serviço (10%):':<40} R$ {taxa_servico:>7.2f}")
-            if desconto > 0:
-                conteudo.append(f"{'Desconto:':<40} R$ {desconto:>7.2f}")
+                conteudo.append(f"{'Taxa de serviço (10%):':<35} R$ {taxa_servico:>7.2f}")
         elif tipo_venda.lower() == 'delivery':
             # Para delivery, aplica apenas a taxa de entrega
-            total = subtotal + taxa_entrega - desconto
+            total = subtotal + taxa_entrega
             
             # Exibe os totais
             conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
             if taxa_entrega > 0:
                 conteudo.append(f"{'Taxa de entrega:':<40} R$ {taxa_entrega:>7.2f}")
-            if desconto > 0:
-                conteudo.append(f"{'Desconto:':<40} R$ {desconto:>7.2f}")
         else:
             # Para vendas avulsas, não aplica nenhuma taxa
-            total = subtotal - desconto
+            total = subtotal
             
             # Exibe os totais
-            conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
-            if desconto > 0:
-                conteudo.append(f"{'Desconto:':<40} R$ {desconto:>7.2f}")
+            conteudo.append(f"{'Subtotal:':<35} R$ {subtotal:>7.2f}")
         
         # Exibe o total final
         conteudo.append("-" * largura)
-        conteudo.append(f"{'TOTAL:':<40} R$ {total:>7.2f}")
+        conteudo.append(f"{'TOTAL:':<35} R$ {total:>7.2f}")
         
         conteudo.append("-" * largura)
         conteudo.append("FORMA DE PAGAMENTO".center(largura))
@@ -674,9 +844,13 @@ class GerenciadorImpressao:
         
         # Pagamentos
         for pagamento in pagamentos:
-            forma = pagamento.get('forma_nome', '')[:15]
+            forma = pagamento.get('forma_nome', '')
             valor = pagamento.get('valor', 0)
-            conteudo.append(f"{forma:<15} R$ {valor:>6.2f}")
+            # Ajusta o formato para garantir que a forma de pagamento fique alinhada à esquerda
+            # e o valor fique alinhado à direita com 10 espaços
+            forma_formatada = forma.ljust(30)  # 30 espaços para a forma de pagamento
+            valor_formatado = f"R$ {valor:.2f}".rjust(10)  # 10 espaços para o valor
+            conteudo.append(f"{forma_formatada}{valor_formatado}")
         
         # Rodapé
         conteudo.append("")

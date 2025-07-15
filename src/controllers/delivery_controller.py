@@ -546,7 +546,6 @@ class DeliveryController:
                 - observacoes (str, optional): Observações do pedido
                 - taxa_entrega (float): Valor da taxa de entrega
                 - subtotal (float): Valor subtotal dos itens
-                - desconto (float): Valor do desconto
                 - valor_total (float): Valor total do pedido
                 - forma_pagamento (str): Forma de pagamento
                 - troco_para (float, optional): Valor para troco (se pagamento em dinheiro)
@@ -593,6 +592,18 @@ class DeliveryController:
             
             # Obter dados do pagamento
             forma_pagamento = dados_pedido.get('forma_pagamento', 'dinheiro')
+            
+            # Mapeamento das formas de pagamento para nomes padronizados
+            FORMAS_PAGAMENTO = {
+                'credito': 'Cartão de Crédito',
+                'debito': 'Cartão de Débito',
+                'pix': 'Pix',
+                'dinheiro': 'Dinheiro'
+            }
+            
+            # Normalizar a forma de pagamento
+            forma_pagamento = forma_pagamento.lower()
+            forma_pagamento = FORMAS_PAGAMENTO.get(forma_pagamento, 'Dinheiro')
             
             # Obter o ID do usuário logado ou usar 1 como padrão
             usuario_id = dados_pedido.get('usuario_id', 1)

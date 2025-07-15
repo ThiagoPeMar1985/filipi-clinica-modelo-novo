@@ -51,7 +51,12 @@ class DeliveryModule:
         self.regiao_entrega_label = None
         self.taxa_entrega_label = None
         
+    def formatar_moeda(self, valor):
+        """Formata um valor numérico para o padrão monetário brasileiro."""
+        return f"R$ {valor:,.2f}".replace('.', ',')
+    
     def show(self):
+        # Limpar o frame atual
         # Limpar o frame atual
         for widget in self.frame.winfo_children():
             widget.destroy()
@@ -1553,14 +1558,14 @@ class DeliveryModule:
         # Criar janela de pagamento
         pagamento_window = tk.Toplevel(self.frame)
         pagamento_window.title("Forma de Pagamento")
-        pagamento_window.geometry("500x600")
+        pagamento_window.geometry("400x650")
         pagamento_window.transient(self.frame)
         pagamento_window.resizable(False, False)
         
         # Centralizar na tela
         pagamento_window.update_idletasks()
-        width = 500
-        height = 600
+        width = 400
+        height = 650
         x = (pagamento_window.winfo_screenwidth() // 2) - (width // 2)
         y = (pagamento_window.winfo_screenheight() // 2) - (height // 2)
         pagamento_window.geometry(f"{width}x{height}+{x}+{y}")
@@ -1594,24 +1599,22 @@ class DeliveryModule:
         # Título
         ttk.Label(
             content_frame, 
-            text="FORMA DE PAGAMENTO",
+            text="Pagamento",
             font=('Arial', 16, 'bold'),
-            foreground=CORES['primaria']
+            foreground='black'
         ).pack(pady=(0, 20))
         
         # Variável para armazenar a forma de pagamento selecionada
         forma_pagamento = tk.StringVar()
         
-        def formatar_moeda(valor):
-            """Formata um valor float para o formato de moeda brasileira"""
-            try:
-                return f"R$ {float(valor):.2f}".replace('.', ',')
-            except (ValueError, TypeError):
-                return "R$ 0,00"
+        # Função utilitária para formatar valores monetários
+        self.util = {
+            'formatar_moeda': lambda valor: f"R$ {float(valor):.2f}".replace('.', ',') if valor else "R$ 0,00"
+        }
         
         def calcular_troco(*args):
             if forma_pagamento.get() != 'dinheiro' or not valor_dinheiro.get() or not valor_dinheiro.get().strip():
-                troco_label.config(text=formatar_moeda(0), foreground='#2e7d32')
+                troco_label.config(text=self.util['formatar_moeda'](0), foreground='#2e7d32')
                 return
                 
             try:
@@ -1625,13 +1628,13 @@ class DeliveryModule:
                 if valor_pago >= valor_total:
                     troco = valor_pago - valor_total
                     troco_label.config(
-                        text=formatar_moeda(troco),
+                        text=self.util['formatar_moeda'](troco),
                         foreground='#2e7d32'  # Verde escuro
                     )
                 else:
                     valor_restante = valor_total - valor_pago
                     troco_label.config(
-                        text=f"Faltam {formatar_moeda(valor_restante)}",
+                        text=f"Faltam {self.util['formatar_moeda'](valor_restante)}",
                         foreground='#d32f2f'  # Vermelho
                     )
                 
@@ -1657,35 +1660,25 @@ class DeliveryModule:
             else:
                 valor_dinheiro_frame.pack_forget()
                 troco_frame.pack_forget()
-                troco_label.config(text=formatar_moeda(0), foreground='#2e7d32')
+                troco_label.config(text=self.util['formatar_moeda'](0), foreground='#2e7d32')
         
-        # Frame para o valor total - mais compacto
-        total_frame = ttk.Frame(content_frame, padding=(0, 5, 0, 15))
-        total_frame.pack(fill='x')
-            
-        # Frame para organizar os elementos
-        total_container = ttk.Frame(total_frame)
-        total_container.pack(fill='x', pady=5)
-            
-        # Label do total
-        ttk.Label(
-            total_container,
-            text="TOTAL A PAGAR:",
-            font=('Arial', 12, 'bold'),
-            foreground='#333333'
-        ).pack(side=tk.LEFT, padx=(0, 10))
-            
-        # Valor total
-        total_label = ttk.Label(
-            total_container,
-            text=formatar_moeda(valor_total),
-            font=('Arial', 16, 'bold'),
-            foreground=CORES['primaria']
-        )
+        # Frame para o resumo da venda
+        resumo_frame = ttk.LabelFrame(content_frame, text="Resumo da Venda", padding=(10, 5))
+        resumo_frame.pack(fill='x', pady=(0, 15))
+        total_frame = ttk.Frame(resumo_frame)
+        total_frame.pack(fill='x', pady=2)
+        ttk.Label(total_frame, text="TOTAL:", font=('Arial', 10, 'bold'), foreground=CORES['primaria']).pack(side=tk.LEFT)
+        total_label = ttk.Label(total_frame, text=self.util['formatar_moeda'](valor_total), font=('Arial', 10, 'bold'), foreground=CORES['primaria'])
         total_label.pack(side=tk.RIGHT)
         
+        # Restante
+        restante_frame = ttk.Frame(resumo_frame)
+        restante_frame.pack(fill='x', pady=2)
+        ttk.Label(restante_frame, text="Restante:", font=('Arial', 10)).pack(side=tk.LEFT)
+        ttk.Label(restante_frame, text=self.util['formatar_moeda'](valor_total), font=('Arial', 10)).pack(side=tk.RIGHT)
+        
         # Frame para os botões de pagamento
-        pagamento_frame = ttk.LabelFrame(content_frame, text="FORMA DE PAGAMENTO", padding=(10, 5))
+        pagamento_frame = ttk.LabelFrame(content_frame, text="Formas de Pagamento", padding=(10, 5))
         pagamento_frame.pack(fill='x', pady=(0, 15))
             
         # Frame para os botões de pagamento - usando grid para melhor organização
@@ -1694,50 +1687,49 @@ class DeliveryModule:
         
         # Lista de formas de pagamento disponíveis
         formas_pagamento = [
+            ("💳", "Cartão de Crédito", "credito", CORES['primaria']),
+            ("💳", "Cartão de Débito", "debito", CORES['primaria']),
             ("💵", "Dinheiro", "dinheiro", CORES['primaria']),
-            ("💳", "Crédito", "credito", CORES['primaria']),
-            ("💳", "Débito", "debito", CORES['primaria']),
-            ("📱", "PIX", "pix", CORES['primaria']),
-            ("📝", "Outros", "outros", CORES['primaria'])
+            ("📱", "PIX", "pix", CORES['primaria'])
         ]
         
-        # Criar botões para cada forma de pagamento em uma grade 2x3
+        # Criar botões para cada forma de pagamento em uma grade 2x2
         for i, (icone, texto, forma, cor) in enumerate(formas_pagamento):
             # Calcular posição na grade
-            row = i // 3  # 3 colunas
-            col = i % 3   # 3 colunas
+            row = i // 2  # 2 colunas
+            col = i % 2   # 2 colunas
             
             # Frame para cada botão
             btn_container = ttk.Frame(btn_frame, padding=2)
-            btn_container.grid(row=row, column=col, padx=3, pady=3, sticky='nsew')
+            btn_container.grid(row=row, column=col, padx=5, pady=5, sticky='nsew')
             
             # Configurar peso das colunas para expansão uniforme
             btn_frame.columnconfigure(col, weight=1, uniform='btn')
             btn_frame.rowconfigure(row, weight=1)
             
-            # Criar botão com estilo mais compacto
+            # Criar botão com estilo mais destacado
             btn = tk.Radiobutton(
                 btn_container,
-                text=f"{icone} {texto}",
-                font=('Arial', 10, 'bold'),
+                text=texto,  # Remover ícone
+                font=('Arial', 11, 'bold'),
                 bg=cor,
                 fg='white',
                 selectcolor=cor,
-                activebackground=self._darken_color(cor, 0.3),  # Cor mais clara para o estado ativo
+                activebackground=self._darken_color(cor, 0.3),  # Cor mais escura para o estado ativo
                 activeforeground='white',
                 indicatoron=0,
-                relief='flat',
+                relief='flat',  # Botão plano como na imagem 1
                 bd=0,
                 highlightthickness=0,  # Remove a borda de foco
-                padx=5,
-                pady=5,
-                wraplength=80,  # Forçar quebra de linha
+                padx=10,
+                pady=10,
+                wraplength=120,  # Aumentar espaço para texto
                 justify='center',
                 variable=forma_pagamento,
                 value=forma,
                 command=atualizar_visibilidade_campo_dinheiro
             )
-            btn.pack(fill='both', expand=True, ipady=8, padx=2, pady=2)
+            btn.pack(fill='both', expand=True, ipady=10, padx=3, pady=3)
             
             # Configurar estilo para o estado selecionado
             btn['selectcolor'] = self._darken_color(cor, 0.3)  # Cor mais clara quando selecionado
@@ -1760,29 +1752,23 @@ class DeliveryModule:
             if i == 0:
                 forma_pagamento.set(forma)
         
-        # Frame para o campo de valor em dinheiro
-        valor_dinheiro_frame = ttk.Frame(content_frame, padding=(0, 10))
+        # Frame para o campo de valor em dinheiro (oculto inicialmente)
+        valor_dinheiro_frame = ttk.Frame(content_frame, padding=(5, 15))
         
         # Frame para a entrada de valor
         entrada_frame = ttk.Frame(valor_dinheiro_frame)
         entrada_frame.pack(fill='x')
         
-        # Label para o campo de valor
-        ttk.Label(
-            entrada_frame,
-            text="Valor em dinheiro:",
-            font=('Arial', 10),
-            foreground='#333333'
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        
         # Variável para o valor em dinheiro
         valor_dinheiro = tk.StringVar()
+        
+
         
         # Entrada para o valor em dinheiro
         valor_entry = ttk.Entry(
             entrada_frame,
             textvariable=valor_dinheiro,
-            font=('Arial', 12),
+            font=('Arial', 10),
             width=15,
             justify='right'
         )
@@ -1795,9 +1781,9 @@ class DeliveryModule:
         ttk.Label(
             troco_frame,
             text="Troco:",
-            font=('Arial', 10, 'bold'),
+            font=('Arial', 11, 'bold'),
             foreground='#333333'
-        ).pack(side=tk.LEFT, padx=(0, 5))
+        ).pack(side=tk.LEFT, padx=(0, 10))
         
         # Label para exibir o valor do troco
         troco_label = ttk.Label(
@@ -2169,7 +2155,7 @@ class DeliveryModule:
                             'tipo': 'DELIVERY',
                             'observacoes': observacoes,
                             'taxa_entrega': float(dados_pedido.get('taxa_entrega', 0)),
-                            'forma_pagamento': forma_pagamento.upper(),
+                            'forma_pagamento': dados_pedido['forma_pagamento'],
                             'usuario_id': dados_pedido.get('usuario_id', 1),
                             'usuario_nome': getattr(self.controller.usuario, 'nome', 'Operador') if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome') else 'Operador'
                         }
@@ -2250,9 +2236,13 @@ class DeliveryModule:
                                 
                             itens_impressao.append(item_impressao)
                         
-                        # Preparar os pagamentos para impressão
+                        
+                        # Obtém o nome formatado da forma de pagamento
+                        forma_nome = forma_pagamento.lower()
+                        forma_formatada = forma_pagamento
+                        
                         pagamentos_impressao = [{
-                            'forma_nome': forma_pagamento.upper(),
+                            'forma_nome': forma_formatada,
                             'valor': valor_total
                         }]
                         
