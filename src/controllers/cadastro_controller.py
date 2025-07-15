@@ -167,3 +167,22 @@ class CadastroController:
             return True
         else:
             raise Exception(mensagem)  # Lança exceção com a mensagem de erro
+            
+    def excluir_cliente(self, cliente_id: int) -> bool:
+        """
+        Exclui permanentemente um cliente do banco de dados.
+        
+        Args:
+            cliente_id: ID do cliente a ser excluído.
+            
+        Returns:
+            bool: True se o cliente foi excluído com sucesso, False caso contrário.
+            
+        Raises:
+            Exception: Se ocorrer um erro durante a exclusão.
+        """
+        sucesso, mensagem = self.cliente_controller.excluir_cliente(cliente_id)
+        if sucesso:
+            return True
+        else:
+            raise Exception(mensagem)  # Lança exceção com a mensagem de erro

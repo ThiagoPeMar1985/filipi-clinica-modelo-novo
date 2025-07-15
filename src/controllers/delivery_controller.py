@@ -226,26 +226,29 @@ class DeliveryController:
         cursor = self.db.cursor()
         try:
             # Verificar se o pedido existe
-            cursor.execute("SELECT id, status FROM pedidos WHERE id = %s AND tipo = 'DELIVERY'", (pedido_id,))
+            cursor.execute("SELECT id, status, status_entrega FROM pedidos WHERE id = %s AND tipo = 'DELIVERY'", (pedido_id,))
             pedido = cursor.fetchone()
             
             if not pedido:
                 return False, f"Pedido de entrega {pedido_id} não encontrado."
             
             status_atual = pedido[1]
+            status_entrega_atual = pedido[2] if len(pedido) > 2 else None
             
             # Validar transição de status
             if status_atual == 'CANCELADO':
                 return False, "Não é possível alterar o status de um pedido cancelado."
                 
-            if status_atual == 'ENTREGUE' and novo_status != 'ENTREGUE':
-                return False, "Não é possível alterar o status de um pedido já entregue."
+            if status_atual == 'FINALIZADO' or (status_entrega_atual == 'ENTREGUE' and novo_status != 'ENTREGUE'):
+                return False, "Não é possível alterar o status de um pedido já finalizado."
             
-            # Atualizar o status do pedido
-            campos_atualizar = ["status = %s", "status_entrega = %s", "data_atualizacao = NOW()"]
-            params = [novo_status, novo_status, pedido_id]
+            # Se o novo status for ENTREGUE, vamos usar FINALIZADO no lugar
+            status_para_salvar = 'FINALIZADO' if novo_status == 'ENTREGUE' else novo_status
+            status_entrega_para_salvar = novo_status  # Manter o status_entrega como ENTREGUE para histórico
             
             # Registrar eventos específicos baseados no novo status
+            campos_atualizar = ["data_atualizacao = NOW()"]
+            
             if novo_status == 'EM_PREPARO':
                 campos_atualizar.append("data_inicio_preparo = NOW()")
             elif novo_status == 'PRONTO_ENTREGA':
@@ -259,12 +262,15 @@ class DeliveryController:
                 campos_atualizar.append("data_cancelamento = NOW()")
             
             # Atualizar o status na tabela de pedidos
+            campos_atualizar.extend(["status = %s", "status_entrega = %s"])
+            params = [status_para_salvar, status_entrega_para_salvar, pedido_id]
+            
             query = f"UPDATE pedidos SET {', '.join(campos_atualizar)} WHERE id = %s"
             cursor.execute(query, params)
             
             # Registrar o histórico de alteração de status
-            self._registrar_historico_status(pedido_id, novo_status, 
-                                          observacao=f"Status alterado de {status_atual} para {novo_status}",
+            self._registrar_historico_status(pedido_id, status_para_salvar, 
+                                          observacao=f"Status alterado de {status_atual} para {status_para_salvar} (status_entrega: {status_entrega_para_salvar})",
                                           usuario_id=1)  # TODO: Substituir pelo ID do usuário logado
             
             self.db.commit()
@@ -322,10 +328,10 @@ class DeliveryController:
                 valor
             ))
             
-            # Atualizar o status do pedido para CONCLUIDO
+            # Atualizar o status do pedido para FINALIZADO
             cursor.execute("""
                 UPDATE pedidos 
-                SET status = 'CONCLUIDO', 
+                SET status = 'FINALIZADO', 
                     data_fechamento = NOW()
                 WHERE id = %s
             """, (pedido_id,))
@@ -555,10 +561,10 @@ class DeliveryController:
             INSERT INTO pedidos (
                 tipo, status, cliente_id, cliente_nome, cliente_telefone,
                 cliente_endereco, taxa_entrega, total, data_abertura,
-                tipo_cliente, observacao, status_entrega, regiao_id,
+                observacao, status_entrega, regiao_id,
                 previsao_entrega, entregador_id, forma_pagamento, troco_para,
                 usuario_id
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             # Obter dados do cliente (assumindo que estão disponíveis em dados_pedido)
@@ -609,7 +615,6 @@ class DeliveryController:
                 float(dados_pedido.get('taxa_entrega', 0)),  # taxa_entrega
                 float(dados_pedido.get('valor_total', 0)),  # total
                 datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # data_abertura
-                'PESSOA_FISICA',  # tipo_cliente
                 dados_pedido.get('observacoes', ''),  # observacao
                 'AGUARDANDO_CONFIRMACAO',  # status_entrega (AGUARDANDO_CONFIRMACAO, EM_PREPARO, EM_ROTA, ENTREGUE, CANCELADO)
                 regiao_id,  # regiao_id

@@ -569,12 +569,32 @@ class MesasController:
             cursor.execute("SELECT COUNT(*) FROM itens_pedido WHERE pedido_id = %s", (pedido_id,))
             count = cursor.fetchone()[0]
             
-            # Se não houver mais itens, atualizar o status do pedido para ABERTO
+            # Se não houver mais itens, cancelar o pedido e liberar a mesa
             if count == 0 and self.pedido_atual and 'id' in self.pedido_atual:
+                # Atualizar o status do pedido para CANCELADO
+                data_atual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 cursor.execute(
-                    "UPDATE pedidos SET status = 'ABERTO' WHERE id = %s",
+                    """
+                    UPDATE pedidos 
+                    SET status = 'CANCELADO', 
+                        data_fechamento = %s,
+                        data_cancelamento = %s,
+                        total = 0
+                    WHERE id = %s
+                    """,
+                    (data_atual, data_atual, pedido_id)
+                )
+                
+                # Liberar a mesa
+                cursor.execute(
+                    "UPDATE mesas SET status = 'LIVRE', pedido_atual_id = NULL WHERE pedido_atual_id = %s",
                     (pedido_id,)
                 )
+                
+                # Limpar o pedido atual
+                self.pedido_atual = None
+                self.itens_pedido = []
+                
                 self.db_connection.commit()
             
             cursor.close()

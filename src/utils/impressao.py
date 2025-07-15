@@ -193,17 +193,33 @@ class GerenciadorImpressao:
             else:
                 mesa_num = 'X'
         
-        conteudo.append(f"MESA  {mesa_num} - {tipo_produto.upper()}".center(largura))
+        # Verificar o tipo de venda
+        tipo_venda = venda.get('tipo', '').lower()
+        if tipo_venda == 'avulsa':
+            conteudo.append("VENDA AVULSA".center(largura))
+        elif tipo_venda == 'delivery':
+            conteudo.append("DELIVERY".center(largura))
+            if venda.get('cliente_nome'):
+                conteudo.append(f"Cliente: {venda['cliente_nome']}".center(largura))
+        else:
+            conteudo.append(f"MESA {mesa_num} - {tipo_produto.upper()}".center(largura))
         conteudo.append("=" * largura)
         
         # Data e hora
         data_hora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         conteudo.append(f"Data/Hora: {data_hora}")
         
-        # Usuário que lançou o pedido
-        # Como não temos acesso ao módulo de sessão, usamos uma informação genérica
-        nome_usuario = venda.get('usuario_nome', 'Não identificado')
-        conteudo.append(f"Pedido lançado por: {nome_usuario}")
+        # Atendente - verifica tanto atendente_nome quanto usuario_nome
+        nome_atendente = venda.get('atendente_nome') or venda.get('usuario_nome')
+        if nome_atendente:
+            # Verifica se o nome do usuário é um dicionário (pode acontecer em alguns casos)
+            if isinstance(nome_atendente, dict) and 'nome' in nome_atendente:
+                nome_atendente = nome_atendente['nome']
+            conteudo.append(f"Atendente: {nome_atendente}")
+            
+        # Se for delivery, mostra o nome do cliente
+        if tipo_venda == 'delivery' and venda.get('cliente_nome'):
+            conteudo.append(f"Cliente: {venda['cliente_nome']}")
         
         conteudo.append("-" * largura)
         conteudo.append("ITEM  DESCRIÇÃO                             QTD")
@@ -330,6 +346,12 @@ class GerenciadorImpressao:
         data_hora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         conteudo.append(f"Data/Hora: {data_hora}")
         
+        # Usuário que lançou o pedido
+        nome_usuario = venda.get('usuario_nome', 'Não identificado')
+        if isinstance(nome_usuario, dict):
+            nome_usuario = nome_usuario.get('nome', 'Não identificado')
+        conteudo.append(f"Atendente: {nome_usuario}")
+        
         # Informações do cliente
         conteudo.append("-" * largura)
         conteudo.append("DADOS DO CLIENTE".center(largura))
@@ -413,14 +435,13 @@ class GerenciadorImpressao:
                     break
             subtotal += qtd * preco_unitario
         
-        # Calcula a taxa de serviço de 10%
-        taxa_servico = subtotal * 0.1
+        # Para delivery, só aplica a taxa de entrega, sem taxa de serviço
         taxa_entrega = venda.get('taxa_entrega', 0)
-        total = subtotal + taxa_servico + taxa_entrega
+        total = subtotal + taxa_entrega
         
         # Formata os totais alinhados à direita
         conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
-        conteudo.append(f"{'Taxa de serviço (10%):':<40} R$ {taxa_servico:>7.2f}")
+        # Apenas mostra a taxa de entrega se for maior que zero
         if taxa_entrega > 0:
             conteudo.append(f"{'Taxa de entrega:':<40} R$ {taxa_entrega:>7.2f}")
         conteudo.append("-" * largura)
@@ -461,20 +482,78 @@ class GerenciadorImpressao:
         # Largura padrão para papel de 80mm (aproximadamente 48 caracteres)
         largura = 48
         
+        # Buscar dados da empresa no banco de dados
+        try:
+            from src.db.cadastro_db import CadastroDB
+            from src.db.config import get_db_config
+            import mysql.connector
+            
+            db_config = get_db_config()
+            conn = mysql.connector.connect(**db_config)
+            cadastro_db = CadastroDB(conn)
+            empresa = cadastro_db.obter_empresa()
+            conn.close()
+            
+            # Se não encontrou a empresa, usa valores padrão
+            if not empresa:
+                empresa = {
+                    'nome_fantasia': 'QUIOSQUE AQUARIUS',
+                    'cnpj': '00.000.000/0001-00',
+                    'endereco': '',
+                    'cidade': '',
+                    'estado': '',
+                    'telefone': ''
+                }
+        except Exception as e:
+            print(f"Erro ao buscar dados da empresa: {e}")
+            empresa = {
+                'nome_fantasia': 'QUIOSQUE AQUARIUS',
+                'cnpj': '00.000.000/0001-00',
+                'endereco': '',
+                'cidade': '',
+                'estado': '',
+                'telefone': ''
+            }
+        
+        # Formata o endereço completo
+        endereco_completo = []
+        if empresa.get('endereco'):
+            endereco_completo.append(empresa['endereco'])
+            if empresa.get('numero'):
+                endereco_completo[-1] += f", {empresa['numero']}"
+        if empresa.get('bairro'):
+            endereco_completo.append(empresa['bairro'])
+        if empresa.get('cidade') and empresa.get('estado'):
+            endereco_completo.append(f"{empresa['cidade']}/{empresa['estado']}")
+        elif empresa.get('cidade'):
+            endereco_completo.append(empresa['cidade'])
+        elif empresa.get('estado'):
+            endereco_completo.append(empresa['estado'])
+        
+        endereco_formatado = " - ".join(endereco_completo)
+        
         # Cabeçalho
         conteudo = []
         conteudo.append("=" * largura)
-        conteudo.append("QUIOSQUE AQUARIUS".center(largura))
-        conteudo.append("CNPJ: 00.000.000/0001-00".center(largura))
+        conteudo.append(empresa['nome_fantasia'].upper().center(largura))
+        conteudo.append(f"CNPJ: {empresa.get('cnpj', '00.000.000/0001-00')}".center(largura))
+        if endereco_formatado:
+            conteudo.append(endereco_formatado.center(largura))
+        if empresa.get('telefone'):
+            conteudo.append(f"Tel: {empresa['telefone']}".center(largura))
         conteudo.append("=" * largura)
         
         # Data e hora
         data_hora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         conteudo.append(f"Data/Hora: {data_hora}")
         
+        # Removida a exibição do nome do atendente conforme solicitado
+        
         # Tipo de venda
-        tipo_venda = venda.get('tipo', 'avulsa').upper()
-        conteudo.append(f"Tipo: {tipo_venda}")
+        tipo_venda = venda.get('tipo', 'avulsa')
+        # Mapeia 'avulsa' para 'BALCÃO' e mantém outros valores em maiúsculas
+        tipo_display = 'BALCÃO' if tipo_venda.lower() == 'avulsa' else tipo_venda.upper()
+        conteudo.append(f"Tipo: {tipo_display}")
         
         # Cliente (se houver)
         if venda.get('cliente_nome'):
@@ -511,6 +590,16 @@ class GerenciadorImpressao:
             linha = f"{i:02d}  {nome:<25} {qtd:>2}  R$ {preco:>6.2f}"
             conteudo.append(linha)
             
+            # Adiciona opções do item, se houver
+            if 'opcoes' in item and item['opcoes']:
+                for opcao in item['opcoes']:
+                    nome_opcao = opcao.get('nome', '')[:20]
+                    preco_adicional = opcao.get('preco_adicional', 0)
+                    if preco_adicional > 0:
+                        conteudo.append(f"    → {nome_opcao} (+ R$ {preco_adicional:.2f})")
+                    else:
+                        conteudo.append(f"    → {nome_opcao}")
+            
             # Adiciona observações do item, se houver
             if 'observacoes' in item and item['observacoes']:
                 obs = f"    → {item['observacoes']}"
@@ -534,16 +623,48 @@ class GerenciadorImpressao:
                     break
             subtotal += qtd * preco_unitario
         
-        # Calcula a taxa de serviço de 10%
-        taxa_servico = subtotal * 0.1
+        # Inicializa variáveis
         desconto = venda.get('desconto', 0)
-        total = venda.get('valor_final', subtotal + taxa_servico - desconto)
+        taxa_entrega = venda.get('taxa_entrega', 0)
         
-        # Formata os totais alinhados à direita
-        conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
-        conteudo.append(f"{'Taxa de serviço (10%):':<40} R$ {taxa_servico:>7.2f}")
-        if desconto > 0:
-            conteudo.append(f"{'Desconto:':<40} R$ {desconto:>7.2f}")
+        # Calcula totais de acordo com o tipo de venda
+        if tipo_venda.lower() == 'mesa':
+            # Verifica se a taxa de serviço foi marcada
+            taxa_servico_flag = venda.get('taxa_servico', False)
+            # Converte para booleano se for string
+            if isinstance(taxa_servico_flag, str):
+                taxa_servico_flag = taxa_servico_flag.lower() == 'true' or taxa_servico_flag == '1'
+                
+            taxa_servico = subtotal * 0.1 if taxa_servico_flag else 0.0
+            total = subtotal + taxa_servico - desconto
+            
+            # Exibe os totais
+            conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
+            # Garantir que a taxa de serviço seja exibida quando aplicada
+            if taxa_servico > 0:
+                conteudo.append(f"{'Taxa de serviço (10%):':<40} R$ {taxa_servico:>7.2f}")
+            if desconto > 0:
+                conteudo.append(f"{'Desconto:':<40} R$ {desconto:>7.2f}")
+        elif tipo_venda.lower() == 'delivery':
+            # Para delivery, aplica apenas a taxa de entrega
+            total = subtotal + taxa_entrega - desconto
+            
+            # Exibe os totais
+            conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
+            if taxa_entrega > 0:
+                conteudo.append(f"{'Taxa de entrega:':<40} R$ {taxa_entrega:>7.2f}")
+            if desconto > 0:
+                conteudo.append(f"{'Desconto:':<40} R$ {desconto:>7.2f}")
+        else:
+            # Para vendas avulsas, não aplica nenhuma taxa
+            total = subtotal - desconto
+            
+            # Exibe os totais
+            conteudo.append(f"{'Subtotal:':<40} R$ {subtotal:>7.2f}")
+            if desconto > 0:
+                conteudo.append(f"{'Desconto:':<40} R$ {desconto:>7.2f}")
+        
+        # Exibe o total final
         conteudo.append("-" * largura)
         conteudo.append(f"{'TOTAL:':<40} R$ {total:>7.2f}")
         

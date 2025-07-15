@@ -2121,7 +2121,7 @@ class DeliveryModule:
                 sucesso, mensagem, pedido_id = self.delivery_controller.registrar_pedido(dados_pedido)
                 
                 if sucesso:
-                    messagebox.showinfo("Sucesso", f"Pedido {pedido_id} registrado com sucesso!")
+                    # Mensagem de sucesso removida conforme solicitado
                     
                     # Imprimir o comprovante do pedido
                     try:
@@ -2169,7 +2169,9 @@ class DeliveryModule:
                             'tipo': 'DELIVERY',
                             'observacoes': observacoes,
                             'taxa_entrega': float(dados_pedido.get('taxa_entrega', 0)),
-                            'forma_pagamento': forma_pagamento.upper()
+                            'forma_pagamento': forma_pagamento.upper(),
+                            'usuario_id': dados_pedido.get('usuario_id', 1),
+                            'usuario_nome': getattr(self.controller.usuario, 'nome', 'Operador') if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome') else 'Operador'
                         }
                         
                         # Adicionar endereço de entrega

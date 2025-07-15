@@ -1474,7 +1474,8 @@ class PedidosMesasModule(BaseModule):
                 callback_finalizar=lambda venda_dados, itens_venda, pagamentos: self._processar_venda_finalizada(venda_dados, itens_venda, pagamentos, liberar_mesa),
                 venda_tipo='mesa',
                 referencia=self.mesa.get('numero', ''),
-                itens_venda=itens_para_pagamento
+                itens_venda=itens_para_pagamento,
+                taxa_servico=self.taxa_servico_var.get()  # Passar o estado do checkbox da taxa de serviço
             )
             
             # Configurar evento para quando a janela for fechada
@@ -2161,7 +2162,7 @@ class PedidosMesasModule(BaseModule):
                 # Adicionar à lista de itens da sessão
                 if not hasattr(self, 'itens_adicionados_na_sessao'):
                     self.itens_adicionados_na_sessao = []
-                    print("[DEBUG] Lista itens_adicionados_na_sessao inicializada")
+
                 
                 # Obter o ID do item recém-adicionado diretamente do retorno do controlador
                 if hasattr(self.controller_mesas, 'ultimo_item_adicionado'):
@@ -2171,25 +2172,18 @@ class PedidosMesasModule(BaseModule):
                         # Inicializar a lista se não existir
                         if not hasattr(self.controller_mesas, 'itens_adicionados_na_sessao'):
                             self.controller_mesas.itens_adicionados_na_sessao = []
-
-                            
+                        
                         # Adicionar à lista local
                         self.itens_adicionados_na_sessao.append({'id': item_id})
-
-                      
                         
                         # Garantir que o controller também tenha a lista atualizada
                         if hasattr(self.controller_mesas, 'itens_adicionados_na_sessao'):
                             if item_id not in [item.get('id') for item in self.controller_mesas.itens_adicionados_na_sessao if 'id' in item]:
                                 self.controller_mesas.itens_adicionados_na_sessao.append({'id': item_id})
-                                print(f"[DEBUG] Item também adicionado à sessão do controller")
                     else:
                         print("[ERRO] Não foi possível obter o ID do item recém-adicionado")
-                else:
-                    print("[ERRO] Controller não tem atributo ultimo_item_adicionado")
                 
                 # Atualizar a tabela de itens
-
                 self.carregar_pedidos(manter_itens_sessao=True)
                 
                 # Verificar se os itens da sessão foram mantidos
@@ -2343,8 +2337,7 @@ class PedidosMesasModule(BaseModule):
                     if item_id:
                         # Adicionar à lista local
                         self.itens_adicionados_na_sessao.append({'id': item_id})
-                        print(f"[DEBUG] Item adicionado à sessão (com opções) - ID: {item_id}")
-                        print(f"[DEBUG] Total de itens na sessão agora: {len(self.itens_adicionados_na_sessao)}")
+
                         
                         # Garantir que o controller também tenha a lista atualizada
                         if hasattr(self.controller_mesas, 'itens_adicionados_na_sessao'):
@@ -2360,14 +2353,14 @@ class PedidosMesasModule(BaseModule):
                     self.janela_opcoes.destroy()
                 
                 # Atualizar a tabela de itens
-                print("[DEBUG] Chamando carregar_pedidos após adicionar item com opções")
+
                 self.carregar_pedidos(manter_itens_sessao=True)
                 
                 # Atualizar o pedido atual
                 self.pedido_atual = pedido
                 
                 # Recarregar itens do pedido
-                print("[DEBUG] Chamando carregar_pedidos após adicionar item com opções")
+
                 self.carregar_pedidos(manter_itens_sessao=True)
                 
                 # Verificar se os itens da sessão foram mantidos

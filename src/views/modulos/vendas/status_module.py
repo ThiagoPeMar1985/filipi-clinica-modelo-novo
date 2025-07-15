@@ -579,10 +579,12 @@ class StatusPedidosModule:
         # Criar instância do controlador de delivery
         delivery_controller = DeliveryController()
         
-        # Chamar o método para atualizar o status diretamente
+        # Se o novo status for 'ENTREGUE', o controlador irá converter para 'FINALIZADO'
+        # Chamar o método para atualizar o status
         sucesso, _ = delivery_controller.atualizar_status_pedido(pedido_id, novo_status)
         
         # Atualizar a lista de pedidos para refletir a mudança
         if sucesso:
+            # Forçar uma nova busca no banco para garantir que o status esteja atualizado
             self._atualizar_lista_pedidos()
     

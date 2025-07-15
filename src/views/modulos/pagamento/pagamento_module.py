@@ -17,7 +17,7 @@ from utils.impressao import GerenciadorImpressao
 
 class PagamentoModule:
     def __init__(self, master, db_connection, valor_total=0.0, desconto=0.0, 
-                 callback_finalizar=None, venda_tipo='avulsa', referencia=None, itens_venda=None):
+                 callback_finalizar=None, venda_tipo='avulsa', referencia=None, itens_venda=None, controller=None, taxa_servico=False):
         """
         Inicializa o módulo de pagamentos.
         
@@ -29,9 +29,11 @@ class PagamentoModule:
             callback_finalizar: Função a ser chamada quando o pagamento for finalizado
             venda_tipo: Tipo da venda ('avulsa', 'delivery', 'mesa')
             referencia: Referência da venda (número da mesa, id do delivery, etc)
+            controller: Referência ao controlador principal da aplicação
         """
         self.master = master
         self.db_connection = db_connection
+        self.controller = controller  # Armazena a referência ao controlador principal
         self.pagamento_controller = PagamentoController(db_connection)
         self.cadastro_controller = CadastroController(db_connection)
         
@@ -48,6 +50,9 @@ class PagamentoModule:
         
         # Itens da venda (produtos)
         self.itens_venda = itens_venda or []
+        
+        # Taxa de serviço (para vendas de mesa)
+        self.taxa_servico = taxa_servico
         
         # Cores do tema
         self.cores = {
@@ -1084,6 +1089,11 @@ class PagamentoModule:
         if not resposta:
             return
         
+        # Obter o nome do usuário logado, se disponível
+        nome_usuario = 'Não identificado'
+        if hasattr(self, 'controller') and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
+            nome_usuario = self.controller.usuario.nome
+        
         # Preparar dados da venda para o callback
         venda_dados = {
             'tipo': self.venda_tipo,
@@ -1092,7 +1102,9 @@ class PagamentoModule:
             'desconto': self.desconto,
             'valor_final': self.valor_final,
             'itens': self.itens_venda,
-            'data_venda': datetime.datetime.now()
+            'data_venda': datetime.datetime.now(),
+            'usuario_nome': nome_usuario,  # Adiciona o nome do usuário
+            'taxa_servico': self.taxa_servico  # Adiciona a informação da taxa de serviço
         }
         
         # Preparar os pagamentos no formato esperado
@@ -1131,6 +1143,25 @@ class PagamentoModule:
             # Destruir o frame
             if self.frame:
                 self.frame.destroy()
+    
+    def _imprimir_cupom_fiscal(self, venda_dados):
+        """Imprime o cupom fiscal da venda.
+        
+        Args:
+            venda_dados: Dicionário com os dados da venda
+        """
+        try:
+            from utils.impressao import GerenciadorImpressao
+            
+            # Inicializar o gerenciador de impressão
+            gerenciador_impressao = GerenciadorImpressao(self.db_connection)
+            
+            # Imprimir o cupom fiscal
+            gerenciador_impressao.imprimir_cupom_fiscal(venda_dados, self.itens_venda, self.pagamentos)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", f"Erro ao imprimir cupom fiscal: {str(e)}")
     
     def _voltar(self):
         """Volta para a tela anterior."""

@@ -884,7 +884,8 @@ class VendasModule:
             desconto=desconto,
             callback_finalizar=self._processar_venda_finalizada,
             venda_tipo='avulsa',
-            itens_venda=self.carrinho
+            itens_venda=self.carrinho,
+            controller=self.controller  # Passa a referência do controlador principal
         )
         
         # Configurar evento para quando a janela for fechada
@@ -913,12 +914,21 @@ class VendasModule:
             usuario_id = 1
             usuario_nome = "Sistema"
         
-        # Criar descrição dos itens da venda
-        descricao_itens = ", ".join([f"{item['quantidade']}x {item['nome']}"[:50] for item in self.carrinho[:3]])
-        if len(self.carrinho) > 3:
-            descricao_itens += "..."
-            
-        descricao = f"Venda {venda_dados.get('tipo', 'avulsa')} - {descricao_itens}"
+        # Não preencher a descrição
+        descricao = ""
+        
+        # Extrair informações de pagamento
+        formas_pagamento = [p['forma_nome'] for p in pagamentos if 'forma_nome' in p]
+        forma_pagamento = ", ".join(formas_pagamento) if formas_pagamento else 'Dinheiro'  # Valor padrão se não houver forma de pagamento
+        
+        # Calcular troco se houver pagamento em dinheiro
+        troco_para = 0
+        if 'Dinheiro' in formas_pagamento or 'dinheiro' in formas_pagamento:
+            # Encontrar o pagamento em dinheiro
+            for pagamento in pagamentos:
+                if pagamento.get('forma_nome', '').lower() == 'dinheiro':
+                    troco_para = pagamento.get('valor', 0) - valor_final
+                    break
         
         cursor = None
         try:
@@ -933,26 +943,27 @@ class VendasModule:
                     usuario_id, 
                     tipo, 
                     observacao, 
-                    cliente_nome,
-                    status_entrega,
+                    forma_pagamento,
+                    troco_para,
                     processado_estoque
                 )
                 VALUES (
                     NOW(), 
-                    'FECHADO', 
+                    'FINALIZADO', 
                     %s, 
                     %s, 
                     'AVULSO', 
                     %s, 
                     %s,
-                    'NAO_APLICAVEL',
+                    %s,
                     0
                 )
             """, (
                 valor_final,  # total
                 usuario_id,   # usuario_id (usando o usuário logado)
                 descricao,    # observação com os itens
-                usuario_nome  # cliente_nome (usando o nome do usuário logado)
+                forma_pagamento,  # forma de pagamento
+                troco_para if troco_para > 0 else 0  # valor para troco (apenas se positivo)
             ))
             
             pedido_id = cursor.lastrowid
@@ -1024,6 +1035,11 @@ class VendasModule:
             # Commit das alterações
             self.controller.db_connection.commit()
             
+            # Obter o nome do usuário logado
+            usuario_nome = "Sistema"  # Valor padrão caso não encontre o usuário
+            if hasattr(self.controller, 'usuario_atual') and self.controller.usuario_atual:
+                usuario_nome = self.controller.usuario_atual.get('nome', 'Sistema')
+                
             # Preparar dados da venda para impressão
             venda = {
                 'tipo': venda_dados.get('tipo', 'avulsa'),
@@ -1032,7 +1048,8 @@ class VendasModule:
                 'valor_final': valor_final,
                 'data_venda': datetime.datetime.now(),
                 'pedido_id': pedido_id,
-                'entrada_id': entrada_ids[0] if entrada_ids else None
+                'entrada_id': entrada_ids[0] if entrada_ids else None,
+                'usuario_nome': usuario_nome  # Adiciona o nome do usuário para a impressão
             }
             
             # Limpar o carrinho
@@ -1045,13 +1062,7 @@ class VendasModule:
             # Atualizar a interface
             self._atualizar_carrinho()
             
-            # Mostrar mensagem de sucesso
-            messagebox.showinfo(
-                "Venda Finalizada", 
-                f"Venda finalizada com sucesso!\nPedido #{pedido_id}"
-            )
-            
-            # Voltar para a tela inicial de vendas
+            # Voltar para a tela inicial de vendas sem mostrar mensagem de sucesso
             self._show_venda_avulsa()
             
         except Exception as e:

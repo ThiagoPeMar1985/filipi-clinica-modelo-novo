@@ -449,16 +449,36 @@ class CadastroModule(BaseModule):
         for row, (label, field, _) in enumerate(campos):
             tk.Label(form_frame, text=label).grid(row=row, column=0, sticky='e', padx=10, pady=5)
             
-            entry = tk.Entry(form_frame, width=40, show='*' if field == 'senha' else None)
-            entry.grid(row=row, column=1, sticky='w', padx=10, pady=5)
-            self.entries_usuario[field] = entry
+            if field == 'nivel_acesso':
+                # Usar ComboBox para o nível de acesso
+                nivel_var = tk.StringVar()
+                combo = ttk.Combobox(
+                    form_frame, 
+                    textvariable=nivel_var,
+                    values=['básico', 'master'],
+                    state='readonly',
+                    width=37
+                )
+                combo.grid(row=row, column=1, sticky='w', padx=10, pady=5)
+                self.entries_usuario[field] = combo
+            else:
+                # Campo de texto normal para os outros campos
+                entry = tk.Entry(form_frame, width=40, show='*' if field == 'senha' else None)
+                entry.grid(row=row, column=1, sticky='w', padx=10, pady=5)
+                self.entries_usuario[field] = entry
         
         # Preencher campos se for edição
         if self.usuario_atual:
             for field, widget in self.entries_usuario.items():
-                if field in self.usuario_atual:
-                    widget.delete(0, tk.END)
-                    widget.insert(0, str(self.usuario_atual[field]))
+                if field in self.usuario_atual and self.usuario_atual[field]:
+                    if field == 'nivel_acesso':
+                        # Definir o valor do ComboBox
+                        widget.set(self.usuario_atual[field])
+                    else:
+                        # Para campos de texto normais
+                        if isinstance(widget, tk.Entry):
+                            widget.delete(0, tk.END)
+                            widget.insert(0, str(self.usuario_atual[field]))
         
         # Frame para os botões (abaixo dos campos)
         botoes_frame = tk.Frame(form_frame)
@@ -515,13 +535,19 @@ class CadastroModule(BaseModule):
             messagebox.showwarning("Aviso", "Preencha todos os campos obrigatórios (Nome, Login e Senha)")
             return
             
+        # Validar nível de acesso
+        nivel = self.entries_usuario['nivel_acesso'].get().strip()
+        if nivel not in ['básico', 'master']:
+            messagebox.showwarning("Aviso", "Selecione um nível de acesso válido (básico ou master)")
+            return
+            
         # Preparar os dados para salvar
         dados = {
             'nome': self.entries_usuario['nome'].get().strip(),
             'login': self.entries_usuario['login'].get().strip(),
             'senha': self.entries_usuario['senha'].get().strip(),
-            'nivel': self.entries_usuario['nivel_acesso'].get(),
-            'telefone': self.entries_usuario.get('telefone', '').get().strip()  # Campo opcional
+            'nivel': nivel,
+            'telefone': self.entries_usuario['telefone'].get().strip() if 'telefone' in self.entries_usuario else ''
         }
         
         # Adiciona o ID se estiver editando
@@ -531,21 +557,18 @@ class CadastroModule(BaseModule):
         try:
             # Usa o método salvar_usuario do banco de dados
             if hasattr(self.db, 'salvar_usuario'):
-                sucesso, mensagem = self.db.salvar_usuario(dados)
+                sucesso, _ = self.db.salvar_usuario(dados)
                 if sucesso:
-                    messagebox.showinfo("Sucesso", mensagem)
                     self.mostrar_usuarios()
                 else:
-                    messagebox.showerror("Erro", mensagem)
+                    messagebox.showerror("Erro", "Falha ao salvar usuário")
             else:
                 # Fallback para métodos antigos se salvar_usuario não existir
                 if usuario_id:
                     if self.db.atualizar_usuario(usuario_id, **dados):
-                        messagebox.showinfo("Sucesso", "Usuário atualizado!")
                         self.mostrar_usuarios()
                 else:
                     if self.db.inserir_usuario(**dados):
-                        messagebox.showinfo("Sucesso", "Usuário cadastrado!")
                         self.mostrar_usuarios()
                         
         except Exception as e:
@@ -565,7 +588,6 @@ class CadastroModule(BaseModule):
         if messagebox.askyesno("Confirmar", f"Excluir usuário {nome}?"):
             try:
                 if self.db.excluir_usuario(usuario_id):
-                    messagebox.showinfo("Sucesso", "Usuário excluído!")
                     self.mostrar_usuarios()
                 else:
                     messagebox.showerror("Erro", "Falha ao excluir usuário")
@@ -751,7 +773,16 @@ class CadastroModule(BaseModule):
         # Dados do funcionário (se edição)
         self.funcionario_atual = None
         if funcionario_id and self.db:
-            self.funcionario_atual = self.db.obter_funcionario(funcionario_id)
+            try:
+                self.funcionario_atual = self.db.obter_funcionario_por_id(funcionario_id)
+                if not self.funcionario_atual:
+                    messagebox.showerror("Erro", "Funcionário não encontrado")
+                    self.mostrar_funcionarios()
+                    return
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao carregar dados do funcionário: {e}")
+                self.mostrar_funcionarios()
+                return
         
         # Frame principal
         main_frame = tk.Frame(self.conteudo_frame)
@@ -899,7 +930,6 @@ class CadastroModule(BaseModule):
                 mensagem = "cadastrado"
             
             if resultado:
-                messagebox.showinfo("Sucesso", f"Funcionário {mensagem} com sucesso!")
                 self.mostrar_funcionarios()  # Atualiza a lista
             else:
                 messagebox.showerror("Erro", f"Erro ao salvar funcionário: {self.db.ultimo_erro}")
@@ -926,7 +956,6 @@ class CadastroModule(BaseModule):
         """Exclui um funcionário do banco de dados"""
         try:
             if self.db.excluir_funcionario(funcionario_id):
-                messagebox.showinfo("Sucesso", "Funcionário excluído com sucesso!")
                 self.mostrar_funcionarios()  # Atualiza a lista
             else:
                 messagebox.showerror("Erro", f"Erro ao excluir funcionário: {self.db.ultimo_erro}")
@@ -1244,8 +1273,7 @@ class CadastroModule(BaseModule):
                 msg = "cadastrado"
 
             if resultado:
-                messagebox.showinfo("Sucesso", f"Produto {msg} com sucesso!")
-                self.mostrar_produtos()
+                self.mostrar_produtos()  # Atualiza a lista sem mostrar mensagem de sucesso
             else:
                 messagebox.showerror("Erro", f"Falha ao {msg} produto")
 
@@ -1280,224 +1308,13 @@ class CadastroModule(BaseModule):
                 sucesso, mensagem = controller.excluir_produto(produto_id)
                 
                 if sucesso:
-                    messagebox.showinfo("Sucesso", mensagem)
-                    self.mostrar_produtos()  # Atualiza a lista de produtos
+                    self.mostrar_produtos()  # Atualiza a lista de produtos sem mostrar mensagem de sucesso
                 else:
                     messagebox.showerror("Erro", mensagem)
                     
             except Exception as e:
                 messagebox.showerror("Erro", f"Falha ao excluir produto: {str(e)}")
-    
-    def excluir_cliente(self):
-        """Exclui o cliente selecionado usando o CadastroController"""
-        selecionado = self.tree_clientes.selection()
-        if not selecionado:
-            return
-            
-        cliente_id = self.tree_clientes.item(selecionado[0])['values'][0]
-        nome = self.tree_clientes.item(selecionado[0])['values'][1]
-        
-        if messagebox.askyesno("Confirmar", f"Excluir cliente {nome}?"):
-            try:
-                # Usar o CadastroController para excluir o cliente
-                from src.controllers.cadastro_controller import CadastroController
-                cadastro_controller = CadastroController()
-                if cadastro_controller.excluir_cliente(cliente_id):
-                    self.tree_clientes.delete(selecionado[0])
-                    messagebox.showinfo("Sucesso", "Cliente excluído")
-                else:
-                    messagebox.showerror("Erro", "Não foi possível excluir o cliente")
-            except Exception as e:
-                messagebox.showerror("Erro", f"Falha ao excluir: {str(e)}")
-                import traceback
-                traceback.print_exc()
-    
-    def _criar_formulario_cliente(self, titulo, cliente_id=None):
-        """Cria formulário para cadastro/edição de cliente usando a tabela clientes_delivery"""
-        self.limpar_conteudo()
-        
-        # Dados do cliente (se edição)
-        self.cliente_atual = None
-        if cliente_id:
-            # Usar o CadastroController para obter os dados do cliente
-            from src.controllers.cadastro_controller import CadastroController
-            cadastro_controller = CadastroController()
-            self.cliente_atual = cadastro_controller.obter_cliente(cliente_id)
-        
-        # Frame principal
-        main_frame = tk.Frame(self.conteudo_frame)
-        main_frame.pack(fill='both', expand=True, padx=20, pady=10)
-        
-        # Título
-        tk.Label(main_frame, text=titulo, font=('Arial', 14, 'bold')).pack(pady=10)
-        
-        # Frame do formulário
-        form_frame = tk.Frame(main_frame)
-        form_frame.pack(fill='both', expand=True)
-        
-        # Campos do formulário - Adicionando todos os campos da tabela clientes_delivery
-        campos = [
-            ('Nome:', 'nome', 0, 0),
-            ('Telefone:', 'telefone', 1, 0),
-            ('Telefone 2:', 'telefone2', 1, 2),
-            ('Email:', 'email', 2, 0),
-            ('Endereço:', 'endereco', 3, 0),
-            ('Número:', 'numero', 3, 2),
-            ('Complemento:', 'complemento', 4, 0),
-            ('Bairro:', 'bairro', 5, 0),
-            ('Cidade:', 'cidade', 5, 2),
-            ('UF:', 'uf', 6, 0),
-            ('CEP:', 'cep', 6, 2),
-            ('Ponto de Referência:', 'ponto_referencia', 7, 0),
-            ('Observações:', 'observacoes', 8, 0)
-        ]
-        
-        self.entries = {}
-        for label, field, row, col in campos:
-            # Label
-            tk.Label(form_frame, text=label, font=('Arial', 10)).grid(row=row, column=col, sticky='e', padx=5, pady=5)
-            
-            # Entry padrão
-            entry_width = 40 if col == 0 else 15
-            entry = tk.Entry(form_frame, font=('Arial', 10), width=entry_width)
-            entry.grid(row=row, column=col+1, sticky='w', padx=5, pady=5)
-            self.entries[field] = entry
-            
-            # Preenche com dados existentes se estiver editando
-            if self.cliente_atual and field in self.cliente_atual and self.cliente_atual[field] is not None:
-                self.entries[field].insert(0, str(self.cliente_atual[field]))
-        
-        # Frame para os botões de ação (abaixo dos campos)
-        botoes_frame = tk.Frame(form_frame)
-        botoes_frame.grid(row=4, column=0, columnspan=2, pady=(20, 10), sticky='w')
-        
-        # Botão Salvar
-        btn_salvar = tk.Button(
-            botoes_frame, 
-            text="Salvar", 
-            command=lambda: self._salvar_cliente(cliente_id),
-            font=('Arial', 10, 'bold'),
-            bg='#4a6fa5',
-            fg='white',
-            padx=15,
-            pady=5,
-            width=10
-        )
-        btn_salvar.pack(side='left', padx=5)
-        
-        # Botão Cancelar
-        btn_cancelar = tk.Button(
-            botoes_frame, 
-            text="Cancelar", 
-            command=self.mostrar_clientes,
-            font=('Arial', 10, 'bold'),
-            bg='#f44336',
-            fg='white',
-            padx=15,
-            pady=5,
-            width=10
-        )
-        btn_cancelar.pack(side='left', padx=5)
-    
-    def buscar_cep(self):
-        """Busca endereço pelo CEP usando a API ViaCEP"""
-        cep = self.entries['cep'].get().strip().replace('-', '').replace('.', '')
-        
-        if not cep or len(cep) != 8:
-            messagebox.showwarning("Aviso", "Digite um CEP válido com 8 dígitos")
-            return
-            
-        try:
-            # Consulta a API ViaCEP
-            url = f"https://viacep.com.br/ws/{cep}/json/"
-            response = requests.get(url)
-            data = response.json()
-            
-            if "erro" in data:
-                messagebox.showwarning("Aviso", "CEP não encontrado")
-                return
-                
-            # Preenche os campos com os dados retornados
-            if 'logradouro' in data and data['logradouro']:
-                self.entries['endereco'].delete(0, tk.END)
-                self.entries['endereco'].insert(0, data['logradouro'])
-                
-            if 'bairro' in data and data['bairro']:
-                self.entries['bairro'].delete(0, tk.END)
-                self.entries['bairro'].insert(0, data['bairro'])
-                
-            if 'localidade' in data and data['localidade']:
-                self.entries['cidade'].delete(0, tk.END)
-                self.entries['cidade'].insert(0, data['localidade'])
-                
-            if 'uf' in data and data['uf']:
-                self.entries['uf'].delete(0, tk.END)
-                self.entries['uf'].insert(0, data['uf'])
-                
-            # Foca no campo de número para continuar o preenchimento
-            self.entries['numero'].focus_set()
-            
-        except Exception as e:
-            messagebox.showerror("Erro", f"Falha ao buscar CEP: {str(e)}")
-            import traceback
-            traceback.print_exc()
-    
-    def _salvar_cliente(self, cliente_id=None):
-        """Salva os dados do cliente com tratamento completo de erros usando CadastroController"""
-        try:
-            # Validação do nome
-            nome = self.entries['nome'].get()
-            if not nome or not nome.strip():
-                messagebox.showwarning("Aviso", "Nome do cliente é obrigatório")
-                self.entries['nome'].focus_set()
-                return
 
-            # Validação do telefone
-            telefone = self.entries['telefone'].get()
-            if not telefone or not telefone.strip():
-                messagebox.showwarning("Aviso", "Telefone do cliente é obrigatório")
-                self.entries['telefone'].focus_set()
-                return
-                
-            # Coletando todos os dados do formulário
-            dados = {
-                'nome': nome.strip(),
-                'telefone': telefone.strip(),
-                'telefone2': self.entries['telefone2'].get().strip(),
-                'email': self.entries['email'].get().strip(),
-                'endereco': self.entries['endereco'].get().strip(),
-                'numero': self.entries['numero'].get().strip(),
-                'complemento': self.entries['complemento'].get().strip(),
-                'bairro': self.entries['bairro'].get().strip(),
-                'cidade': self.entries['cidade'].get().strip(),
-                'uf': self.entries['uf'].get().strip(),
-                'cep': self.entries['cep'].get().strip(),
-                'ponto_referencia': self.entries['ponto_referencia'].get().strip(),
-                'observacoes': self.entries['observacoes'].get().strip()
-            }
-
-            # Usar o CadastroController para salvar os dados
-            from src.controllers.cadastro_controller import CadastroController
-            cadastro_controller = CadastroController()
-            
-            # Operação no banco
-            if cliente_id:
-                resultado = cadastro_controller.atualizar_cliente(cliente_id, dados)
-                msg = "atualizado"
-            else:
-                resultado = cadastro_controller.inserir_cliente(dados)
-                msg = "cadastrado"
-
-            if resultado:
-                messagebox.showinfo("Sucesso", f"Cliente {msg} com sucesso!")
-                self.mostrar_clientes()
-            else:
-                messagebox.showerror("Erro", f"Falha ao {msg} cliente")
-
-        except Exception as e:
-            messagebox.showerror("Erro", f"Falha ao salvar cliente: {str(e)}")
-            import traceback
-            traceback.print_exc()
     
     def mostrar_fornecedores(self):
         """Mostra a tela de cadastro de fornecedores"""
@@ -1787,6 +1604,12 @@ class CadastroModule(BaseModule):
                 'numero': self.empresa_numero.get().strip() or None
             }
             
+            # Converte o número para inteiro se não for None e for um dígito
+            if dados['numero'] and isinstance(dados['numero'], str) and dados['numero'].strip().isdigit():
+                dados['numero'] = int(dados['numero'])
+            else:
+                dados['numero'] = None
+            
             # Validação do campo obrigatório
             if not dados['nome_fantasia']:
                 messagebox.showwarning("Aviso", "O campo Nome Fantasia é obrigatório.")
@@ -1812,7 +1635,6 @@ class CadastroModule(BaseModule):
             if sucesso:
                 # Atualiza os dados em memória
                 self.dados_empresa = self.db.obter_empresa() or {}
-                messagebox.showinfo("Sucesso", "Dados da empresa salvos com sucesso!")
             else:
                 messagebox.showerror("Erro", f"Não foi possível salvar os dados: {mensagem}")
             
@@ -1850,7 +1672,7 @@ class CadastroModule(BaseModule):
             try:
                 if self.db.excluir_fornecedor(fornecedor_id):
                     self.tree_fornecedores.delete(selecionado[0])
-                    messagebox.showinfo("Sucesso", "Fornecedor excluído")
+                    # Removida mensagem de sucesso conforme solicitado
             except Exception as e:
                 messagebox.showerror("Erro", f"Falha ao excluir: {str(e)}")
     
@@ -1949,12 +1771,10 @@ class CadastroModule(BaseModule):
         try:
             if fornecedor_id:
                 # Edição
-                if self.db.atualizar_fornecedor(fornecedor_id, **dados):
-                    messagebox.showinfo("Sucesso", "Fornecedor atualizado!")
+                self.db.atualizar_fornecedor(fornecedor_id, **dados)
             else:
                 # Novo
-                if self.db.inserir_fornecedor(**dados):
-                    messagebox.showinfo("Sucesso", "Fornecedor cadastrado!")
+                self.db.inserir_fornecedor(**dados)
             
             self.mostrar_fornecedores()
         except Exception as e:
@@ -1991,7 +1811,6 @@ class CadastroModule(BaseModule):
                 cadastro_controller = CadastroController()
                 if cadastro_controller.excluir_cliente(cliente_id):
                     self.tree_clientes.delete(selecionado[0])
-                    messagebox.showinfo("Sucesso", "Cliente excluído com sucesso")
                 else:
                     messagebox.showerror("Erro", "Não foi possível excluir o cliente")
             except Exception as e:
@@ -2187,16 +2006,12 @@ class CadastroModule(BaseModule):
             
             if cliente_id:
                 # Edição - Passando cliente_id como argumento posicional e dados como argumentos nomeados
-                if cadastro_controller.atualizar_cliente(cliente_id, **dados):
-                    messagebox.showinfo("Sucesso", "Cliente atualizado com sucesso!")
-                else:
+                if not cadastro_controller.atualizar_cliente(cliente_id, **dados):
                     messagebox.showerror("Erro", "Não foi possível atualizar o cliente")
                     return
             else:
                 # Novo - Passando os dados como argumentos nomeados (**dados)
-                if cadastro_controller.inserir_cliente(**dados):
-                    messagebox.showinfo("Sucesso", "Cliente cadastrado com sucesso!")
-                else:
+                if not cadastro_controller.inserir_cliente(**dados):
                     messagebox.showerror("Erro", "Não foi possível cadastrar o cliente")
                     return
             

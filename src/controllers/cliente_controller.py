@@ -313,8 +313,15 @@ class ClienteController:
         query = "DELETE FROM clientes_delivery WHERE id = %s"
         
         try:
+            # Verificar se o cliente existe
+            cliente = self.obter_cliente_por_id(cliente_id)
+            if not cliente:
+                return False, "Cliente não encontrado."
+                
+            # Executar a exclusão
             self.db.execute_query(query, (cliente_id,))
             return True, "Cliente excluído permanentemente com sucesso."
+            
         except Exception as e:
             print(f"Erro ao excluir cliente: {e}")
             return False, f"Erro ao excluir cliente: {str(e)}"

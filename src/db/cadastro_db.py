@@ -73,17 +73,7 @@ class CadastroDB:
         self.db = db_connection
     
     # Métodos para Funcionários
-    def listar_funcionarios(self) -> List[Dict[str, Any]]:
-        """Lista todos os funcionários cadastrados."""
-        try:
-            cursor = self.db.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM funcionarios ORDER BY nome")
-            return cursor.fetchall()
-        except Exception as e:
-            print(f"Erro ao listar funcionários: {e}")
-            return []
-    
-    def obter_funcionario(self, funcionario_id: int) -> Optional[Dict[str, Any]]:
+    def obter_funcionario_por_id(self, funcionario_id: int) -> Optional[Dict[str, Any]]:
         """Obtém um funcionário pelo ID."""
         try:
             cursor = self.db.cursor(dictionary=True)
@@ -151,49 +141,47 @@ class CadastroDB:
             return None
     
     def salvar_empresa(self, dados: Dict[str, Any]) -> Tuple[bool, str]:
-        """Salva ou atualiza os dados da empresa."""
+        """Salva ou atualiza os dados da empresa.
+        Como só pode existir uma empresa no sistema, sempre faz UPDATE se existir,
+        ou INSERT se for a primeira vez.
+        """
         try:
             cursor = self.db.cursor()
             
-            # Verifica se já existe uma empresa cadastrada
+            # Lista de campos na ordem correta
+            campos = [
+                'nome_fantasia', 'razao_social', 'cnpj',  # obrigatórios
+                'inscricao_estadual', 'telefone', 'endereco',  # opcionais
+                'cep', 'bairro', 'cidade', 'estado', 'numero'  # opcionais
+            ]
+            
+            # Prepara os valores
+            valores = []
+            for campo in campos:
+                # Para campos obrigatórios, usa string vazia como padrão
+                # Para opcionais, usa None como padrão
+                valor = dados.get(campo, '' if campo in ['nome_fantasia', 'razao_social', 'cnpj'] else None)
+                valores.append(valor)
+            
+            # Verifica se já existe empresa
             cursor.execute("SELECT id FROM empresas LIMIT 1")
             empresa_existente = cursor.fetchone()
             
             if empresa_existente:
                 # Atualiza empresa existente
-                query = """
+                query = f"""
                     UPDATE empresas 
-                    SET nome_fantasia = %s, razao_social = %s, cnpj = %s, 
-                        inscricao_estadual = %s, telefone = %s, endereco = %s
-                    WHERE id = %s
+                    SET {', '.join([f"{campo} = %s" for campo in campos])}
+                    LIMIT 1  # Garante que só uma linha seja afetada
                 """
-                # Obtém o ID da empresa existente corretamente
-                empresa_id = empresa_existente[0] if isinstance(empresa_existente, (list, tuple)) else empresa_existente.get('id')
-                
-                valores = (
-                    dados['nome_fantasia'],
-                    dados['razao_social'],
-                    dados['cnpj'],
-                    dados['inscricao_estadual'],
-                    dados['telefone'],
-                    dados['endereco'],
-                    empresa_id
-                )
             else:
                 # Insere nova empresa
-                query = """
+                placeholders = ', '.join(['%s'] * len(campos))
+                query = f"""
                     INSERT INTO empresas 
-                    (nome_fantasia, razao_social, cnpj, inscricao_estadual, telefone, endereco)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ({', '.join(campos)})
+                    VALUES ({placeholders})
                 """
-                valores = (
-                    dados['nome_fantasia'],
-                    dados['razao_social'],
-                    dados['cnpj'],
-                    dados['inscricao_estadual'],
-                    dados['telefone'],
-                    dados['endereco']
-                )
             
             cursor.execute(query, valores)
             self.db.commit()
@@ -202,7 +190,7 @@ class CadastroDB:
         except Exception as e:
             self.db.rollback()
             return False, f"Erro ao salvar dados da empresa: {str(e)}"
-    
+        
     # Métodos para Usuários
     def listar_usuarios(self) -> List[Dict[str, Any]]:
         """Lista todos os usuários cadastrados."""

@@ -270,19 +270,19 @@ class VisualizarMesasModule(BaseModule):
                 fg=CORES['texto_claro']  # Texto branco
             ).pack(pady=(0, 5))
             
-            # Valor do pedido (se existir)
-            valor = float(mesa.get('valor_pedido', 0) or 0)
-            
-            if valor > 0:
-                valor_formatado = f"R$ {valor:,.2f}"
-                valor_formatado = valor_formatado.replace('.', 'v').replace(',', '.').replace('v', ',')
-                tk.Label(
-                    conteudo_mesa,
-                    text=f"Valor: {valor_formatado}",
-                    font=FONTES['pequena'],
-                    bg=status_cor,
-                    fg=CORES['texto_claro']  # Texto branco
-                ).pack(pady=(0, 5))
+            # Valor do pedido (se existir e a mesa estiver ocupada)
+            if mesa['status'].lower() == 'ocupada':
+                valor = float(mesa.get('valor_pedido', 0) or 0)
+                if valor > 0:
+                    valor_formatado = f"R$ {valor:,.2f}"
+                    valor_formatado = valor_formatado.replace('.', 'v').replace(',', '.').replace('v', ',')
+                    tk.Label(
+                        conteudo_mesa,
+                        text=f"Valor: {valor_formatado}",
+                        font=FONTES['pequena'],
+                        bg=status_cor,
+                        fg=CORES['texto_claro']  # Texto branco
+                    ).pack(pady=(0, 5))
             
             # Posicionar no grid
             mesa_frame.grid(row=row, column=col, padx=15, pady=15, sticky="nsew")
