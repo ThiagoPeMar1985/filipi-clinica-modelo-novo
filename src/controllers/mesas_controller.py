@@ -614,7 +614,7 @@ class MesasController:
             return False, error_msg
     
     def finalizar_pedido(self, forma_pagamento: str, valor_total: float, 
-                        desconto: float = 0.0) -> Tuple[bool, str]:
+                        desconto: float = 0.0, pagamento: Optional[Dict] = None) -> Tuple[bool, str]:
         """
         Finaliza o pedido atual da mesa.
         
@@ -638,16 +638,24 @@ class MesasController:
             # Atualizar o pedido
             data_atual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
+            # Calcular o troco se for pagamento em dinheiro
+            troco = 0
+            if forma_pagamento.lower() == 'dinheiro':
+                troco = pagamento.get('troco', 0)  # O troco deve ser passado no dicionário de pagamento
+                
+            # Atualizar o pedido com troco e desconto
             cursor.execute(
                 """
                 UPDATE pedidos 
                 SET status = 'FINALIZADO', 
                     data_fechamento = %s, 
                     forma_pagamento = %s,
-                    total = %s
+                    total = %s,
+                    troco_para = %s,
+                    desconto = %s
                 WHERE id = %s
                 """,
-                (data_atual, forma_pagamento, valor_total - desconto, self.pedido_atual['id'])
+                (data_atual, forma_pagamento, valor_total - desconto, troco, desconto, self.pedido_atual['id'])
             )
             
             # Liberar a mesa

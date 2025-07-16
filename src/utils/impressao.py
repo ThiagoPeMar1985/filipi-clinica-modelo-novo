@@ -215,7 +215,7 @@ class GerenciadorImpressao:
             # Verifica se o nome do usuário é um dicionário (pode acontecer em alguns casos)
             if isinstance(nome_atendente, dict) and 'nome' in nome_atendente:
                 nome_atendente = nome_atendente['nome']
-            conteudo.append(f"Atendente: {nome_atendente}")
+        conteudo.append(f"Atendente: {nome_atendente}")
             
         # Se for delivery, mostra o nome do cliente
         if tipo_venda == 'delivery' and venda.get('cliente_nome'):
@@ -469,13 +469,12 @@ class GerenciadorImpressao:
         
         # Lista de itens
         for i, item in enumerate(itens, 1):
-            nome = item.get('nome', '')[:28]  # Limita a 25 caracteres
-            qtd = item.get('quantidade', 0)
-            preco = item.get('valor_unitario', 0)
-            valor_total = qtd * preco
+            nome = item.get('nome', '')[:28]  # Limita a 28 caracteres
+            qtd = int(item.get('quantidade', 0))
+            preco = float(item.get('valor_unitario', 0))
             
             # Formata a linha do item
-            linha = f"{i:02d}  {nome:<28} {qtd:>2}  R$ {preco:>6.2f}"
+            linha = f"{i:02d}  {nome:<28} {qtd:>2}  R$ {preco:>7.2f}"
             conteudo.append(linha)
             
             # Adiciona opções do item, se houver
@@ -496,15 +495,16 @@ class GerenciadorImpressao:
         conteudo.append("-" * largura)
         
         # Totais
-        subtotal = 0
+        subtotal = 0.0
         for item in itens:
-            qtd = item.get('quantidade', 0)
-            preco = item.get('valor_unitario', 0)
+            qtd = int(item.get('quantidade', 0))
+            preco = float(item.get('valor_unitario', 0))
             subtotal += qtd * preco
         
-        taxa_entrega = venda.get('taxa_entrega', 0)
+        taxa_entrega = float(venda.get('taxa_entrega', 0))
         total = subtotal + taxa_entrega
         
+        # Formata os valores com 2 casas decimais e alinhamento correto
         conteudo.append(f"{'Subtotal:':<35} R$ {subtotal:>7.2f}")
         if taxa_entrega > 0:
             conteudo.append(f"{'Taxa de entrega:':<35} R$ {taxa_entrega:>7.2f}")
@@ -527,8 +527,14 @@ class GerenciadorImpressao:
         for pagamento in pagamentos:
             forma = pagamento.get('forma_nome', '').lower()
             forma_formatada = FORMAS_PAGAMENTO.get(forma, forma)
-            valor = pagamento.get('valor', 0)
-            conteudo.append(f"{forma_formatada:<15} R$ {valor:>6.2f}")
+            valor = float(pagamento.get('valor', 0))
+            troco = float(pagamento.get('troco', 0))
+            
+            if forma == 'dinheiro' and troco > 0:
+                conteudo.append(f"{forma_formatada:<35} R$ {valor:>7.2f}")
+                conteudo.append(f"{'Troco:':<35} R$ {troco:>7.2f}")
+            else:
+                conteudo.append(f"{forma_formatada:<35} R$ {valor:>7.2f}")
         
         # Rodapé
         conteudo.append("")
@@ -539,95 +545,7 @@ class GerenciadorImpressao:
         conteudo.append(f"{datetime.datetime.now().strftime('Impresso em %d/%m/%Y %H:%M')}".center(largura))
         
         return "\n".join(conteudo)
-        
-        # Itens do pedido
-        conteudo.append("-" * largura)
-        conteudo.append("ITENS DO PEDIDO".center(largura))
-        conteudo.append("-" * largura)
-        conteudo.append("ITEM  DESCRIÇÃO" + " " * 25 + "QTD   VALOR")
-        conteudo.append("-" * largura)
-        
-        # Lista de itens
-        for i, item in enumerate(itens, 1):
-            nome = item.get('nome', '')[:28]  # Limita a 25 caracteres
-            qtd = item.get('quantidade', 0)
-            preco = item.get('valor_unitario', 0)
-            valor_total = qtd * preco
-            
-            # Formata a linha do item
-            linha = f"{i:02d}  {nome:<28} {qtd:>2}  R$ {preco:>6.2f}"
-            conteudo.append(linha)
-            
-            # Adiciona opções do item, se houver
-            if 'opcoes' in item and item['opcoes']:
-                for opcao in item['opcoes']:
-                    nome_opcao = opcao.get('nome', '')[:25]
-                    preco_adicional = opcao.get('preco_adicional', 0)
-                    if preco_adicional > 0:
-                        conteudo.append(f"    → {nome_opcao} (+ R$ {preco_adicional:.2f})")
-                    else:
-                        conteudo.append(f"    → {nome_opcao}")
-            
-            # Adiciona observações do item, se houver
-            if 'observacoes' in item and item['observacoes']:
-                obs = f"    → {item['observacoes']}"
-                conteudo.append(obs[:largura])  # Limita ao tamanho máximo
-        
-        conteudo.append("-" * largura)
-        
-        # Totais
-        # Calcula o subtotal usando os mesmos campos de preço que usamos para exibir os itens
-        subtotal = 0
-        for item in itens:
-            qtd = item.get('quantidade', 0)
-            preco_unitario = 0
-            # Busca o preço em diferentes campos possíveis
-            for campo_preco in ['valor_unitario', 'preco_unitario', 'preco', 'valor', 'valor_venda', 'preco_venda']:
-                if campo_preco in item and item[campo_preco] is not None:
-                    preco_unitario = float(item[campo_preco])
-                    break
-            subtotal += qtd * preco_unitario
-        
-        # Para delivery, só aplica a taxa de entrega, sem taxa de serviço
-        taxa_entrega = venda.get('taxa_entrega', 0)
-        total = subtotal + taxa_entrega
-        
-        # Formata os totais alinhados à direita
-        conteudo.append(f"{'Subtotal:':<35} R$ {subtotal:>7.2f}")
-        # Apenas mostra a taxa de entrega se for maior que zero
-        if taxa_entrega > 0:
-            conteudo.append(f"{'Taxa de entrega:':<35} R$ {taxa_entrega:>7.2f}")
-        conteudo.append("-" * largura)
-        conteudo.append(f"{'TOTAL:':<35} R$ {total:>7.2f}")
-        
-        # Forma de pagamento
-        conteudo.append("-" * largura)
-        conteudo.append("FORMA DE PAGAMENTO".center(largura))
-        conteudo.append("-" * largura)
-        
-        # Mapeamento das formas de pagamento para nomes formatados
-        FORMAS_PAGAMENTO = {
-            'credito': 'Cartão de Crédito',
-            'debito': 'Cartão de Débito',
-            'pix': 'Pix',
-            'dinheiro': 'Dinheiro'
-        }
-        
-        for pagamento in pagamentos:
-            forma = pagamento.get('forma_nome', '').lower()
-            forma_formatada = FORMAS_PAGAMENTO.get(forma, forma)
-            valor = pagamento.get('valor', 0)
-            conteudo.append(f"{forma_formatada:<15} R$ {valor:>6.2f}")
-        
-        # Rodapé
-        conteudo.append("")
-        conteudo.append("=" * largura)
-        conteudo.append("Obrigado pela preferência!".center(largura))
-        conteudo.append("Volte sempre!".center(largura))
-        conteudo.append("")
-        conteudo.append(f"{datetime.datetime.now().strftime('Impresso em %d/%m/%Y %H:%M')}".center(largura))
-        
-        return "\n".join(conteudo)
+
         
     def _gerar_conteudo_cupom(self, venda, itens, pagamentos):
         """
@@ -812,13 +730,17 @@ class GerenciadorImpressao:
                 taxa_servico_flag = taxa_servico_flag.lower() == 'true' or taxa_servico_flag == '1'
                 
             taxa_servico = subtotal * 0.1 if taxa_servico_flag else 0.0
-            total = subtotal + taxa_servico
+            desconto = venda.get('desconto', 0)
+            total = subtotal + taxa_servico - desconto
             
             # Exibe os totais
             conteudo.append(f"{'Subtotal:':<35} R$ {subtotal:>7.2f}")
             # Garantir que a taxa de serviço seja exibida quando aplicada
             if taxa_servico > 0:
                 conteudo.append(f"{'Taxa de serviço (10%):':<35} R$ {taxa_servico:>7.2f}")
+            if desconto > 0:
+                conteudo.append(f"{'Desconto:':<35} R$ {desconto:>7.2f}")
+                
         elif tipo_venda.lower() == 'delivery':
             # Para delivery, aplica apenas a taxa de entrega
             total = subtotal + taxa_entrega
@@ -829,10 +751,14 @@ class GerenciadorImpressao:
                 conteudo.append(f"{'Taxa de entrega:':<40} R$ {taxa_entrega:>7.2f}")
         else:
             # Para vendas avulsas, não aplica nenhuma taxa
-            total = subtotal
+            # Buscar o desconto na venda
+            desconto = venda.get('desconto', 0)
+            total = subtotal - desconto
             
             # Exibe os totais
             conteudo.append(f"{'Subtotal:':<35} R$ {subtotal:>7.2f}")
+            if desconto > 0:
+                conteudo.append(f"{'Desconto:':<35} R$ {desconto:>7.2f}")
         
         # Exibe o total final
         conteudo.append("-" * largura)
@@ -844,13 +770,15 @@ class GerenciadorImpressao:
         
         # Pagamentos
         for pagamento in pagamentos:
-            forma = pagamento.get('forma_nome', '')
+            forma = pagamento.get('forma_nome', '').lower()
             valor = pagamento.get('valor', 0)
-            # Ajusta o formato para garantir que a forma de pagamento fique alinhada à esquerda
-            # e o valor fique alinhado à direita com 10 espaços
-            forma_formatada = forma.ljust(30)  # 30 espaços para a forma de pagamento
-            valor_formatado = f"R$ {valor:.2f}".rjust(10)  # 10 espaços para o valor
-            conteudo.append(f"{forma_formatada}{valor_formatado}")
+            troco = pagamento.get('troco', 0)
+            
+            if forma == 'dinheiro' and troco > 0:
+                conteudo.append(f"{forma:<35} R$ {valor:>7.2f}")
+                conteudo.append(f"{'Troco:':<35} R$ {troco:>7.2f}")
+            else:
+                conteudo.append(f"{forma:<15} R$ {valor:>6.2f}")
         
         # Rodapé
         conteudo.append("")

@@ -798,10 +798,14 @@ class OpcoesModule(BaseModule):
         
         # Preenche a lista de itens
         for item in itens:
+            # Define o tipo de opção para exibição
+            tipo = item.get('tipo', 'opcao_simples')
+            tipo_exibicao = 'Texto Livre' if tipo == 'texto_livre' else 'Opção Simples'
+            
             self.lista_itens.insert('', 'end', values=(
                 item['id'],
-                item['nome'],
-                f"R$ {item['preco_adicional']:.2f}" if item['preco_adicional'] else ""
+                f"{item['nome']} ({tipo_exibicao})",
+                f"R$ {item['preco_adicional']:.2f}" if item['preco_adicional'] and item['preco_adicional'] > 0 else ""
             ))
 
     def _limpar_lista_itens(self):
@@ -1147,8 +1151,8 @@ class OpcoesModule(BaseModule):
         dialog.resizable(False, False)
         
         # Define o tamanho da janela
-        largura = 500
-        altura = 400
+        largura = 600
+        altura = 450
         x = (dialog.winfo_screenwidth() // 2) - (largura // 2)
         y = (dialog.winfo_screenheight() // 2) - (altura // 2)
         dialog.geometry(f'{largura}x{altura}+{x}+{y}')
@@ -1297,10 +1301,53 @@ class OpcoesModule(BaseModule):
         )
         entry_preco.pack(side=tk.LEFT)
             
+        # Frame para o tipo de opção
+        frame_tipo = tk.Frame(main_frame, bg='#f0f2f5')
+        frame_tipo.pack(fill=tk.X, pady=(0, 15))
+        
+        # Variável para o tipo de opção
+        tipo_var = tk.StringVar(value=dados.get('tipo', 'opcao_simples'))
+        
+        # Rótulo do tipo de opção
+        lbl_tipo = tk.Label(
+            frame_tipo, 
+            text="Tipo de Opção:", 
+            font=('Arial', 10, 'bold'), 
+            bg='#f0f2f5',
+            fg='black',
+            width=15,
+            anchor='w'
+        )
+        lbl_tipo.pack(side=tk.LEFT)
+        
+        # Opção Simples
+        rb_opcao_simples = tk.Radiobutton(
+            frame_tipo,
+            text="Opção Simples",
+            variable=tipo_var,
+            value='opcao_simples',
+            bg='#f0f2f5',
+            activebackground='#f0f2f5',
+            selectcolor='#f0f2f5'
+        )
+        rb_opcao_simples.pack(side=tk.LEFT, padx=(0, 20))
+        
+        # Texto Livre
+        rb_texto_livre = tk.Radiobutton(
+            frame_tipo,
+            text="Texto Livre",
+            variable=tipo_var,
+            value='texto_livre',
+            bg='#f0f2f5',
+            activebackground='#f0f2f5',
+            selectcolor='#f0f2f5'
+        )
+        rb_texto_livre.pack(side=tk.LEFT)
+        
         # Frame para os botões
         botoes_frame = tk.Frame(main_frame, bg='#f0f2f5', pady=20)
         botoes_frame.pack(fill=tk.X, pady=(20, 0))
-            
+        
         # Função para salvar
         def salvar():
             try:
@@ -1312,6 +1359,7 @@ class OpcoesModule(BaseModule):
                     'id': item_id,
                     'grupo_id': self.grupo_selecionado,
                     'nome': nome_var.get().strip(),
+                    'tipo': tipo_var.get(),
                     'descricao': descricao_text.get('1.0', tk.END).strip(),
                     'preco_adicional': preco
                 }
@@ -1328,20 +1376,28 @@ class OpcoesModule(BaseModule):
                         self._limpar_lista_itens()
                         itens = self.controller.listar_itens_por_grupo(self.grupo_selecionado)
                         for item in itens:
+                            # Define o tipo de opção para exibição
+                            tipo = item.get('tipo', 'opcao_simples')
+                            tipo_exibicao = 'Texto Livre' if tipo == 'texto_livre' else 'Opção Simples'
+                            
                             self.lista_itens.insert('', 'end', values=(
                                 item['id'],
-                                item['nome'],
-                                f"R$ {item['preco_adicional']:.2f}" if item['preco_adicional'] else ""
+                                f"{item['nome']} ({tipo_exibicao})",
+                                f"R$ {item['preco_adicional']:.2f}" if item['preco_adicional'] and item['preco_adicional'] > 0 else ""
                             ))
                 else:
                     messagebox.showerror("Erro", "Não foi possível salvar o item.")
                     
             except ValueError as e:
-                messagebox.showwarning("Atenção", "Informe um preço válido (apenas números).")
+                messagebox.showwarning("Atenção", str(e) if str(e) else "Informe um preço válido (apenas números).")
+        
+        # Frame para os botões de ação
+        botoes_acao_frame = tk.Frame(botoes_frame, bg='#f0f2f5')
+        botoes_acao_frame.pack(side=tk.RIGHT)
         
         # Botão Salvar
         btn_salvar = tk.Button(
-            botoes_frame, 
+            botoes_acao_frame, 
             text="Salvar", 
             command=salvar,
             bg='#4CAF50',
@@ -1356,11 +1412,11 @@ class OpcoesModule(BaseModule):
             activeforeground='white',
             width=15
         )
-        btn_salvar.pack(side=tk.RIGHT, padx=5)
+        btn_salvar.pack(side=tk.LEFT, padx=5)
         
         # Botão Cancelar
         btn_cancelar = tk.Button(
-            botoes_frame, 
+            botoes_acao_frame, 
             text="Cancelar", 
             command=dialog.destroy,
             bg='#f44336',
@@ -1375,7 +1431,7 @@ class OpcoesModule(BaseModule):
             activeforeground='white',
             width=15
         )
-        btn_cancelar.pack(side=tk.RIGHT, padx=5)
+        btn_cancelar.pack(side=tk.LEFT, padx=5)
     
     def _carregar_grupos_disponiveis(self):
         """Carrega a lista de grupos de opções disponíveis."""

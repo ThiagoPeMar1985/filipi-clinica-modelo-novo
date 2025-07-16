@@ -207,12 +207,14 @@ class OpcoesDB:
                     SET nome = %s, 
                         descricao = %s, 
                         preco_adicional = %s,
+                        tipo = %s,
                         ativo = %s
                     WHERE id = %s AND grupo_id = %s
                 """, (
                     dados['nome'],
                     dados.get('descricao', ''),
                     dados.get('preco_adicional', 0.00),
+                    dados.get('tipo', 'opcao_simples'),
                     dados.get('ativo', True),
                     dados['id'],
                     grupo_id
@@ -222,13 +224,14 @@ class OpcoesDB:
                 # Inserir novo item
                 cursor.execute("""
                     INSERT INTO opcoes_itens 
-                    (grupo_id, nome, descricao, preco_adicional, ativo)
-                    VALUES (%s, %s, %s, %s, %s)
+                    (grupo_id, nome, descricao, preco_adicional, tipo, ativo)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                 """, (
                     grupo_id,
                     dados['nome'],
                     dados.get('descricao', ''),
                     dados.get('preco_adicional', 0.00),
+                    dados.get('tipo', 'opcao_simples'),
                     dados.get('ativo', True)
                 ))
                 item_id = cursor.lastrowid

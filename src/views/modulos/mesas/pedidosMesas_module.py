@@ -155,6 +155,10 @@ class PedidosMesasModule(BaseModule):
         self.botao_cancelar = None
         self.botao_confirmar = None
         
+        # Referências para as barras de sobreposição
+        self.barra_lateral_sobreposicao = None
+        self.barra_superior_sobreposicao = None
+        
         # Configurar a interface primeiro para mostrar algo ao usuário rapidamente
         self.setup_ui()
         
@@ -485,7 +489,7 @@ class PedidosMesasModule(BaseModule):
         # Botão de confirmar (inicialmente oculto) - mesmo estilo do finalizar venda
         self.botao_confirmar = tk.Button(
             botoes_acao_frame, 
-            text="✓ CONFIRMAR", 
+            text="CONFIRMAR", 
             bg=CORES["sucesso"],
             fg=CORES["texto_claro"],
             font=FONTES['subtitulo'],
@@ -1396,9 +1400,7 @@ class PedidosMesasModule(BaseModule):
             messagebox.showinfo("Aviso", "Adicione itens ao pedido antes de finalizar!")
             return
         
-        # Confirmar finalização
-        if not messagebox.askyesno("Confirmar", "Deseja finalizar esta venda?"):
-            return
+        # Finalização direta sem confirmação
         
         try:
             # Definir como True para sempre liberar a mesa após finalizar o pedido
@@ -1519,28 +1521,26 @@ class PedidosMesasModule(BaseModule):
             desconto = float(venda_dados.get('desconto', 0))
             
             # Chamar o método do controller para finalizar o pedido com os parâmetros corretos
+            # Encontrar o pagamento em dinheiro e seu troco
+            pagamento_dinheiro = None
+            for pagamento in pagamentos:
+                if pagamento.get('forma_nome', '').lower() == 'dinheiro':
+                    pagamento_dinheiro = pagamento
+                    break
+            
             sucesso, mensagem = self.controller_mesas.finalizar_pedido(
                 forma_pagamento=forma_pagamento,
                 valor_total=valor_total,
-                desconto=desconto
+                desconto=desconto,
+                pagamento=pagamento_dinheiro  # Passar o pagamento completo incluindo o troco
             )
             
             if not sucesso:
                 messagebox.showinfo("Aviso", mensagem)
                 return
             
-            # Registrar os pagamentos usando o PagamentoController
-            from controllers.pagamento_controller import PagamentoController
-            pagamento_controller = PagamentoController(self.db_connection)
-            
-            # Registrar cada pagamento
-            for pagamento in pagamentos:
-                pagamento_controller.registrar_pagamento(
-                    venda_id=self.pedido_atual['id'],
-                    forma_pagamento=pagamento.get('forma_nome'),  # Usar forma_nome em vez de forma_pagamento
-                    valor=pagamento.get('valor'),
-                    observacao=pagamento.get('observacao', '')
-                )
+            # Não registrar na tabela pagamentos, apenas manter os dados do pagamento
+            # Os dados do pagamento já são registrados nas tabelas pedidos e itens_pedido
             
             # Limpar o pedido atual conforme feito no controller
             self.pedido_atual = None
@@ -2491,6 +2491,126 @@ class PedidosMesasModule(BaseModule):
             traceback.print_exc()
             return False
 
+    def _criar_barras_sobreposicao(self):
+        """Cria as barras de sobreposição para cobrir a barra de navegação e superior durante a edição"""
+        # Criar barra lateral se ainda não existir
+        if self.barra_lateral_sobreposicao is None:
+            self._criar_barra_lateral_sobreposicao()
+        
+        # Criar barra superior se ainda não existir
+        if self.barra_superior_sobreposicao is None:
+            self._criar_barra_superior_sobreposicao()
+    
+    def _criar_barra_lateral_sobreposicao(self):
+        """Cria a barra lateral de sobreposição"""
+        if self.barra_lateral_sobreposicao is not None:
+            return
+            
+        # Obter a janela principal
+        janela_principal = self.frame.winfo_toplevel()
+        
+        # Calcular a altura disponível (altura total - altura da barra superior)
+        altura_disponivel = janela_principal.winfo_height() - 60  # Subtrai os 60px da barra superior
+        
+        # Criar um frame que cobre apenas a barra lateral
+        self.barra_lateral_sobreposicao = tk.Frame(
+            janela_principal,  # Usando a janela principal como pai
+            bg=CORES['terciaria'],  # Usando a cor terciária do tema
+            cursor='arrow',  # Cursor padrão para indicar que não é interativo
+            width=200,  # Largura fixa para a barra lateral (igual ao sidebar principal)
+            height=altura_disponivel  # Altura ajustada
+        )
+        
+        # Posicionar o frame para cobrir a barra lateral, começando após a barra superior
+        self.barra_lateral_sobreposicao.place(
+            x=0, 
+            y=60,  # Começa após a barra superior de 60px
+            anchor='nw',
+            height=altura_disponivel  # Usa a altura disponível
+        )
+        
+        # Adicionar texto informativo (opcional)
+        label = tk.Label(
+            self.barra_lateral_sobreposicao,
+            text="Modo Edição Ativo",
+            bg=CORES['terciaria'],
+            fg=CORES['texto_claro'],
+            font=FONTES['subtitulo'],
+            wraplength=150,
+            justify='center'
+        )
+        label.place(relx=0.5, rely=0.5, anchor='center')
+        
+        # Forçar o redesenho da janela
+        self.barra_lateral_sobreposicao.update_idletasks()
+        
+        # Trazer para frente de todos os outros widgets
+        self.barra_lateral_sobreposicao.lift()
+        
+        # Garantir que fique sempre visível
+        self.barra_lateral_sobreposicao.tkraise()
+    
+    def _criar_barra_superior_sobreposicao(self):
+        """Cria a barra superior de sobreposição"""
+        if self.barra_superior_sobreposicao is not None:
+            return
+            
+        # Obter a janela principal
+        janela_principal = self.frame.winfo_toplevel()
+        
+        # Criar um frame que cobre apenas a barra superior
+        self.barra_superior_sobreposicao = tk.Frame(
+            janela_principal,  # Usando a janela principal como pai
+            bg=CORES['primaria'],  # Usando a cor primária (azul) da barra superior
+            cursor='arrow',  # Cursor padrão para indicar que não é interativo
+            height=60  # Altura fixa para a barra superior (60px - igual ao header principal)
+        )
+        
+        # Posicionar o frame para cobrir a barra superior
+        self.barra_superior_sobreposicao.place(
+            x=0, 
+            y=0, 
+            relwidth=1.0,  # Largura total da janela
+            anchor='nw'
+        )
+        
+        # Adicionar texto informativo (opcional)
+        label = tk.Label(
+            self.barra_superior_sobreposicao,
+            text="MODO EDIÇÃO DE PEDIDO",
+            bg=CORES['primaria'],  # Usando a cor primária (azul) da barra superior
+            fg=CORES['texto_claro'],
+            font=FONTES['subtitulo'],
+            pady=15
+        )
+        label.pack(expand=True)
+        
+        # Forçar o redesenho da janela
+        self.barra_superior_sobreposicao.update_idletasks()
+        
+        # Trazer para frente de todos os outros widgets
+        self.barra_superior_sobreposicao.lift()
+        
+        # Garantir que fique sempre visível
+        self.barra_superior_sobreposicao.tkraise()
+    
+    def _remover_barras_sobreposicao(self):
+        """Remove todas as barras de sobreposição"""
+        self._remover_barra_lateral_sobreposicao()
+        self._remover_barra_superior_sobreposicao()
+    
+    def _remover_barra_lateral_sobreposicao(self):
+        """Remove a barra lateral de sobreposição"""
+        if self.barra_lateral_sobreposicao is not None:
+            self.barra_lateral_sobreposicao.destroy()
+            self.barra_lateral_sobreposicao = None
+    
+    def _remover_barra_superior_sobreposicao(self):
+        """Remove a barra superior de sobreposição"""
+        if self.barra_superior_sobreposicao is not None:
+            self.barra_superior_sobreposicao.destroy()
+            self.barra_superior_sobreposicao = None
+    
     def _entrar_modo_edicao(self):
         """Ativa o modo de edição, mostrando os botões de cancelar e confirmar"""
         # Só entra no modo de edição se ainda não estiver nele
@@ -2501,6 +2621,9 @@ class PedidosMesasModule(BaseModule):
             self.botao_cancelar.pack(side="left")
             # Usar os mesmos parâmetros de pack que o botão finalizar para manter o mesmo tamanho
             self.botao_confirmar.pack(fill="x", pady=5)
+            
+            # Adiciona as barras de sobreposição
+            self._criar_barras_sobreposicao()
     
     def _sair_modo_edicao(self, confirmar=False):
         """
@@ -2515,6 +2638,9 @@ class PedidosMesasModule(BaseModule):
             self.botao_confirmar.pack_forget()
             self.botao_voltar.pack(side="left")
             self.botao_finalizar.pack(fill="x", pady=5)
+            
+            # Remove as barras de sobreposição
+            self._remover_barras_sobreposicao()
             
             # Se for para confirmar as alterações, limpa a lista de itens da sessão
             if confirmar:

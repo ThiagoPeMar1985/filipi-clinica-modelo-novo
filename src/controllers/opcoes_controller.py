@@ -92,6 +92,32 @@ class OpcoesController:
         if not self.db:
             return None
         return self.db.obter_item(item_id)
+        
+    def criar_opcao_texto_livre(self, grupo_id, nome, descricao="", preco_adicional=0.0):
+        """
+        Cria uma opção de texto livre em um grupo de opções.
+        
+        Args:
+            grupo_id: ID do grupo de opções
+            nome: Nome da opção de texto livre
+            descricao: Descrição da opção (opcional)
+            preco_adicional: Preço adicional para esta opção (padrão: 0.0)
+            
+        Returns:
+            int: ID do item criado ou 0 em caso de erro
+        """
+        if not self.db:
+            return 0
+            
+        dados_item = {
+            'nome': nome,
+            'descricao': descricao,
+            'preco_adicional': preco_adicional,
+            'tipo': 'texto_livre',
+            'ativo': True
+        }
+        
+        return self.db.salvar_item(grupo_id, dados_item)
     
     # Métodos para Relação entre Produtos e Opções
     def listar_grupos_por_produto(self, produto_id):

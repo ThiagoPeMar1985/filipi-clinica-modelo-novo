@@ -1199,27 +1199,45 @@ class DeliveryModule:
                     self.selecoes_opcoes[grupo_id] = {'var': var, 'tipo': 'unico'}
                     
                     for opcao in grupo_info['itens']:
+                        frame_opcao = ttk.Frame(grupo_frame)
+                        frame_opcao.pack(fill="x", pady=2)
+                        
                         rb = ttk.Radiobutton(
-                            grupo_frame,
-                            text=f"{opcao['nome']} (+R$ {opcao['preco_adicional']:.2f})",
+                            frame_opcao,
+                            text=f"{opcao['nome']}:",
                             variable=var,
                             value=str(opcao['id'])
                         )
-                        rb.pack(anchor="w")
+                        rb.pack(side="left", anchor="w")
+                        
+                        # Se for opção de texto livre, adicionar campo de texto
+                        if opcao.get('tipo') == 'texto_livre':
+                            texto_entry = ttk.Entry(frame_opcao)
+                            texto_entry.pack(side="right", fill="x", expand=True, padx=5)
+                            opcao['texto_entry'] = texto_entry  # Armazenar referência ao campo de texto
                 else:
                     # Seleção múltipla (Checkbuttons)
                     self.selecoes_opcoes[grupo_id] = {'var': [], 'tipo': 'multiplo'}
                     
                     for opcao in grupo_info['itens']:
+                        frame_opcao = ttk.Frame(grupo_frame)
+                        frame_opcao.pack(fill="x", pady=2)
+                        
                         var = tk.BooleanVar()
                         self.selecoes_opcoes[grupo_id]['var'].append((var, opcao))
                         
                         cb = ttk.Checkbutton(
-                            grupo_frame,
-                            text=f"{opcao['nome']} (+R$ {opcao['preco_adicional']:.2f})",
+                            frame_opcao,
+                            text=f"{opcao['nome']}:",
                             variable=var
                         )
-                        cb.pack(anchor="w")
+                        cb.pack(side="left", anchor="w")
+                        
+                        # Se for opção de texto livre, adicionar campo de texto
+                        if opcao.get('tipo') == 'texto_livre':
+                            texto_entry = ttk.Entry(frame_opcao)
+                            texto_entry.pack(side="right", fill="x", expand=True, padx=5)
+                            opcao['texto_entry'] = texto_entry  # Armazenar referência ao campo de texto
             
             # Botão para confirmar as opções
             btn_confirmar = tk.Button(
@@ -1252,20 +1270,57 @@ class DeliveryModule:
             for grupo_id, selecao in self.selecoes_opcoes.items():
                 if selecao['tipo'] == 'unico' and selecao['var'].get():
                     # Opção única selecionada
-                    opcoes_selecionadas.append({
-                        'grupo_id': grupo_id,
-                        'opcao_id': int(selecao['var'].get())
-                    })
+                    opcao_id = int(selecao['var'].get())
+                    
+                    # Buscar informações da opção para verificar se é do tipo texto_livre
+                    from controllers.opcoes_controller import OpcoesController
+                    db_connection = getattr(self.controller, 'db_connection', None)
+                    if db_connection:
+                        opcoes_controller = OpcoesController(db_connection=db_connection)
+                        opcao = opcoes_controller.obter_item_opcao(opcao_id)
+                        
+                        if opcao and opcao.get('tipo') == 'texto_livre' and 'texto_entry' in opcao:
+                            # Se for opção de texto livre, obter o texto digitado
+                            texto_livre = opcao['texto_entry'].get()
+                            if texto_livre:
+                                opcoes_selecionadas.append({
+                                    'grupo_id': grupo_id,
+                                    'opcao_id': opcao_id,
+                                    'nome': f"{opcao.get('nome', '')}: {texto_livre}",
+                                    'preco_adicional': opcao.get('preco_adicional', 0.0),
+                                    'texto_livre': texto_livre
+                                })
+                        else:
+                            # Opção normal
+                            opcoes_selecionadas.append({
+                                'grupo_id': grupo_id,
+                                'opcao_id': opcao_id,
+                                'nome': opcao.get('nome', '') if opcao else f"Opção {opcao_id}",
+                                'preco_adicional': opcao.get('preco_adicional', 0.0) if opcao else 0.0
+                            })
                 elif selecao['tipo'] == 'multiplo':
                     # Múltiplas opções podem ser selecionadas
                     for var, opcao in selecao['var']:
                         if var.get():
-                            opcoes_selecionadas.append({
-                                'grupo_id': grupo_id,
-                                'opcao_id': opcao['id'],
-                                'nome': opcao['nome'],
-                                'preco_adicional': opcao.get('preco_adicional', 0.0)
-                            })
+                            if opcao.get('tipo') == 'texto_livre' and 'texto_entry' in opcao:
+                                # Se for opção de texto livre, obter o texto digitado
+                                texto_livre = opcao['texto_entry'].get()
+                                if texto_livre:
+                                    opcoes_selecionadas.append({
+                                        'grupo_id': grupo_id,
+                                        'opcao_id': opcao['id'],
+                                        'nome': f"{opcao.get('nome', '')}: {texto_livre}",
+                                        'preco_adicional': opcao.get('preco_adicional', 0.0),
+                                        'texto_livre': texto_livre
+                                    })
+                            else:
+                                # Opção normal
+                                opcoes_selecionadas.append({
+                                    'grupo_id': grupo_id,
+                                    'opcao_id': opcao['id'],
+                                    'nome': opcao.get('nome', ''),
+                                    'preco_adicional': opcao.get('preco_adicional', 0.0)
+                                })
             
             # Fechar a janela de opções
             if hasattr(self, 'janela_opcoes') and self.janela_opcoes.winfo_exists():
@@ -1275,6 +1330,8 @@ class DeliveryModule:
             self._adicionar_ao_carrinho(produto_id, valores_produto, opcoes_selecionadas)
             
         except Exception as e:
+            import traceback
+            print(f"Erro ao adicionar opções: {str(e)}\n{traceback.format_exc()}")
             messagebox.showerror("Erro", f"Erro ao adicionar opções: {str(e)}")
     
     def _adicionar_ao_carrinho(self, produto_id=None, valores=None, opcoes_selecionadas=None, event=None):
@@ -1396,29 +1453,44 @@ class DeliveryModule:
         # Se for uma opção (filho), obter o item pai
         if self.carrinho_tree.parent(item_id):
             item_pai_id = self.carrinho_tree.parent(item_id)
+            item_pai = self.carrinho_tree.item(item_pai_id)
             
-            # Remover a opção do item no carrinho
+            # Encontrar o item principal no carrinho
             for i, item_pedido in enumerate(self.itens_pedido):
-                if item_pedido.get('id_item') == item_pai_id:
+                if item_pedido['nome'] == item_pai['values'][0].replace(' +', ''):
                     # Encontrar a opção correspondente
+                    opcao_nome = item['values'][0].strip().replace('→', '').strip()
                     for j, opcao in enumerate(item_pedido.get('opcoes', [])):
-                        if opcao.get('id_item') == item_id:
+                        if opcao.get('nome') == opcao_nome:
                             # Remover a opção
                             item_pedido['opcoes'].pop(j)
                             
                             # Atualizar o preço total do item
                             item_pedido['total'] -= opcao.get('preco_adicional', 0)
                             
+                            # Se não houver mais opções, remover o sinal de +
+                            if not item_pedido.get('opcoes'):
+                                item_pedido['nome'] = item_pedido['nome'].replace(' +', '')
+                            
                             # Atualizar a exibição
                             self._atualizar_carrinho()
                             return
         else:
             # Remover o item principal do carrinho
+            item_nome = item['values'][0].replace(' +', '')
             for i, item_pedido in enumerate(self.itens_pedido):
-                if item_pedido.get('id_item') == item_id:
+                if item_pedido['nome'] == item_nome:
                     self.itens_pedido.pop(i)
                     self._atualizar_carrinho()
                     return
+                    
+            # Se não encontrou pelo nome, tentar pelo ID do item na árvore
+            # Isso é necessário para itens que foram adicionados com o mesmo nome
+            if len(self.itens_pedido) > 0:
+                # Remover o último item se não encontrar correspondência
+                # (isso é uma solução de fallback)
+                self.itens_pedido.pop(-1)
+                self._atualizar_carrinho()
     
     def _atualizar_carrinho(self):
         """Atualiza a exibição do carrinho de compras"""

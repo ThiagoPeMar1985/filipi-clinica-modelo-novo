@@ -561,27 +561,71 @@ class VendasModule:
                     self.selecoes_opcoes[grupo_id] = {'var': var, 'tipo': 'unico'}
                     
                     for opcao in grupo_info['itens']:
-                        rb = ttk.Radiobutton(
-                            grupo_frame,
-                            text=f"{opcao['nome']} (+R$ {opcao['preco_adicional']:.2f})",
-                            variable=var,
-                            value=str(opcao['id'])
-                        )
-                        rb.pack(anchor="w")
+                        if opcao.get('tipo') == 'texto_livre':
+                            # Adiciona um campo de entrada de texto para opções de texto livre
+                            frame_opcao = ttk.Frame(grupo_frame)
+                            frame_opcao.pack(fill="x", pady=2)
+                            
+                            rb = ttk.Radiobutton(
+                                frame_opcao,
+                                text=f"{opcao['nome']}:",
+                                variable=var,
+                                value=str(opcao['id'])
+                            )
+                            rb.pack(side="left", anchor="w")
+                            
+                            # Campo de entrada de texto
+                            texto_entry = ttk.Entry(frame_opcao)
+                            texto_entry.pack(side="right", fill="x", expand=True, padx=5)
+                            
+                            # Armazenar referência ao campo de texto
+                            opcao['texto_entry'] = texto_entry
+                        else:
+                            # Opção normal (sem texto livre)
+                            rb = ttk.Radiobutton(
+                                grupo_frame,
+                                text=f"{opcao['nome']} (+R$ {opcao['preco_adicional']:.2f})",
+                                variable=var,
+                                value=str(opcao['id'])
+                            )
+                            rb.pack(anchor="w")
                 else:
                     # Seleção múltipla (Checkbuttons)
                     self.selecoes_opcoes[grupo_id] = {'var': [], 'tipo': 'multiplo'}
                     
                     for opcao in grupo_info['itens']:
-                        var = tk.BooleanVar()
-                        self.selecoes_opcoes[grupo_id]['var'].append((var, opcao))
-                        
-                        cb = ttk.Checkbutton(
-                            grupo_frame,
-                            text=f"{opcao['nome']} (+R$ {opcao['preco_adicional']:.2f})",
-                            variable=var
-                        )
-                        cb.pack(anchor="w")
+                        if opcao.get('tipo') == 'texto_livre':
+                            # Adiciona um campo de entrada de texto para opções de texto livre
+                            frame_opcao = ttk.Frame(grupo_frame)
+                            frame_opcao.pack(fill="x", pady=2)
+                            
+                            var = tk.BooleanVar()
+                            self.selecoes_opcoes[grupo_id]['var'].append((var, opcao))
+                            
+                            cb = ttk.Checkbutton(
+                                frame_opcao,
+                                text=f"{opcao['nome']}:",
+                                variable=var
+                            )
+                            cb.pack(side="left", anchor="w")
+                            
+                            # Campo de entrada de texto
+                            texto_entry = ttk.Entry(frame_opcao)
+                            texto_entry.pack(side="right", fill="x", expand=True, padx=5)
+                            
+                            # Armazenar referência ao campo de texto
+                            opcao['texto_entry'] = texto_entry
+                        else:
+                            # Opção normal (sem texto livre)
+                            var = tk.BooleanVar()
+                            self.selecoes_opcoes[grupo_id]['var'].append((var, opcao))
+                            
+                            cb = ttk.Checkbutton(
+                                grupo_frame,
+                                text=f"{opcao['nome']} (+R$ {opcao['preco_adicional']:.2f})",
+                                variable=var
+                            )
+                            cb.pack(anchor="w")
             
             # Botão para confirmar as opções
             btn_confirmar = tk.Button(
@@ -613,6 +657,7 @@ class VendasModule:
                     # Buscar o nome da opção selecionada
                     nome_opcao = ""
                     preco_adicional = 0.0
+                    texto_livre = ""
                     
                     # Buscar informações da opção no banco de dados
                     try:
@@ -624,35 +669,53 @@ class VendasModule:
                             if opcao:
                                 nome_opcao = opcao.get('nome', '')
                                 preco_adicional = opcao.get('preco_adicional', 0.0)
+                                
+                                # Se for uma opção de texto livre, obter o texto digitado
+                                if opcao.get('tipo') == 'texto_livre' and 'texto_entry' in opcao:
+                                    texto_livre = opcao['texto_entry'].get()
+                                    if texto_livre:
+                                        nome_opcao = f"{nome_opcao}: {texto_livre}"
                     except Exception as e:
-                        print(f"Erro ao buscar nome da opção: {e}")
+                        print(f"Erro ao buscar informações da opção: {e}")
                     
                     opcoes_selecionadas.append({
                         'grupo_id': grupo_id,
                         'opcao_id': opcao_id,
                         'nome': nome_opcao,
-                        'preco_adicional': preco_adicional
+                        'preco_adicional': preco_adicional,
+                        'texto_livre': texto_livre
                     })
+                    
                 elif selecao['tipo'] == 'multiplo':
-                    # Múltiplas opções podem ser selecionadas
+                    # Para seleção múltipla, verificar cada opção
                     for var, opcao in selecao['var']:
-                        if var.get():
+                        if var.get():  # Se a opção estiver marcada
+                            texto_livre = ""
+                            nome_opcao = opcao.get('nome', '')
+                            
+                            # Se for uma opção de texto livre, obter o texto digitado
+                            if opcao.get('tipo') == 'texto_livre' and 'texto_entry' in opcao:
+                                texto_livre = opcao['texto_entry'].get()
+                                if texto_livre:
+                                    nome_opcao = f"{nome_opcao}: {texto_livre}"
+                            
                             opcoes_selecionadas.append({
                                 'grupo_id': grupo_id,
                                 'opcao_id': opcao['id'],
-                                'nome': opcao['nome'],
-                                'preco_adicional': opcao.get('preco_adicional', 0.0)
+                                'nome': nome_opcao,
+                                'preco_adicional': opcao.get('preco_adicional', 0.0),
+                                'texto_livre': texto_livre
                             })
             
             # Fechar a janela de opções
             self.janela_opcoes.destroy()
             
-            # Adicionar ao carrinho
+            # Adicionar ao carrinho com as opções selecionadas
             self._adicionar_ao_carrinho(produto_id, valores_produto, opcoes_selecionadas)
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao adicionar opções: {str(e)}")
-    
+            
     def _adicionar_ao_carrinho(self, produto_id=None, valores=None, opcoes_selecionadas=None):
         """Adiciona o produto selecionado ao carrinho de compras"""
         # Se não foram fornecidos valores, obter da seleção atual
@@ -923,12 +986,11 @@ class VendasModule:
         
         # Calcular troco se houver pagamento em dinheiro
         troco_para = 0
-        if 'Dinheiro' in formas_pagamento or 'dinheiro' in formas_pagamento:
-            # Encontrar o pagamento em dinheiro
-            for pagamento in pagamentos:
-                if pagamento.get('forma_nome', '').lower() == 'dinheiro':
-                    troco_para = pagamento.get('valor', 0) - valor_final
-                    break
+        for pagamento in pagamentos:
+            if pagamento.get('forma_nome', '').lower() == 'dinheiro':
+                # Usar o troco do pagamento se existir
+                troco_para = pagamento.get('troco', 0)
+                break
         
         cursor = None
         try:
@@ -945,7 +1007,8 @@ class VendasModule:
                     observacao, 
                     forma_pagamento,
                     troco_para,
-                    processado_estoque
+                    processado_estoque,
+                    desconto
                 )
                 VALUES (
                     NOW(), 
@@ -956,14 +1019,16 @@ class VendasModule:
                     %s, 
                     %s,
                     %s,
-                    0
+                    0,
+                    %s
                 )
             """, (
                 valor_final,  # total
                 usuario_id,   # usuario_id (usando o usuário logado)
                 descricao,    # observação com os itens
                 forma_pagamento,  # forma de pagamento
-                troco_para if troco_para > 0 else 0  # valor para troco (apenas se positivo)
+                troco_para,  # valor para troco (já vem como decimal)
+                desconto  # desconto aplicado
             ))
             
             pedido_id = cursor.lastrowid

@@ -137,8 +137,26 @@ class PagamentoModule:
         # Desconto
         desconto_frame = ttk.Frame(resumo_frame, style="Custom.TFrame")
         desconto_frame.pack(fill="x", pady=8, padx=10)
+        
+        # Label do desconto
         ttk.Label(desconto_frame, text="Desconto:", style="InfoBold.TLabel").pack(side="left")
-        ttk.Label(desconto_frame, text=f"R$ {self.desconto:.2f}".replace('.', ','), style="Info.TLabel").pack(side="right")
+        
+        # Frame para o valor do desconto
+        desconto_valor_frame = ttk.Frame(desconto_frame, style="Custom.TFrame")
+        desconto_valor_frame.pack(side="right")
+        
+        # Campo de entrada para o desconto
+        self.desconto_var = tk.StringVar(value=f"{self.desconto:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','))
+        self.desconto_var.trace_add('write', self._atualizar_desconto)
+        self.desconto_entry = ttk.Entry(
+            desconto_valor_frame,
+            textvariable=self.desconto_var,
+            font=("Arial", 10),
+            width=10,
+            justify="right",
+            validate="key"
+        )
+        self.desconto_entry.pack(side="right")
         
         # Separador
         ttk.Separator(resumo_frame, orient="horizontal").pack(fill="x", padx=10, pady=5)
@@ -311,8 +329,34 @@ class PagamentoModule:
         )
         self.finalizar_btn.pack(fill="x")
         
+    def _validar_desconto(self):
+        """Valida se o desconto é válido."""
+        if self.desconto < 0:
+            messagebox.showerror("Erro", "O valor do desconto não pode ser negativo.")
+            return False
+            
+        if self.desconto > self.valor_total:
+            messagebox.showerror("Erro", f"O desconto (R$ {self.desconto:,.2f}) não pode ser maior que o valor total (R$ {self.valor_total:,.2f}).")
+            return False
+            
+        return True
+        
     def _selecionar_forma_pagamento(self, forma):
         """Adiciona um pagamento com a forma selecionada usando o valor informado no campo."""
+        # Validar o desconto antes de prosseguir
+        if not self._validar_desconto():
+            return
+            
+        # Obter o valor do campo
+        valor_str = self.valor_pagamento_var.get()
+        
+        # Verificar se o valor é válido
+        try:
+            valor = float(valor_str.replace(',', '.'))
+        except ValueError:
+            messagebox.showerror("Erro", "Por favor, informe um valor válido.")
+            return
+            
         # Calcular o valor restante
         valor_restante = self.valor_final - sum(p['valor'] for p in self.pagamentos)
         
@@ -320,9 +364,6 @@ class PagamentoModule:
         if valor_restante <= 0:
             messagebox.showinfo("Informação", "O valor total já foi pago.")
             return
-        
-        # Obter o valor do campo de entrada
-        valor_str = self.valor_pagamento_var.get()
         
         try:
             # Converter o valor (substituindo vírgula por ponto)
@@ -337,8 +378,18 @@ class PagamentoModule:
                 )
                 return
                 
-            # Se o valor for maior que o restante, perguntar se deseja dar troco
-            if valor > valor_restante:
+            # Se não for pagamento em dinheiro e o valor for maior que o restante
+            if forma['nome'].lower() != 'dinheiro' and valor > valor_restante:
+                messagebox.showerror(
+                    "Erro de Valor", 
+                    f"O valor do pagamento ({forma['nome']}) não pode ser maior que o restante.\n\n"
+                    f"Valor informado: R$ {valor:.2f}\n"
+                    f"Valor restante: R$ {valor_restante:.2f}"
+                )
+                return
+                
+            # Se for pagamento em dinheiro e o valor for maior que o restante, perguntar se deseja dar troco
+            if forma['nome'].lower() == 'dinheiro' and valor > valor_restante:
                 troco = valor - valor_restante
                 resposta = messagebox.askyesno(
                     "Troco", 
@@ -352,10 +403,12 @@ class PagamentoModule:
                 if not resposta:
                     return
                     
-                # Ajustar o valor para o valor restante
+                # Salvar o troco no pagamento
                 valor_efetivo = valor_restante
+                troco_valor = troco
             else:
                 valor_efetivo = valor
+                troco_valor = 0
             
             # Se for Conta Cliente, abrir diálogo para selecionar o cliente
             if forma['nome'] == 'Conta Cliente':
@@ -366,7 +419,8 @@ class PagamentoModule:
             pagamento = {
                 'forma_id': forma['id'],
                 'forma_nome': forma['nome'],
-                'valor': valor_efetivo
+                'valor': valor_efetivo,
+                'troco': troco_valor
             }
             
             self.pagamentos.append(pagamento)
@@ -578,15 +632,21 @@ class PagamentoModule:
                 if not resposta:
                     return
                     
-                # Ajustar o valor para o valor restante
-                valor = valor_restante
-            
-            # Adicionar o pagamento à lista
-            pagamento = {
-                'forma_id': forma['id'],
-                'forma_nome': forma['nome'],
-                'valor': valor
-            }
+                # Salvar o troco no pagamento
+                pagamento = {
+                    'forma_id': forma['id'],
+                    'forma_nome': forma['nome'],
+                    'valor': valor_restante,
+                    'troco': troco
+                }
+            else:
+                # Pagamento normal sem troco
+                pagamento = {
+                    'forma_id': forma['id'],
+                    'forma_nome': forma['nome'],
+                    'valor': valor,
+                    'troco': 0
+                }
             
             self.pagamentos.append(pagamento)
             
@@ -736,101 +796,6 @@ class PagamentoModule:
                     )
                 )
     
-    def _selecionar_cliente(self, tree, forma, dialog):
-        """Seleciona o cliente e solicita o valor a ser vinculado à conta."""
-        # Obter o item selecionado
-        selection = tree.selection()
-        
-        if not selection:
-            messagebox.showerror("Erro", "Selecione um cliente.")
-            return
-            
-        # Obter os dados do cliente
-        cliente_id = tree.item(selection[0], 'values')[0]
-        cliente_nome = tree.item(selection[0], 'values')[1]
-        
-        # Fechar o diálogo de seleção de cliente
-        dialog.destroy()
-        
-        # Calcular valor restante
-        valor_restante = self.valor_final - sum(p['valor'] for p in self.pagamentos)
-        
-        # Criar janela de diálogo para o valor
-        dialog_valor = tk.Toplevel(self.master)
-        dialog_valor.title(f"Vincular à Conta - {cliente_nome}")
-        dialog_valor.geometry("400x250")
-        dialog_valor.resizable(False, False)
-        dialog_valor.transient(self.master)
-        dialog_valor.grab_set()
-        
-        # Centralizar na tela
-        dialog_valor.update_idletasks()
-        width = dialog_valor.winfo_width()
-        height = dialog_valor.winfo_height()
-        x = (dialog_valor.winfo_screenwidth() // 2) - (width // 2)
-        y = (dialog_valor.winfo_screenheight() // 2) - (height // 2)
-        dialog_valor.geometry(f"{width}x{height}+{x}+{y}")
-        
-        # Frame principal
-        frame = ttk.Frame(dialog_valor, padding=20)
-        frame.pack(fill="both", expand=True)
-        
-        # Título
-        ttk.Label(
-            frame, 
-            text=f"Vincular à Conta de {cliente_nome}", 
-            font=("Arial", 14, "bold")
-        ).pack(pady=(0, 20))
-        
-        # Valor restante
-        ttk.Label(
-            frame, 
-            text=f"Valor restante: R$ {valor_restante:.2f}".replace('.', ','),
-            font=("Arial", 12)
-        ).pack(pady=(0, 20))
-        
-        # Entrada de valor
-        valor_frame = ttk.Frame(frame)
-        valor_frame.pack(fill="x", pady=10)
-        
-        ttk.Label(valor_frame, text="Valor:", font=("Arial", 12)).pack(side="left")
-        
-        valor_var = tk.StringVar(value=f"{valor_restante:.2f}".replace('.', ','))
-        valor_entry = ttk.Entry(valor_frame, textvariable=valor_var, font=("Arial", 12), width=15)
-        valor_entry.pack(side="right")
-        valor_entry.select_range(0, 'end')
-        valor_entry.focus()
-        
-        # Botões
-        botoes_frame = ttk.Frame(frame)
-        botoes_frame.pack(fill="x", pady=(20, 0))
-        
-        tk.Button(
-            botoes_frame,
-            text="CANCELAR",
-            bg=self.cores["terciaria"],
-            fg=self.cores["texto_claro"],
-            font=("Arial", 10, "bold"),
-            padx=10,
-            pady=5,
-            relief="flat",
-            cursor="hand2",
-            command=dialog_valor.destroy
-        ).pack(side="left", padx=(0, 10))
-        
-        tk.Button(
-            botoes_frame,
-            text="CONFIRMAR",
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
-            font=("Arial", 10, "bold"),
-            padx=10,
-            pady=5,
-            relief="flat",
-            cursor="hand2",
-            command=lambda: self._confirmar_conta_cliente(forma, cliente_id, cliente_nome, valor_var.get(), dialog_valor)
-        ).pack(side="right")
-
     def _atualizar_pagamentos(self):
         """Atualiza a lista de pagamentos na interface."""
         # Limpar a tabela
@@ -857,8 +822,9 @@ class PagamentoModule:
         # Atualizar label de valor restante
         self.restante_label.config(text=f"R$ {valor_restante:.2f}".replace('.', ','))
         
-        # Habilitar botão de finalizar se o valor restante for zero
-        if valor_restante <= 0:
+        # Habilitar botão de finalizar se o valor pago for maior ou igual ao valor final
+        # Usar round para evitar problemas de arredondamento com ponto flutuante
+        if round(sum(p['valor'] for p in self.pagamentos), 2) >= round(self.valor_final, 2):
             self.finalizar_btn.config(state="normal")
         else:
             self.finalizar_btn.config(state="disabled")
@@ -900,7 +866,7 @@ class PagamentoModule:
         # Confirmar a remoção
         pagamento = self.pagamentos[indice]
         resposta = messagebox.askyesno(
-            "Confirmar Remoção", 
+            "Remover Pagamento", 
             f"Deseja remover o pagamento de {pagamento['forma_nome']} "
             f"no valor de R$ {pagamento['valor']:.2f}?",
             icon="question"
@@ -918,8 +884,59 @@ class PagamentoModule:
         # Dar foco ao campo de valor
         self.valor_pagamento_entry.focus()
         
-        # Atualizar o valor no campo de entrada para o valor restante
-        valor_restante = self.valor_final - sum(p['valor'] for p in self.pagamentos)
+    def _atualizar_desconto(self, *args):
+        """Atualiza o desconto automaticamente quando o valor é alterado."""
+        try:
+            # Obtém o valor atual do campo e a posição do cursor
+            valor_atual = self.desconto_var.get()
+            
+            # Se o campo estiver vazio, define como zero
+            if not valor_atual:
+                self.desconto_var.set("0,00")
+                self.desconto = 0.0
+                self.valor_final = self.valor_total
+                self._atualizar_valores()
+                return
+                
+            # Tenta converter o valor para float
+            try:
+                # Remove formatação e converte para float
+                valor_limpo = valor_atual.replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+                
+                # Se o valor for vazio após limpeza, define como zero
+                if not valor_limpo:
+                    self.desconto = 0.0
+                    self.desconto_var.set("0,00")
+                else:
+                    self.desconto = float(valor_limpo)
+                    # Formata o valor para exibição
+                    valor_formatado = f"{self.desconto:,.2f}".replace('.', '|').replace(',', '.').replace('|', ',')
+                    self.desconto_var.set(valor_formatado)
+                
+                # Atualiza o valor final e a interface
+                self.valor_final = max(0, self.valor_total - self.desconto)
+                self._atualizar_valores()
+                
+            except ValueError:
+                # Se o valor não for numérico, restaura o valor anterior
+                self.desconto_var.set(f"{self.desconto:.2f}".replace('.', ','))
+                
+        except Exception as e:
+            print(f"Erro ao atualizar desconto: {e}")
+            # Em caso de erro, mantém o valor anterior
+            self.desconto_var.set(f"{self.desconto:.2f}".replace('.', ','))
+    
+    def _atualizar_valores(self):
+        """Atualiza os valores totais e restantes na interface."""
+        # Atualiza o valor total na interface
+        self.total_label.config(text=f"R$ {self.valor_final:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','))
+        
+        # Atualiza o valor restante a pagar
+        valor_pago = sum(p['valor'] for p in self.pagamentos)
+        valor_restante = max(0, round(self.valor_final - valor_pago, 2))
+        self.restante_label.config(text=f"R$ {valor_restante:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','))
+        
+        # Atualiza o valor no campo de pagamento
         if valor_restante > 0:
             self.valor_pagamento_var.set(f"{valor_restante:.2f}".replace('.', ','))
         else:
@@ -1069,8 +1086,9 @@ class PagamentoModule:
     def _finalizar_venda(self):
         """Finaliza a venda com os pagamentos realizados."""
         # Verificar se o valor pago é suficiente
+        # Usar round para evitar problemas de arredondamento com ponto flutuante
         valor_pago = sum(p['valor'] for p in self.pagamentos)
-        if valor_pago < self.valor_final:
+        if round(valor_pago, 2) < round(self.valor_final, 2):
             messagebox.showerror(
                 "Erro de Pagamento", 
                 f"O valor pago (R$ {valor_pago:.2f}) é menor que o valor final " + 
@@ -1079,15 +1097,7 @@ class PagamentoModule:
             )
             return
             
-        # Confirmar a finalização
-        resposta = messagebox.askyesno(
-            "Confirmar Finalização", 
-            "Deseja finalizar a venda?",
-            icon="question"
-        )
-        
-        if not resposta:
-            return
+        # Finalizar a venda sem confirmação
         
         # Obter o nome do usuário logado, se disponível
         nome_usuario = 'Não identificado'
@@ -1096,15 +1106,13 @@ class PagamentoModule:
         
         # Preparar dados da venda para o callback
         venda_dados = {
-            'tipo': self.venda_tipo,
-            'referencia': self.referencia,
             'valor_total': self.valor_total,
             'desconto': self.desconto,
-            'valor_final': self.valor_final,
-            'itens': self.itens_venda,
-            'data_venda': datetime.datetime.now(),
-            'usuario_nome': nome_usuario,  # Adiciona o nome do usuário
-            'taxa_servico': self.taxa_servico  # Adiciona a informação da taxa de serviço
+            'valor_final': self.valor_total - self.desconto,
+            'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+            'tipo': self.venda_tipo.upper(),
+            'observacoes': '',
+            'taxa_servico': self.taxa_servico
         }
         
         # Preparar os pagamentos no formato esperado
@@ -1113,7 +1121,8 @@ class PagamentoModule:
             pagamento_formatado = {
                 'forma_id': pagamento['forma_id'],
                 'forma_nome': pagamento['forma_nome'],
-                'valor': pagamento['valor']
+                'valor': pagamento['valor'],
+                'troco': pagamento.get('troco', 0)
             }
             
             # Adicionar informações adicionais, se disponíveis
@@ -1144,25 +1153,8 @@ class PagamentoModule:
             if self.frame:
                 self.frame.destroy()
     
-    def _imprimir_cupom_fiscal(self, venda_dados):
-        """Imprime o cupom fiscal da venda.
-        
-        Args:
-            venda_dados: Dicionário com os dados da venda
-        """
-        try:
-            from utils.impressao import GerenciadorImpressao
-            
-            # Inicializar o gerenciador de impressão
-            gerenciador_impressao = GerenciadorImpressao(self.db_connection)
-            
-            # Imprimir o cupom fiscal
-            gerenciador_impressao.imprimir_cupom_fiscal(venda_dados, self.itens_venda, self.pagamentos)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            messagebox.showerror("Erro", f"Erro ao imprimir cupom fiscal: {str(e)}")
-    
+
+
     def _voltar(self):
         """Volta para a tela anterior."""
         # Confirmar se deseja voltar
