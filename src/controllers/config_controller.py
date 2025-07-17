@@ -46,6 +46,70 @@ class ConfigController:
             messagebox.showerror("Erro", f"Erro ao carregar configurações: {e}")
             return {}
     
+    def carregar_config_impressoras(self):
+        """
+        Carrega as configurações de impressoras do arquivo de configuração.
+        
+        Returns:
+            dict: Dicionário com as configurações de impressão ou dicionário vazio se não houver configurações.
+        """
+        try:
+            config = self._carregar_config()
+            impressoras = config.get('impressoras', {})
+            
+            # Garante que todas as chaves necessárias existam no dicionário
+            config_impressoras = {
+                'cupom_fiscal': impressoras.get('cupom_fiscal', ''),
+                'bar': impressoras.get('bar', ''),
+                'cozinha': impressoras.get('cozinha', ''),
+                'sobremesas': impressoras.get('sobremesas', ''),
+                'outros': impressoras.get('outros', '')
+            }
+            
+            print(f"Configurações de impressão carregadas: {config_impressoras}")
+            return config_impressoras
+            
+        except Exception as e:
+            print(f"Erro ao carregar configurações de impressão: {e}")
+            # Retorna um dicionário vazio em caso de erro
+            return {}
+    
+    def salvar_config_impressoras(self, config_impressoras):
+        """
+        Salva as configurações de impressoras no arquivo de configuração.
+        
+        Args:
+            config_impressoras (dict): Dicionário com as configurações de impressão a serem salvas.
+            
+        Returns:
+            bool: True se as configurações foram salvas com sucesso, False caso contrário.
+        """
+        try:
+            if not isinstance(config_impressoras, dict):
+                print("Erro: config_impressoras deve ser um dicionário")
+                return False
+                
+            # Carrega as configurações atuais
+            config = self._carregar_config()
+            
+            # Atualiza apenas a seção de impressoras
+            if 'impressoras' not in config:
+                config['impressoras'] = {}
+                
+            # Atualiza cada chave de configuração de impressora
+            for chave, valor in config_impressoras.items():
+                if valor:  # Só atualiza se o valor não for vazio
+                    config['impressoras'][chave] = valor
+            
+            # Salva as configurações atualizadas
+            self._salvar_config('impressoras', config['impressoras'])
+            print(f"Configurações de impressão salvas: {config['impressoras']}")
+            return True
+            
+        except Exception as e:
+            print(f"Erro ao salvar configurações de impressão: {e}")
+            return False
+    
     def _salvar_config(self, secao, dados):
         """Salva as configurações na seção especificada."""
         try:

@@ -1528,11 +1528,45 @@ class PedidosMesasModule(BaseModule):
                     pagamento_dinheiro = pagamento
                     break
             
+            # Obter o ID do usuário do pedido atual
+            usuario_id = None
+            if hasattr(self, 'pedido_atual') and self.pedido_atual:
+                usuario_id = self.pedido_atual.get('usuario_id')
+            
+            # Se não encontrou no pedido, tenta obter do controller principal
+            if not usuario_id and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
+                usuario_id = self.controller.usuario.id
+            
+            # Buscar o nome do usuário na tabela usuarios
+            usuario_nome = 'OPERADOR'  # Valor padrão
+            if usuario_id:
+                try:
+                    cursor = self.db_connection.cursor()
+                    cursor.execute("SELECT nome FROM usuarios WHERE id = %s", (usuario_id,))
+                    resultado = cursor.fetchone()
+                    if resultado:
+                        usuario_nome = resultado[0]
+                    cursor.close()
+                except Exception as e:
+                    pass  # Mantém o valor padrão em caso de erro
+            
+            # Se não encontrou no banco, tenta obter do controller
+            if usuario_nome == 'OPERADOR' and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
+                usuario_nome = self.controller.usuario.nome
+            
+            # Incluir o nome do usuário no dicionário de venda
+            if 'venda_dados' not in locals():
+                venda_dados = {}
+            venda_dados['usuario_nome'] = usuario_nome
+            venda_dados['usuario_id'] = usuario_id
+            
             sucesso, mensagem = self.controller_mesas.finalizar_pedido(
                 forma_pagamento=forma_pagamento,
                 valor_total=valor_total,
                 desconto=desconto,
-                pagamento=pagamento_dinheiro  # Passar o pagamento completo incluindo o troco
+                pagamento=pagamento_dinheiro,  # Passar o pagamento completo incluindo o troco
+                usuario_id=usuario_id,
+                venda_dados=venda_dados  # Passar o dicionário de venda com o nome do usuário
             )
             
             if not sucesso:
@@ -2043,10 +2077,30 @@ class PedidosMesasModule(BaseModule):
             # Criar janela de opções
             self.janela_opcoes = tk.Toplevel(self.parent)
             self.janela_opcoes.title(f"Opções para {produto['nome']}")
-            self.janela_opcoes.geometry("400x500")
+            self.janela_opcoes.geometry("500x600")
             
-            # Frame principal
-            frame_principal = ttk.Frame(self.janela_opcoes, padding="10")
+            # Frame principal com barra de rolagem
+            main_frame = ttk.Frame(self.janela_opcoes)
+            main_frame.pack(fill="both", expand=True)
+            
+            # Canvas e barra de rolagem
+            canvas = tk.Canvas(main_frame)
+            scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+            scrollable_frame = ttk.Frame(canvas)
+            
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            
+            # Frame para o conteúdo
+            frame_principal = ttk.Frame(scrollable_frame, padding="10")
             frame_principal.pack(fill="both", expand=True)
                 
             # Dicionário para armazenar as seleções do usuário
@@ -2055,27 +2109,68 @@ class PedidosMesasModule(BaseModule):
             # Para cada grupo de opções
             for grupo in grupos_opcoes:
                 grupo_frame = ttk.LabelFrame(frame_principal, text=grupo['nome'], padding="5")
-                grupo_frame.pack(fill="x", pady=5)
+                grupo_frame.pack(fill="x", pady=5, padx=5)
                 
                 # Verificar se é seleção única ou múltipla
                 if grupo['selecao_maxima'] == 1:
                     # Seleção única (Radiobuttons)
                     var = tk.StringVar()
-                    self.selecoes_opcoes[grupo['id']] = {'var': var, 'tipo': 'unico', 'itens': grupo['itens']}
+                    self.selecoes_opcoes[grupo['id']] = {
+                        'var': var, 
+                        'tipo': 'unico', 
+                        'itens': grupo['itens'],
+                        'entry_widgets': {}  # Para armazenar os campos de texto
+                    }
                     
                     # Se houver apenas uma opção, pré-selecionar automaticamente
-                    if len(grupo['itens']) == 1:
+                    if len(grupo['itens']) == 1 and not grupo.get('obrigatorio', False):
                         var.set(str(grupo['itens'][0]['id']))
-                     
                     
                     for opcao in grupo['itens']:
-                        rb = ttk.Radiobutton(
-                            grupo_frame,
-                            text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f})",
-                            variable=var,
-                            value=str(opcao['id'])
-                        )
-                        rb.pack(anchor="w")
+                        # Verificar se é uma opção de texto livre
+                        if opcao.get('tipo') == 'texto_livre':
+                            # Criar um frame para a opção
+                            opcao_frame = ttk.Frame(grupo_frame)
+                            opcao_frame.pack(fill="x", pady=2, anchor="w")
+                            
+                            # Criar o radiobutton
+                            rb = ttk.Radiobutton(
+                                opcao_frame,
+                                text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f}): ",
+                                variable=var,
+                                value=str(opcao['id'])
+                            )
+                            rb.pack(side="left")
+                            
+                            # Criar o campo de entrada de texto
+                            texto_var = tk.StringVar()
+                            entry = ttk.Entry(opcao_frame, textvariable=texto_var, width=25)
+                            entry.pack(side="left", padx=5)
+                            
+                            # Armazenar a referência ao campo de texto
+                            self.selecoes_opcoes[grupo['id']]['entry_widgets'][opcao['id']] = {
+                                'entry': entry,
+                                'text_var': texto_var
+                            }
+                            
+                            # Adicionar dica de texto, se houver
+                            if opcao.get('dica_texto'):
+                                entry.insert(0, opcao['dica_texto'])
+                            
+                            # Adicionar evento para seleção automática do radiobutton ao clicar no campo de texto
+                            def on_entry_click(event, rb=rb, var=var, value=str(opcao['id'])):
+                                var.set(value)
+                            
+                            entry.bind("<Button-1>", on_entry_click)
+                        else:
+                            # Opção normal (sem texto livre)
+                            rb = ttk.Radiobutton(
+                                grupo_frame,
+                                text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f})",
+                                variable=var,
+                                value=str(opcao['id'])
+                            )
+                            rb.pack(anchor="w")
                         
                         # Adicionar evento para seleção
                         def on_select(event=None, opcao_id=opcao['id'], grupo_id=grupo['id']):
@@ -2083,28 +2178,69 @@ class PedidosMesasModule(BaseModule):
                         
                         rb.bind("<Button-1>", on_select)
                     
-                    # Debug: mostrar opções disponíveis
-                    # Opções disponíveis para este grupo
                 else:
                     # Seleção múltipla (Checkbuttons)
-                    self.selecoes_opcoes[grupo['id']] = {'var': [], 'tipo': 'multiplo', 'itens': grupo['itens']}
+                    self.selecoes_opcoes[grupo['id']] = {
+                        'var': [], 
+                        'tipo': 'multiplo', 
+                        'itens': grupo['itens'],
+                        'entry_widgets': {}  # Para armazenar os campos de texto
+                    }
                     
                     for opcao in grupo['itens']:
                         var = tk.BooleanVar()
                         self.selecoes_opcoes[grupo['id']]['var'].append((var, opcao))
                         
-                        cb = ttk.Checkbutton(
-                            grupo_frame,
-                            text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f})",
-                            variable=var
-                        )
-                        cb.pack(anchor="w")
-                    
-                    # Opções disponíveis para checkbox
+                        # Verificar se é uma opção de texto livre
+                        if opcao.get('tipo') == 'texto_livre':
+                            # Criar um frame para a opção
+                            opcao_frame = ttk.Frame(grupo_frame)
+                            opcao_frame.pack(fill="x", pady=2, anchor="w")
+                            
+                            # Criar o checkbox
+                            cb = ttk.Checkbutton(
+                                opcao_frame,
+                                text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f}): ",
+                                variable=var
+                            )
+                            cb.pack(side="left")
+                            
+                            # Criar o campo de entrada de texto
+                            texto_var = tk.StringVar()
+                            entry = ttk.Entry(opcao_frame, textvariable=texto_var, width=25)
+                            entry.pack(side="left", padx=5)
+                            
+                            # Armazenar a referência ao campo de texto
+                            self.selecoes_opcoes[grupo['id']]['entry_widgets'][opcao['id']] = {
+                                'entry': entry,
+                                'text_var': texto_var
+                            }
+                            
+                            # Adicionar dica de texto, se houver
+                            if opcao.get('dica_texto'):
+                                entry.insert(0, opcao['dica_texto'])
+                            
+                            # Adicionar evento para marcar o checkbox ao clicar no campo de texto
+                            def on_entry_click(event, var=var):
+                                var.set(not var.get())
+                            
+                            entry.bind("<Button-1>", on_entry_click)
+                        else:
+                            # Opção normal (sem texto livre)
+                            cb = ttk.Checkbutton(
+                                grupo_frame,
+                                text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f})",
+                                variable=var
+                            )
+                            cb.pack(anchor="w")
+            
+            # Frame para o botão de confirmação
+            btn_frame = ttk.Frame(self.janela_opcoes)
+            btn_frame.pack(fill="x", padx=10, pady=10)
             
             # Botão para confirmar as opções
             btn_confirmar = tk.Button(
-                frame_principal,
+                btn_frame,
                 text="Confirmar Opções",
                 bg=CORES['destaque'],
                 fg=CORES['texto_claro'],
@@ -2112,10 +2248,18 @@ class PedidosMesasModule(BaseModule):
                 pady=5,
                 command=lambda p=produto, q=quantidade, u=usuario_id: self._adicionar_item_com_opcoes(p, q, u)
             )
-            btn_confirmar.pack(pady=10)
+            btn_confirmar.pack(side="right")
+            
+            # Ajustar o tamanho da janela
+            self.janela_opcoes.update_idletasks()
+            width = min(500, self.janela_opcoes.winfo_screenwidth() - 100)
+            height = min(600, self.janela_opcoes.winfo_screenheight() - 100)
+            self.janela_opcoes.geometry(f"{width}x{height}+{int((self.janela_opcoes.winfo_screenwidth() - width)/2)}+{int((self.janela_opcoes.winfo_screenheight() - height)/2)}")
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar opções: {str(e)}")
+            import traceback
+            traceback.print_exc()
             if hasattr(self, 'janela_opcoes'):
                 self.janela_opcoes.destroy()
     
@@ -2818,10 +2962,20 @@ class PedidosMesasModule(BaseModule):
             
             # Se encontrou itens para imprimir
             if itens_para_imprimir:
-                # Obter o nome do usuário atual, se disponível
+                # Buscar o nome do usuário na tabela usuarios usando o usuario_id do pedido
                 nome_usuario = 'Não identificado'
-                if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
-                    nome_usuario = self.controller.usuario.nome
+                usuario_id = self.pedido_atual.get('usuario_id')
+                
+                if usuario_id:
+                    try:
+                        cursor = self.db_connection.cursor(dictionary=True)
+                        cursor.execute("SELECT nome FROM usuarios WHERE id = %s", (usuario_id,))
+                        usuario = cursor.fetchone()
+                        if usuario:
+                            nome_usuario = usuario['nome']
+                        cursor.close()
+                    except Exception as e:
+                        print(f"Erro ao buscar nome do usuário: {e}")
                 
                 # Informações do pedido para o cabeçalho da impressão
                 info_pedido = {

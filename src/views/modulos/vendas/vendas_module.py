@@ -939,17 +939,46 @@ class VendasModule:
         y = (pagamento_window.winfo_screenheight() // 2) - (height // 2)
         pagamento_window.geometry(f"{width}x{height}+{x}+{y}")
         
+        # Garantir que temos um config_controller válido
+        config_controller = None
+        if hasattr(self, 'config_controller'):
+            config_controller = self.config_controller
+            print("Usando config_controller do VendasModule")
+        elif hasattr(self, 'controller') and hasattr(self.controller, 'config_controller'):
+            config_controller = self.controller.config_controller
+            print("Usando config_controller do controller do VendasModule")
+            
+        # Debug: verificar se o config_controller tem o método necessário
+        if config_controller:
+            if hasattr(config_controller, 'carregar_config_impressoras'):
+                print("config_controller tem o método carregar_config_impressoras")
+                try:
+                    config = config_controller.carregar_config_impressoras()
+                    print(f"Configurações de impressão carregadas: {config}")
+                except Exception as e:
+                    print(f"Erro ao carregar configurações: {e}")
+            else:
+                print("AVISO: config_controller não tem o método carregar_config_impressoras")
+        else:
+            print("AVISO: Nenhum config_controller disponível no VendasModule")
+            
         # Inicializar o módulo de pagamentos
-        pagamento_module = PagamentoModule(
-            pagamento_window,
-            db_connection,
-            valor_total=subtotal,
-            desconto=desconto,
-            callback_finalizar=self._processar_venda_finalizada,
-            venda_tipo='avulsa',
-            itens_venda=self.carrinho,
-            controller=self.controller  # Passa a referência do controlador principal
-        )
+        try:
+            pagamento_module = PagamentoModule(
+                pagamento_window,
+                db_connection,
+                valor_total=subtotal,
+                desconto=desconto,
+                callback_finalizar=self._processar_venda_finalizada,
+                venda_tipo='avulsa',
+                itens_venda=self.carrinho,
+                controller=self.controller,  # Passa a referência do controlador principal
+                config_controller=config_controller  # Passa o config_controller se disponível
+            )
+            print("PagamentoModule inicializado com sucesso")
+        except Exception as e:
+            print(f"Erro ao inicializar PagamentoModule: {e}")
+            raise
         
         # Configurar evento para quando a janela for fechada
         pagamento_window.protocol("WM_DELETE_WINDOW", pagamento_window.destroy)

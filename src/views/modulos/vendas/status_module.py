@@ -667,10 +667,32 @@ class StatusPedidosModule:
         try:
             # Importar o GerenciadorImpressao
             from src.utils.impressao import GerenciadorImpressao
+            from src.controllers.config_controller import ConfigController
             
             # Criar instâncias dos controladores necessários
             delivery_controller = DeliveryController()
-            gerenciador_impressao = GerenciadorImpressao()
+            
+            # Obter o config_controller do controlador principal
+            config_controller = None
+            if hasattr(self.controller, 'config_controller'):
+                config_controller = self.controller.config_controller
+                print(f"ConfigController obtido do controlador principal: {config_controller is not None}")
+            else:
+                # Se não houver config_controller no controlador principal, criar um novo
+                config_controller = ConfigController()
+                print("Criado novo ConfigController")
+                
+            # Verificar se o config_controller tem o método carregar_config_impressoras
+            if hasattr(config_controller, 'carregar_config_impressoras'):
+                print("ConfigController tem o método carregar_config_impressoras")
+                config_impressoras = config_controller.carregar_config_impressoras()
+                print(f"Configurações de impressão carregadas: {config_impressoras}")
+            else:
+                print("AVISO: ConfigController não tem o método carregar_config_impressoras")
+                
+            gerenciador_impressao = GerenciadorImpressao(config_controller=config_controller)
+            print(f"GerenciadorImpressao inicializado com config_controller: {config_controller is not None}")
+            print(f"Impressora configurada para cupom: {gerenciador_impressao.impressoras.get('cupom', 'N/A')}")
             
             # Buscar o pedido no banco de dados
             cursor = delivery_controller.db.cursor(dictionary=True)

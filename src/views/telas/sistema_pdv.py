@@ -72,6 +72,23 @@ class SistemaPDV:
         # Inicializa o controlador de permissões
         self.permission_controller = PermissionController()
         
+        # Inicializa o controlador de configurações
+        try:
+            from src.controllers.config_controller import ConfigController
+            self.config_controller = ConfigController()
+            print("ConfigController inicializado com sucesso no SistemaPDV")
+            
+            # Tenta carregar as configurações de impressão para verificar se está tudo OK
+            try:
+                config_impressao = self.config_controller.carregar_config_impressoras()
+                print(f"Configurações de impressão carregadas: {config_impressao}")
+            except Exception as e:
+                print(f"Erro ao carregar configurações de impressão: {e}")
+                
+        except Exception as e:
+            print(f"Erro ao inicializar ConfigController: {e}")
+            self.config_controller = None
+        
         # Configurar módulos
         self.configurar_modulos()
         
@@ -419,11 +436,15 @@ class SistemaPDV:
                 # Obtém a conexão com o banco de dados
                 db_connection = db.get_connection()
                 
-                # Cria a instância do módulo
+                # Cria a instância do módulo com o config_controller
                 modulo = VendasModule(modulo_frame, self)
                 
                 # Define a conexão com o banco de dados
                 self.db_connection = db_connection
+                
+                # Passa o config_controller para o módulo de vendas
+                if hasattr(self, 'config_controller'):
+                    modulo.config_controller = self.config_controller
                 
                 # Configura o frame do módulo para ocupar todo o espaço
                 modulo.frame.pack(fill='both', expand=True, padx=10, pady=10)

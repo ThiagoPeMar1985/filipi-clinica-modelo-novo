@@ -17,7 +17,7 @@ from utils.impressao import GerenciadorImpressao
 
 class PagamentoModule:
     def __init__(self, master, db_connection, valor_total=0.0, desconto=0.0, 
-                 callback_finalizar=None, venda_tipo='avulsa', referencia=None, itens_venda=None, controller=None, taxa_servico=False):
+                 callback_finalizar=None, venda_tipo='avulsa', referencia=None, itens_venda=None, controller=None, taxa_servico=False, config_controller=None):
         """
         Inicializa o módulo de pagamentos.
         
@@ -30,9 +30,11 @@ class PagamentoModule:
             venda_tipo: Tipo da venda ('avulsa', 'delivery', 'mesa')
             referencia: Referência da venda (número da mesa, id do delivery, etc)
             controller: Referência ao controlador principal da aplicação
+            config_controller: Controlador de configurações para acesso às configurações do sistema
         """
         self.master = master
         self.db_connection = db_connection
+        self.config_controller = config_controller
         self.controller = controller  # Armazena a referência ao controlador principal
         self.pagamento_controller = PagamentoController(db_connection)
         self.cadastro_controller = CadastroController(db_connection)
@@ -1112,7 +1114,8 @@ class PagamentoModule:
             'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
             'tipo': self.venda_tipo.upper(),
             'observacoes': '',
-            'taxa_servico': self.taxa_servico
+            'taxa_servico': self.taxa_servico,
+            'usuario_nome': nome_usuario  
         }
         
         # Preparar os pagamentos no formato esperado
@@ -1180,19 +1183,62 @@ class PagamentoModule:
     def _imprimir_cupom_fiscal(self, venda_dados):
         """Imprime o cupom fiscal da venda finalizada"""
         try:
+            print("\n=== INÍCIO DA IMPRESSÃO DO CUPOM FISCAL ===")
+            print(f"Tipo de venda: {venda_dados.get('tipo', 'N/A')}")
+            print(f"Referência: {venda_dados.get('referencia', 'N/A')}")
+            
             # Obter os itens da venda (produtos)
             itens = self._obter_itens_venda()
-            
-            # Verificar estrutura e valores dos itens
-            # (Debug prints removidos)
+            print(f"Total de itens: {len(itens)}")
             
             # Obter o controlador de configurações
             config_controller = None
             if hasattr(self, 'config_controller'):
                 config_controller = self.config_controller
+                print("Configurações obtidas de self.config_controller")
+            elif hasattr(self, 'controller') and hasattr(self.controller, 'config_controller'):
+                config_controller = self.controller.config_controller
+                print("Configurações obtidas de self.controller.config_controller")
+            elif hasattr(self, 'controller') and hasattr(self.controller, 'controller') and hasattr(self.controller.controller, 'config_controller'):
+                config_controller = self.controller.controller.config_controller
+                print("Configurações obtidas de self.controller.controller.config_controller")
+            else:
+                print("AVISO: Nenhum config_controller encontrado!")
                 
+            # Verificar se o config_controller tem o método carregar_config_impressoras
+            if config_controller and hasattr(config_controller, 'carregar_config_impressoras'):
+                try:
+                    config_impressoras = config_controller.carregar_config_impressoras()
+                    print("Configurações de impressão carregadas:")
+                    for chave, valor in config_impressoras.items():
+                        print(f"  {chave}: {valor}")
+                except Exception as e:
+                    print(f"Erro ao carregar configurações de impressão: {e}")
+            
             # Inicializar o gerenciador de impressão
+            print("\nInicializando GerenciadorImpressao...")
+            
+            # Garantir que temos um config_controller válido
+            if not config_controller and hasattr(self, 'config_controller'):
+                config_controller = self.config_controller
+                print("Usando config_controller da instância do PagamentoModule")
+            
+            # Se ainda não tivermos um config_controller, tentar obter do controller principal
+            if not config_controller and hasattr(self, 'controller') and hasattr(self.controller, 'config_controller'):
+                config_controller = self.controller.config_controller
+                print("Usando config_controller do controller principal")
+            
+            # Se ainda não tivermos um config_controller, tentar obter do controller principal do controller
+            if not config_controller and hasattr(self, 'controller') and hasattr(self.controller, 'controller') and hasattr(self.controller.controller, 'config_controller'):
+                config_controller = self.controller.controller.config_controller
+                print("Usando config_controller do controller principal do controller")
+            
+            print(f"Configurações que serão usadas: {config_controller}")
+            
+            # Inicializar o gerenciador com o config_controller
             gerenciador = GerenciadorImpressao(config_controller)
+            print(f"Impressora configurada para cupom: {gerenciador.impressoras.get('cupom', 'Nenhuma')}")
+            print(f"Todas as impressoras configuradas: {gerenciador.impressoras}")
             
             # Imprimir o cupom fiscal
             sucesso_cupom = gerenciador.imprimir_cupom_fiscal(venda_dados, itens, self.pagamentos)
@@ -1219,3 +1265,108 @@ class PagamentoModule:
     def _obter_itens_venda(self):
         """Obtém os itens da venda para impressão do cupom fiscal"""
         return self.itens_venda
+    def _imprimir_cupom_visualizacao(self):
+        """Exibe o cupom fiscal em uma janela de visualização antes da impressão"""
+        try:
+            # Criar dados da venda simulados para visualização
+            venda_dados = {
+                'id': 'VISUALIZAÇÃO',
+                'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+                'tipo': self.venda_tipo,
+                'referencia': self.referencia,
+                'valor_total': self.valor_total,
+                'desconto': self.desconto,
+                'valor_final': self.valor_final,
+                'taxa_servico': getattr(self, 'taxa_servico', 0)
+            }
+            
+            # Criar janela de visualização
+            janela_visualizacao = tk.Toplevel(self.master)
+            janela_visualizacao.title("Visualização do Cupom Fiscal")
+            janela_visualizacao.geometry("400x600")
+            
+            # Frame principal com barra de rolagem
+            main_frame = ttk.Frame(janela_visualizacao)
+            main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            # Área de texto para o cupom
+            cupom_texto = tk.Text(
+                main_frame,
+                wrap=tk.WORD,
+                font=("Courier New", 10),
+                width=48,
+                height=30,
+                bd=0,
+                highlightthickness=0
+            )
+            cupom_texto.pack(fill="both", expand=True)
+            
+            # Adicionar cabeçalho
+            cabecalho = f"""
+    {'='*48}
+    {'CUPOM FISCAL':^48}
+    {'='*48}
+    Data/Hora: {venda_dados['data_hora']}
+    {'='*48}
+    {'CÓDIGO DESCRIÇÃO':<30} QTD   VL UN  VL ITEM
+    {'-'*48}
+    """
+            cupom_texto.insert(tk.END, cabecalho)
+            
+            # Adicionar itens
+            for item in self.itens_venda:
+                descricao = item.get('nome', '')[:25]
+                if len(descricao) < 25:
+                    descricao = descricao.ljust(25)
+                    
+                linha = f"{item.get('id', ''):<6} {descricao} {item.get('quantidade', 0):>3} {item.get('valor_unitario', 0):>7.2f} {item.get('subtotal', 0):>8.2f}\n"
+                cupom_texto.insert(tk.END, linha)
+                
+                # Adicionar observações se houver
+                if item.get('observacao'):
+                    cupom_texto.insert(tk.END, f"  Obs: {item['observacao']}\n")
+            
+            # Adicionar totais
+            totais = f"""
+    {'-'*48}
+    {'SUBTOTAL:':<40} R$ {self.valor_total:>8.2f}
+    {'DESCONTO:':<40} R$ {self.desconto:>8.2f}
+    """
+            if venda_dados['taxa_servico']:
+                totais += f"{'TAXA SERVIÇO:':<40} R$ {(self.valor_total * 0.1):>8.2f}\n"
+                
+            totais += f"{'TOTAL:':<40} R$ {self.valor_final:>8.2f}\n"
+            totais += "="*48 + "\n"
+            
+            # Adicionar formas de pagamento
+            if self.pagamentos:
+                totais += "\nFORMA DE PAGAMENTO:\n"
+                for pag in self.pagamentos:
+                    totais += f"{pag['forma_nome']}: R$ {pag['valor']:.2f}\n"
+            
+            cupom_texto.insert(tk.END, totais)
+            
+            # Tornar o texto somente leitura
+            cupom_texto.config(state=tk.DISABLED)
+            
+            # Botão para imprimir
+            btn_frame = ttk.Frame(main_frame)
+            btn_frame.pack(fill="x", pady=(10, 0))
+            
+            ttk.Button(
+                btn_frame,
+                text="Imprimir Cupom",
+                command=lambda: self._imprimir_cupom_fiscal(venda_dados),
+                style="Accent.TButton"
+            ).pack(side="right")
+            
+            # Centralizar a janela
+            janela_visualizacao.update_idletasks()
+            width = janela_visualizacao.winfo_width()
+            height = janela_visualizacao.winfo_height()
+            x = (janela_visualizacao.winfo_screenwidth() // 2) - (width // 2)
+            y = (janela_visualizacao.winfo_screenheight() // 2) - (height // 2)
+            janela_visualizacao.geometry(f'+{x}+{y}')
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao gerar visualização do cupom: {str(e)}")

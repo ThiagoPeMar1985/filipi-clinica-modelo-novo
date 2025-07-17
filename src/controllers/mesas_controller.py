@@ -614,7 +614,8 @@ class MesasController:
             return False, error_msg
     
     def finalizar_pedido(self, forma_pagamento: str, valor_total: float, 
-                        desconto: float = 0.0, pagamento: Optional[Dict] = None) -> Tuple[bool, str]:
+                        desconto: float = 0.0, pagamento: Optional[Dict] = None,
+                        usuario_id: Optional[int] = None, venda_dados: Optional[Dict] = None) -> Tuple[bool, str]:
         """
         Finaliza o pedido atual da mesa.
         
@@ -622,6 +623,9 @@ class MesasController:
             forma_pagamento: Forma de pagamento
             valor_total: Valor total do pedido
             desconto: Valor do desconto (opcional)
+            pagamento: Dicionário com informações de pagamento (opcional)
+            usuario_id: ID do usuário que está finalizando o pedido (opcional)
+            venda_dados: Dicionário com dados adicionais da venda (opcional)
             
         Returns:
             Tuple[bool, str]: (sucesso, mensagem)
@@ -644,6 +648,17 @@ class MesasController:
                 troco = pagamento.get('troco', 0)  # O troco deve ser passado no dicionário de pagamento
                 
             # Atualizar o pedido com troco e desconto
+            # Se o usuario_id foi fornecido, usa-o, senão tenta obter do pedido atual
+            usuario_id_final = usuario_id if usuario_id is not None else self.pedido_atual.get('usuario_id')
+            
+            # Se ainda não tiver um usuario_id, tenta obter do usuário logado
+            if not usuario_id_final and hasattr(self, 'usuario') and hasattr(self.usuario, 'id'):
+                usuario_id_final = self.usuario.id
+            
+            # Se tiver venda_dados, adiciona o usuario_id se ainda não estiver definido
+            if venda_dados is not None and 'usuario_id' not in venda_dados and usuario_id_final:
+                venda_dados['usuario_id'] = usuario_id_final
+            
             cursor.execute(
                 """
                 UPDATE pedidos 
