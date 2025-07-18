@@ -66,11 +66,9 @@ class ConfigController:
                 'outros': impressoras.get('outros', '')
             }
             
-            print(f"Configurações de impressão carregadas: {config_impressoras}")
             return config_impressoras
             
-        except Exception as e:
-            print(f"Erro ao carregar configurações de impressão: {e}")
+        except Exception:
             # Retorna um dicionário vazio em caso de erro
             return {}
     

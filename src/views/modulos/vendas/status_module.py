@@ -680,19 +680,12 @@ class StatusPedidosModule:
             else:
                 # Se não houver config_controller no controlador principal, criar um novo
                 config_controller = ConfigController()
-                print("Criado novo ConfigController")
                 
-            # Verificar se o config_controller tem o método carregar_config_impressoras
+            # Carregar configurações de impressão se disponível
             if hasattr(config_controller, 'carregar_config_impressoras'):
-                print("ConfigController tem o método carregar_config_impressoras")
-                config_impressoras = config_controller.carregar_config_impressoras()
-                print(f"Configurações de impressão carregadas: {config_impressoras}")
-            else:
-                print("AVISO: ConfigController não tem o método carregar_config_impressoras")
+                config_controller.carregar_config_impressoras()
                 
             gerenciador_impressao = GerenciadorImpressao(config_controller=config_controller)
-            print(f"GerenciadorImpressao inicializado com config_controller: {config_controller is not None}")
-            print(f"Impressora configurada para cupom: {gerenciador_impressao.impressoras.get('cupom', 'N/A')}")
             
             # Buscar o pedido no banco de dados
             cursor = delivery_controller.db.cursor(dictionary=True)

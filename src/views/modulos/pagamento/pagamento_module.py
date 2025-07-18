@@ -27,11 +27,16 @@ class PagamentoModule:
             valor_total: Valor total da venda
             desconto: Valor do desconto aplicado
             callback_finalizar: Função a ser chamada quando o pagamento for finalizado
-            venda_tipo: Tipo da venda ('avulsa', 'delivery', 'mesa')
-            referencia: Referência da venda (número da mesa, id do delivery, etc)
-            controller: Referência ao controlador principal da aplicação
-            config_controller: Controlador de configurações para acesso às configurações do sistema
+            venda_tipo: Tipo de venda ('avulsa', 'delivery', 'mesa')
+            referencia: Número da mesa ou referência do pedido
+            itens_venda: Lista de itens da venda
+            controller: Controlador principal
+            taxa_servico: Indica se há taxa de serviço (para mesas)
+            config_controller: Controlador de configurações
         """
+        # Debug: Mostrar valor da taxa de serviço recebido
+        print(f"DEBUG - PagamentoModule - Taxa de serviço recebida: {taxa_servico}")
+        print(f"DEBUG - PagamentoModule - Tipo da taxa_servico: {type(taxa_servico)}")
         self.master = master
         self.db_connection = db_connection
         self.config_controller = config_controller
@@ -134,7 +139,8 @@ class PagamentoModule:
         subtotal_frame = ttk.Frame(resumo_frame, style="Custom.TFrame")
         subtotal_frame.pack(fill="x", pady=8, padx=10)
         ttk.Label(subtotal_frame, text="Subtotal:", style="InfoBold.TLabel").pack(side="left")
-        ttk.Label(subtotal_frame, text=f"R$ {self.valor_total:.2f}".replace('.', ','), style="Info.TLabel").pack(side="right")
+        self.subtotal_label = ttk.Label(subtotal_frame, text=f"R$ {self.valor_total:.2f}".replace('.', ','), style="Info.TLabel")
+        self.subtotal_label.pack(side="right")
         
         # Desconto
         desconto_frame = ttk.Frame(resumo_frame, style="Custom.TFrame")
@@ -160,15 +166,48 @@ class PagamentoModule:
         )
         self.desconto_entry.pack(side="right")
         
-        # Separador
-        ttk.Separator(resumo_frame, orient="horizontal").pack(fill="x", padx=10, pady=5)
+        # Taxa de serviço (se houver)
+        self.valor_taxa_servico = 0.0
+        self.valor_itens = self.valor_total  # Inicializa com o valor total
+        
+        if self.taxa_servico:
+            if self.venda_tipo == 'mesa':
+                # Para mesas, o valor_total já inclui a taxa de serviço
+                # Vamos calcular o valor dos itens (sem a taxa) para depois calcular os 10%
+                self.valor_itens = round(self.valor_total / 1.1, 2)  # Remove a taxa de 10% do total
+                self.valor_taxa_servico = round(self.valor_itens * 0.1, 2)  # 10% do valor dos itens
+                
+                # Atualizar o subtotal para mostrar apenas o valor dos itens
+                self.subtotal_label.config(text=f"R$ {self.valor_itens:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','))
+                
+                # Atualizar o valor final (já inclui a taxa)
+                self.valor_final = self.valor_total - self.desconto
+            else:
+                # Para outros tipos de venda, calcular a taxa normalmente (10% sobre o total)
+                self.valor_taxa_servico = round(self.valor_total * 0.1, 2)
+                # Atualizar o valor final com a taxa de serviço
+                self.valor_final = (self.valor_total + self.valor_taxa_servico) - self.desconto
+            
+            # Exibir a taxa de serviço na interface
+            self.taxa_frame = ttk.Frame(resumo_frame, style="Custom.TFrame")
+            self.taxa_frame.pack(fill="x", pady=8, padx=10)
+            
+            # Label da taxa de serviço
+            ttk.Label(self.taxa_frame, text="Taxa de Serviço (10%):", style="InfoBold.TLabel").pack(side="left")
+            
+            # Valor da taxa de serviço
+            self.taxa_label = ttk.Label(self.taxa_frame, text=f"R$ {self.valor_taxa_servico:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','), style="Info.TLabel")
+            self.taxa_label.pack(side="right")
         
         # Total
         total_frame = ttk.Frame(resumo_frame, style="Custom.TFrame")
         total_frame.pack(fill="x", pady=8, padx=10)
         ttk.Label(total_frame, text="TOTAL:", style="Total.TLabel").pack(side="left")
-        self.total_label = ttk.Label(total_frame, text=f"R$ {self.valor_final:.2f}".replace('.', ','), style="Total.TLabel")
+        self.total_label = ttk.Label(total_frame, text=f"R$ {self.valor_final:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','), style="Total.TLabel")
         self.total_label.pack(side="right")
+        
+        # Separador
+        ttk.Separator(resumo_frame, orient="horizontal").pack(fill="x", padx=10, pady=5)
         
         # Valor restante
         restante_frame = ttk.Frame(resumo_frame, style="Custom.TFrame")
@@ -213,8 +252,7 @@ class PagamentoModule:
                 {'id': 1, 'nome': 'Dinheiro'},
                 {'id': 2, 'nome': 'Cartão de Crédito'},
                 {'id': 3, 'nome': 'Cartão de Débito'},
-                {'id': 4, 'nome': 'PIX'},
-                {'id': 5, 'nome': 'Conta Cliente'}
+                {'id': 4, 'nome': 'Pix'},
             ]
         
         # Frame para os botões de forma de pagamento
@@ -390,21 +428,9 @@ class PagamentoModule:
                 )
                 return
                 
-            # Se for pagamento em dinheiro e o valor for maior que o restante, perguntar se deseja dar troco
+            # Se for pagamento em dinheiro e o valor for maior que o restante, calcular o troco automaticamente
             if forma['nome'].lower() == 'dinheiro' and valor > valor_restante:
                 troco = valor - valor_restante
-                resposta = messagebox.askyesno(
-                    "Troco", 
-                    f"O valor informado é maior que o restante.\n\n"
-                    f"Valor informado: R$ {valor:.2f}\n"
-                    f"Valor restante: R$ {valor_restante:.2f}\n"
-                    f"Troco: R$ {troco:.2f}\n\n"
-                    f"Deseja continuar e calcular o troco?"
-                )
-                
-                if not resposta:
-                    return
-                    
                 # Salvar o troco no pagamento
                 valor_efetivo = valor_restante
                 troco_valor = troco
@@ -412,11 +438,7 @@ class PagamentoModule:
                 valor_efetivo = valor
                 troco_valor = 0
             
-            # Se for Conta Cliente, abrir diálogo para selecionar o cliente
-            if forma['nome'] == 'Conta Cliente':
-                self._selecionar_cliente_pendura(forma, valor_efetivo)
-                return
-            
+
             # Adicionar o pagamento à lista
             pagamento = {
                 'forma_id': forma['id'],
@@ -439,168 +461,6 @@ class PagamentoModule:
                 
         except ValueError:
             messagebox.showerror("Erro", "Por favor, informe um valor válido.")
-        
-    def _selecionar_cliente_pendura(self, forma, valor):
-        """Exibe diálogo para selecionar o cliente para vincular o pagamento à conta."""
-        # Criar janela de diálogo
-        dialog = tk.Toplevel(self.master)
-        dialog.title("Selecionar Cliente")
-        dialog.geometry("500x400")
-        dialog.resizable(False, False)
-        dialog.transient(self.master)
-        dialog.grab_set()
-        dialog.configure(bg=self.cores["fundo"])
-        
-        # Centralizar na tela
-        dialog.update_idletasks()
-        width = dialog.winfo_width()
-        height = dialog.winfo_height()
-        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
-        y = (dialog.winfo_screenheight() // 2) - (height // 2)
-        dialog.geometry(f"{width}x{height}+{x}+{y}")
-        
-        # Frame principal
-        frame = ttk.Frame(dialog, padding=20)
-        frame.pack(fill="both", expand=True)
-        
-        # Título
-        ttk.Label(
-            frame, 
-            text="Selecionar Cliente para Conta", 
-            font=("Arial", 14, "bold"),
-            foreground=self.cores["texto"],
-            background=self.cores["fundo"]
-        ).pack(pady=(0, 20))
-        
-        # Valor a ser vinculado
-        ttk.Label(
-            frame, 
-            text=f"Valor a vincular: R$ {valor:.2f}".replace('.', ','),
-            font=("Arial", 12),
-            foreground=self.cores["primaria"],
-            background=self.cores["fundo"]
-        ).pack(pady=(0, 20))
-        
-        # Campo de busca
-        busca_frame = ttk.Frame(frame, style="Custom.TFrame")
-        busca_frame.pack(fill="x", pady=10)
-        
-        ttk.Label(
-            busca_frame, 
-            text="Buscar cliente:", 
-            font=("Arial", 10, "bold"),
-            foreground=self.cores["texto"],
-            background=self.cores["fundo"]
-        ).pack(side="left")
-        
-        busca_var = tk.StringVar()
-        busca_entry = ttk.Entry(busca_frame, textvariable=busca_var, font=("Arial", 10), width=30)
-        busca_entry.pack(side="right")
-        busca_entry.focus()
-        
-        # Lista de clientes
-        clientes_frame = ttk.Frame(frame)
-        clientes_frame.pack(fill="both", expand=True, pady=10)
-        
-        # Treeview para clientes
-        colunas = ('id', 'nome', 'telefone')
-        clientes_tree = ttk.Treeview(clientes_frame, columns=colunas, show='headings', height=8)
-        
-        # Configurar colunas
-        clientes_tree.heading('id', text='ID')
-        clientes_tree.heading('nome', text='Nome')
-        clientes_tree.heading('telefone', text='Telefone')
-        
-        clientes_tree.column('id', width=50)
-        clientes_tree.column('nome', width=250)
-        clientes_tree.column('telefone', width=150)
-        
-        # Scrollbar
-        scrollbar = ttk.Scrollbar(clientes_frame, orient="vertical", command=clientes_tree.yview)
-        clientes_tree.configure(yscrollcommand=scrollbar.set)
-        
-        clientes_tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Carregar clientes
-        try:
-            clientes = self.cadastro_controller.listar_clientes()
-            for cliente in clientes:
-                clientes_tree.insert('', 'end', values=(cliente['id'], cliente['nome'], cliente.get('telefone', '')))
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao carregar clientes: {str(e)}")
-        
-        # Função para filtrar clientes
-        def filtrar_clientes(*args):
-            busca = busca_var.get().lower()
-            clientes_tree.delete(*clientes_tree.get_children())
-            
-            try:
-                clientes = self.cadastro_controller.listar_clientes()
-                for cliente in clientes:
-                    if busca in cliente['nome'].lower() or (cliente.get('telefone') and busca in cliente['telefone']):
-                        clientes_tree.insert('', 'end', values=(cliente['id'], cliente['nome'], cliente.get('telefone', '')))
-            except Exception as e:
-                messagebox.showerror("Erro", f"Erro ao filtrar clientes: {str(e)}")
-        
-        # Vincular evento de busca
-        busca_var.trace_add("write", filtrar_clientes)
-        
-        # Botões
-        botoes_frame = ttk.Frame(frame)
-        botoes_frame.pack(fill="x", pady=(20, 0))
-        
-        ttk.Button(
-            botoes_frame,
-            text="Cancelar",
-            command=dialog.destroy
-        ).pack(side="left", padx=(0, 10))
-        
-        def confirmar_cliente():
-            selecionado = clientes_tree.selection()
-            if not selecionado:
-                messagebox.showinfo("Aviso", "Selecione um cliente.")
-                return
-                
-            cliente_values = clientes_tree.item(selecionado[0], 'values')
-            cliente_id = cliente_values[0]
-            cliente_nome = cliente_values[1]
-            
-            # Adicionar o pagamento à lista
-            pagamento = {
-                'forma_id': forma['id'],
-                'forma_nome': f"{forma['nome']} - {cliente_nome}",
-                'valor': valor,
-                'cliente_id': cliente_id
-            }
-            
-            self.pagamentos.append(pagamento)
-            
-            # Atualizar a interface
-            self._atualizar_pagamentos()
-            
-            # Atualizar o valor no campo de entrada para o valor restante
-            novo_valor_restante = self.valor_final - sum(p['valor'] for p in self.pagamentos)
-            if novo_valor_restante > 0:
-                self.valor_pagamento_var.set(f"{novo_valor_restante:.2f}".replace('.', ','))
-            else:
-                self.valor_pagamento_var.set("0,00")
-            
-            # Fechar o diálogo
-            dialog.destroy()
-        
-        tk.Button(
-            botoes_frame,
-            text="CONFIRMAR",
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
-            font=("Arial", 10, "bold"),
-            padx=10,
-            pady=5,
-            relief="flat",
-            cursor="hand2",
-            command=confirmar_cliente
-        ).pack(side="right")
         
     def _confirmar_pagamento(self, forma, valor_str, dialog):
         """Confirma o pagamento com a forma selecionada."""
@@ -660,143 +520,6 @@ class PagamentoModule:
             
         except ValueError:
             messagebox.showerror("Erro", "Valor inválido. Informe um número válido.")
-    
-    def _mostrar_selecao_cliente(self, forma):
-        """Exibe diálogo para selecionar o cliente para vincular à conta."""
-        # Obter lista de clientes
-        clientes = self.cadastro_controller.listar_clientes()
-        
-        if not clientes:
-            messagebox.showerror("Erro", "Não há clientes cadastrados.")
-            return
-        
-        # Criar janela de diálogo
-        dialog = tk.Toplevel(self.master)
-        dialog.title("Selecionar Cliente")
-        dialog.geometry("500x400")
-        dialog.transient(self.master)
-        dialog.grab_set()
-        
-        # Centralizar na tela
-        dialog.update_idletasks()
-        width = dialog.winfo_width()
-        height = dialog.winfo_height()
-        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
-        y = (dialog.winfo_screenheight() // 2) - (height // 2)
-        dialog.geometry(f"{width}x{height}+{x}+{y}")
-        
-        # Frame principal
-        frame = ttk.Frame(dialog, padding=20)
-        frame.pack(fill="both", expand=True)
-        
-        # Título
-        ttk.Label(
-            frame, 
-            text="Selecione o Cliente", 
-            font=("Arial", 14, "bold")
-        ).pack(pady=(0, 20))
-        
-        # Campo de pesquisa
-        pesquisa_frame = ttk.Frame(frame)
-        pesquisa_frame.pack(fill="x", pady=(0, 10))
-        
-        ttk.Label(pesquisa_frame, text="Pesquisar:").pack(side="left")
-        
-        pesquisa_var = tk.StringVar()
-        pesquisa_var.trace_add("write", lambda *args: self._filtrar_clientes(pesquisa_var.get(), clientes_tree, clientes))
-        
-        pesquisa_entry = ttk.Entry(pesquisa_frame, textvariable=pesquisa_var, width=30)
-        pesquisa_entry.pack(side="left", padx=5)
-        pesquisa_entry.focus()
-        
-        # Lista de clientes
-        clientes_frame = ttk.Frame(frame)
-        clientes_frame.pack(fill="both", expand=True, pady=10)
-        
-        # Treeview para clientes
-        colunas = ('id', 'nome', 'telefone')
-        clientes_tree = ttk.Treeview(clientes_frame, columns=colunas, show='headings', height=10)
-        
-        # Configurar colunas
-        clientes_tree.heading('id', text='ID')
-        clientes_tree.heading('nome', text='Nome')
-        clientes_tree.heading('telefone', text='Telefone')
-        
-        clientes_tree.column('id', width=50)
-        clientes_tree.column('nome', width=250)
-        clientes_tree.column('telefone', width=150)
-        
-        # Scrollbar
-        scrollbar = ttk.Scrollbar(clientes_frame, orient="vertical", command=clientes_tree.yview)
-        clientes_tree.configure(yscrollcommand=scrollbar.set)
-        
-        clientes_tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Preencher a lista de clientes
-        for cliente in clientes:
-            clientes_tree.insert(
-                "", 
-                "end", 
-                values=(
-                    cliente['id'],
-                    cliente['nome'],
-                    cliente.get('telefone', '')
-                )
-            )
-        
-        # Botões
-        botoes_frame = ttk.Frame(frame)
-        botoes_frame.pack(fill="x", pady=(20, 0))
-        
-        tk.Button(
-            botoes_frame,
-            text="CANCELAR",
-            bg=self.cores["terciaria"],
-            fg=self.cores["texto_claro"],
-            font=("Arial", 10, "bold"),
-            padx=10,
-            pady=5,
-            relief="flat",
-            cursor="hand2",
-            command=dialog.destroy
-        ).pack(side="left")
-        
-        tk.Button(
-            botoes_frame,
-            text="SELECIONAR",
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
-            font=("Arial", 10, "bold"),
-            padx=10,
-            pady=5,
-            relief="flat",
-            cursor="hand2",
-            command=lambda: self._selecionar_cliente(clientes_tree, forma, dialog)
-        ).pack(side="right")
-        
-    def _filtrar_clientes(self, termo, tree, clientes):
-        """Filtra a lista de clientes pelo termo de pesquisa."""
-        # Limpar a árvore
-        for item in tree.get_children():
-            tree.delete(item)
-            
-        # Filtrar clientes
-        termo = termo.lower()
-        for cliente in clientes:
-            if (termo in str(cliente['id']).lower() or 
-                termo in cliente['nome'].lower() or 
-                termo in str(cliente.get('telefone', '')).lower()):
-                
-                tree.insert(
-                    "", 
-                    "end", 
-                    values=(
-                        cliente['id'],
-                        cliente['nome'],
-                        cliente.get('telefone', '')
-                    )
-                )
     
     def _atualizar_pagamentos(self):
         """Atualiza a lista de pagamentos na interface."""
@@ -944,147 +667,6 @@ class PagamentoModule:
         else:
             self.valor_pagamento_var.set("0,00")
     
-    def _selecionar_cliente(self, tree, forma, dialog):
-        """Seleciona o cliente e solicita o valor a ser vinculado à conta."""
-        # Obter o item selecionado
-        selection = tree.selection()
-        
-        if not selection:
-            messagebox.showerror("Erro", "Selecione um cliente.")
-            return
-            
-        # Obter os dados do cliente
-        cliente_id = tree.item(selection[0], 'values')[0]
-        cliente_nome = tree.item(selection[0], 'values')[1]
-        
-        # Fechar o diálogo de seleção de cliente
-        dialog.destroy()
-        
-        # Calcular valor restante
-        valor_restante = self.valor_final - sum(p['valor'] for p in self.pagamentos)
-        
-        # Criar janela de diálogo para o valor
-        dialog_valor = tk.Toplevel(self.master)
-        dialog_valor.title(f"Vincular à Conta - {cliente_nome}")
-        dialog_valor.geometry("400x250")
-        dialog_valor.resizable(False, False)
-        dialog_valor.transient(self.master)
-        dialog_valor.grab_set()
-        
-        # Centralizar na tela
-        dialog_valor.update_idletasks()
-        width = dialog_valor.winfo_width()
-        height = dialog_valor.winfo_height()
-        x = (dialog_valor.winfo_screenwidth() // 2) - (width // 2)
-        y = (dialog_valor.winfo_screenheight() // 2) - (height // 2)
-        dialog_valor.geometry(f"{width}x{height}+{x}+{y}")
-        
-        # Frame principal
-        frame = ttk.Frame(dialog_valor, padding=20)
-        frame.pack(fill="both", expand=True)
-        
-        # Título
-        ttk.Label(
-            frame, 
-            text=f"Vincular à Conta de {cliente_nome}", 
-            font=("Arial", 14, "bold")
-        ).pack(pady=(0, 20))
-        
-        # Valor restante
-        ttk.Label(
-            frame, 
-            text=f"Valor restante: R$ {valor_restante:.2f}".replace('.', ','),
-            font=("Arial", 12)
-        ).pack(pady=(0, 20))
-        
-        # Entrada de valor
-        valor_frame = ttk.Frame(frame)
-        valor_frame.pack(fill="x", pady=10)
-        
-        ttk.Label(valor_frame, text="Valor:", font=("Arial", 12)).pack(side="left")
-        
-        valor_var = tk.StringVar(value=f"{valor_restante:.2f}".replace('.', ','))
-        valor_entry = ttk.Entry(valor_frame, textvariable=valor_var, font=("Arial", 12), width=15)
-        valor_entry.pack(side="right")
-        valor_entry.select_range(0, 'end')
-        valor_entry.focus()
-        
-        # Botões
-        botoes_frame = ttk.Frame(frame)
-        botoes_frame.pack(fill="x", pady=(20, 0))
-        
-        tk.Button(
-            botoes_frame,
-            text="CANCELAR",
-            bg=self.cores["terciaria"],
-            fg=self.cores["texto_claro"],
-            font=("Arial", 10, "bold"),
-            padx=10,
-            pady=5,
-            relief="flat",
-            cursor="hand2",
-            command=dialog_valor.destroy
-        ).pack(side="left", padx=(0, 10))
-        
-        tk.Button(
-            botoes_frame,
-            text="CONFIRMAR",
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
-            font=("Arial", 10, "bold"),
-            padx=10,
-            pady=5,
-            relief="flat",
-            cursor="hand2",
-            command=lambda: self._confirmar_conta_cliente(forma, cliente_id, cliente_nome, valor_var.get(), dialog_valor)
-        ).pack(side="right")
-
-    def _confirmar_conta_cliente(self, forma, cliente_id, cliente_nome, valor_str, dialog):
-        """Confirma a vinculação à conta do cliente."""
-        try:
-            # Converter o valor (substituindo vírgula por ponto)
-            valor = float(valor_str.replace(',', '.'))
-            
-            # Validar o valor
-            if valor <= 0:
-                messagebox.showerror(
-                    "Erro de Valor", 
-                    "O valor deve ser maior que zero.",
-                    icon="error"
-                )
-                return
-                
-            # Verificar se o valor é maior que o restante
-            valor_restante = self.valor_final - sum(p['valor'] for p in self.pagamentos)
-            if valor > valor_restante:
-                valor = valor_restante
-            
-            # Adicionar o pagamento à lista
-            pagamento = {
-                'forma_id': forma['id'],
-                'forma_nome': f"{forma['nome']} - {cliente_nome}",
-                'valor': valor,
-                'cliente_id': cliente_id
-            }
-            
-            self.pagamentos.append(pagamento)
-            
-            # Atualizar a interface
-            self._atualizar_pagamentos()
-            
-            # Fechar o diálogo
-            dialog.destroy()
-            
-            # Atualizar o valor no campo de entrada para o valor restante
-            novo_valor_restante = self.valor_final - sum(p['valor'] for p in self.pagamentos)
-            if novo_valor_restante > 0:
-                self.valor_pagamento_var.set(f"{novo_valor_restante:.2f}".replace('.', ','))
-            else:
-                self.valor_pagamento_var.set("0,00")
-                
-        except ValueError:
-            messagebox.showerror("Erro", "Por favor, informe um valor válido.")
-    
     def _finalizar_venda(self):
         """Finaliza a venda com os pagamentos realizados."""
         # Verificar se o valor pago é suficiente
@@ -1106,15 +688,27 @@ class PagamentoModule:
         if hasattr(self, 'controller') and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
             nome_usuario = self.controller.usuario.nome
         
+        # Para mesas, o valor_total já inclui a taxa de serviço
+        if self.venda_tipo == 'mesa' and self.taxa_servico:
+            # Calcular o valor dos itens (sem a taxa) para depois calcular os 10%
+            valor_itens = self.valor_total / 1.1
+            valor_taxa_servico = round(valor_itens * 0.1, 2)  # 10% do valor dos itens
+            valor_final = self.valor_total - self.desconto  # Já inclui a taxa
+        else:
+            # Para outros tipos de venda, calcular a taxa normalmente
+            valor_taxa_servico = getattr(self, 'valor_taxa_servico', 0.0)
+            valor_com_taxa = self.valor_total + valor_taxa_servico
+            valor_final = valor_com_taxa - self.desconto
+            
         # Preparar dados da venda para o callback
         venda_dados = {
             'valor_total': self.valor_total,
             'desconto': self.desconto,
-            'valor_final': self.valor_total - self.desconto,
+            'valor_final': round(valor_final, 2),  # Arredondar para evitar problemas com decimais
             'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
             'tipo': self.venda_tipo.upper(),
             'observacoes': '',
-            'taxa_servico': self.taxa_servico,
+            'taxa_servico': valor_taxa_servico,  # Agora envia o valor monetário
             'usuario_nome': nome_usuario  
         }
         
@@ -1183,62 +777,43 @@ class PagamentoModule:
     def _imprimir_cupom_fiscal(self, venda_dados):
         """Imprime o cupom fiscal da venda finalizada"""
         try:
-            print("\n=== INÍCIO DA IMPRESSÃO DO CUPOM FISCAL ===")
-            print(f"Tipo de venda: {venda_dados.get('tipo', 'N/A')}")
-            print(f"Referência: {venda_dados.get('referencia', 'N/A')}")
-            
             # Obter os itens da venda (produtos)
             itens = self._obter_itens_venda()
-            print(f"Total de itens: {len(itens)}")
             
             # Obter o controlador de configurações
             config_controller = None
             if hasattr(self, 'config_controller'):
                 config_controller = self.config_controller
-                print("Configurações obtidas de self.config_controller")
+
             elif hasattr(self, 'controller') and hasattr(self.controller, 'config_controller'):
                 config_controller = self.controller.config_controller
-                print("Configurações obtidas de self.controller.config_controller")
             elif hasattr(self, 'controller') and hasattr(self.controller, 'controller') and hasattr(self.controller.controller, 'config_controller'):
                 config_controller = self.controller.controller.config_controller
-                print("Configurações obtidas de self.controller.controller.config_controller")
-            else:
-                print("AVISO: Nenhum config_controller encontrado!")
                 
-            # Verificar se o config_controller tem o método carregar_config_impressoras
+            # Carregar configurações de impressão se disponível
             if config_controller and hasattr(config_controller, 'carregar_config_impressoras'):
                 try:
-                    config_impressoras = config_controller.carregar_config_impressoras()
-                    print("Configurações de impressão carregadas:")
-                    for chave, valor in config_impressoras.items():
-                        print(f"  {chave}: {valor}")
-                except Exception as e:
-                    print(f"Erro ao carregar configurações de impressão: {e}")
+                    config_controller.carregar_config_impressoras()
+                except Exception:
+                    pass
             
             # Inicializar o gerenciador de impressão
-            print("\nInicializando GerenciadorImpressao...")
             
             # Garantir que temos um config_controller válido
             if not config_controller and hasattr(self, 'config_controller'):
                 config_controller = self.config_controller
-                print("Usando config_controller da instância do PagamentoModule")
+
             
             # Se ainda não tivermos um config_controller, tentar obter do controller principal
             if not config_controller and hasattr(self, 'controller') and hasattr(self.controller, 'config_controller'):
                 config_controller = self.controller.config_controller
-                print("Usando config_controller do controller principal")
             
             # Se ainda não tivermos um config_controller, tentar obter do controller principal do controller
             if not config_controller and hasattr(self, 'controller') and hasattr(self.controller, 'controller') and hasattr(self.controller.controller, 'config_controller'):
                 config_controller = self.controller.controller.config_controller
-                print("Usando config_controller do controller principal do controller")
-            
-            print(f"Configurações que serão usadas: {config_controller}")
             
             # Inicializar o gerenciador com o config_controller
             gerenciador = GerenciadorImpressao(config_controller)
-            print(f"Impressora configurada para cupom: {gerenciador.impressoras.get('cupom', 'Nenhuma')}")
-            print(f"Todas as impressoras configuradas: {gerenciador.impressoras}")
             
             # Imprimir o cupom fiscal
             sucesso_cupom = gerenciador.imprimir_cupom_fiscal(venda_dados, itens, self.pagamentos)
@@ -1246,14 +821,10 @@ class PagamentoModule:
             # Verificar o tipo de venda
             tipo_venda = venda_dados.get('tipo', '').lower()
             
-            # Imprimir as comandas por tipo de produto separadamente APENAS se NÃO for um pedido de mesa
-            # No caso de mesas, os pedidos já foram impressos quando foram adicionados
+            # Definir sucesso_comandas como True por padrão
+            # Para pedidos de mesa, as comandas já foram impressas quando os itens foram adicionados
+            # Para outros tipos de venda, não imprimimos comandas no momento do pagamento
             sucesso_comandas = True
-            if tipo_venda != 'mesa':
-                sucesso_comandas = gerenciador.imprimir_comandas_por_tipo(venda_dados, itens)
-            else:
-                # Para vendas do tipo mesa, as comandas já foram impressas quando os itens foram adicionados
-                pass
             
             if not sucesso_cupom:
                 messagebox.showerror("Erro", "Não foi possível imprimir o cupom fiscal.")

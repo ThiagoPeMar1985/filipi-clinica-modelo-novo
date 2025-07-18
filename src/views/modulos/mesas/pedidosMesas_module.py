@@ -100,6 +100,7 @@ from src.controllers.mesas_controller import MesasController
 from src.controllers.opcoes_controller import OpcoesController
 from src.utils.impressao import GerenciadorImpressao
 from src.controllers.config_controller import ConfigController
+from .modoEdicaoMesas_module import ModoEdicaoMesas
 
 class PedidosMesasModule(BaseModule):
     def __init__(self, parent, controller, mesa=None, db_connection=None, modulo_anterior=None):
@@ -130,10 +131,7 @@ class PedidosMesasModule(BaseModule):
         self.itens_pedido = []
         self.pedido_atual = None
         
-        # Lista para armazenar itens adicionados na sessão atual
-        self.itens_adicionados_na_sessao = []
-        # Backup dos itens originais para possível cancelamento
-        self.itens_originais = []
+        # Lista de itens adicionados na sessão é gerenciada pelo ModoEdicaoMesas
         
         # Checkbox para ativar/desativar a taxa de serviço
         # Verificar se o pedido atual tem informação sobre a taxa de serviço
@@ -148,6 +146,9 @@ class PedidosMesasModule(BaseModule):
         self.quantidade_var = tk.StringVar(value="1")
         self.desconto_var = tk.StringVar(value="0.00")
         self.selecoes_opcoes = {}
+        
+        # Inicializa o gerenciador de modo de edição
+        self.modo_edicao = ModoEdicaoMesas(self)
         
         # Referências para os botões que serão manipulados
         self.botao_voltar = None
@@ -193,29 +194,16 @@ class PedidosMesasModule(BaseModule):
             manter_itens_sessao: Se True, mantém os itens adicionados na sessão
         """
         try:
-            # Se precisar manter os itens da sessão, fazer backup
-            itens_sessao_backup = None
-            if manter_itens_sessao and hasattr(self, 'itens_adicionados_na_sessao'):
-                itens_sessao_backup = self.itens_adicionados_na_sessao.copy()
-
             if self.mesa and self.controller_mesas.carregar_pedidos(self.mesa['id']):
                 self.pedidos = self.controller_mesas.pedidos
                 self.pedido_atual = self.controller_mesas.pedido_atual
                 
-                # Fazer backup dos itens originais se for a primeira vez
-                if not manter_itens_sessao:
-                    self.itens_originais = self.controller_mesas.itens_pedido.copy()
-                
-                # Restaurar o backup dos itens da sessão, se existir
-                if manter_itens_sessao and itens_sessao_backup:
-                    self.itens_adicionados_na_sessao = itens_sessao_backup
-                    
-                    # Atualizar também no controller para garantir consistência
-                    if hasattr(self.controller_mesas, 'itens_adicionados_na_sessao'):
-                        self.controller_mesas.itens_adicionados_na_sessao = itens_sessao_backup.copy()
-                
                 # Usar os itens do pedido do controller
                 self.itens_pedido = self.controller_mesas.itens_pedido
+                
+                # Se não for para manter os itens da sessão, limpar a lista de itens adicionados
+                if not manter_itens_sessao and hasattr(self, 'modo_edicao'):
+                    self.modo_edicao.limpar_itens_sessao()
                 
                 # Preencher tabela de itens e atualizar total
                 self.preencher_tabela_itens()
@@ -272,7 +260,7 @@ class PedidosMesasModule(BaseModule):
             pady=5,
             relief='flat',
             cursor='hand2',
-            command=self.cancelar_alteracoes
+            command=lambda: self.modo_edicao.cancelar_alteracoes() if hasattr(self, 'modo_edicao') else None
         )
         self.botao_cancelar.pack(side="left")
         self.botao_cancelar.pack_forget()  # Inicialmente oculto
@@ -498,7 +486,7 @@ class PedidosMesasModule(BaseModule):
             pady=12,
             relief='flat',
             cursor='hand2',
-            command=self.confirmar_alteracoes
+            command=lambda: self.modo_edicao.confirmar_alteracoes() if hasattr(self, 'modo_edicao') else None
         )
         # Usar pack com fill="x" para garantir que ocupe toda a largura, igual ao botão finalizar
         self.botao_confirmar.pack(fill="x", pady=5)
@@ -658,11 +646,7 @@ class PedidosMesasModule(BaseModule):
             command=self.criar_novo_pedido
         ).pack(pady=10)
     
-    # Primeira implementação de criar_tabela_itens removida - função duplicada
-    
-    # Primeira implementação de preencher_tabela_itens removida - função duplicada
-    
-    # Função confirmar_remover_item removida - substituída por editar_item_selecionado()
+
     
     def mostrar_pedidos(self, parent):
         """Exibe os pedidos existentes e seus itens"""
@@ -1394,6 +1378,9 @@ class PedidosMesasModule(BaseModule):
         if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
             messagebox.showinfo("Aviso", "Não há pedido aberto para finalizar!")
             return
+            
+        # Debug: Mostrar valor da taxa de serviço
+        print(f"DEBUG - Taxa de serviço (antes de abrir pagamento): {self.taxa_servico_var.get()}")
         
         # Verificar se existem itens no pedido
         if not hasattr(self, 'itens_pedido') or not self.itens_pedido:
@@ -2133,35 +2120,43 @@ class PedidosMesasModule(BaseModule):
                             opcao_frame = ttk.Frame(grupo_frame)
                             opcao_frame.pack(fill="x", pady=2, anchor="w")
                             
-                            # Criar o radiobutton
-                            rb = ttk.Radiobutton(
+                            # Variável para controlar o estado do checkbox
+                            check_var = tk.BooleanVar()
+                            
+                            # Criar o Checkbutton
+                            cb = ttk.Checkbutton(
                                 opcao_frame,
                                 text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f}): ",
-                                variable=var,
-                                value=str(opcao['id'])
+                                variable=check_var
                             )
-                            rb.pack(side="left")
+                            cb.pack(side="left")
                             
                             # Criar o campo de entrada de texto
                             texto_var = tk.StringVar()
                             entry = ttk.Entry(opcao_frame, textvariable=texto_var, width=25)
                             entry.pack(side="left", padx=5)
                             
-                            # Armazenar a referência ao campo de texto
+                            # Função para marcar o checkbox quando o usuário começar a digitar
+                            def on_text_change(*args):
+                                if texto_var.get().strip():  # Se houver texto no campo
+                                    var.set(True)  # Marca o checkbox
+                                    entry.config(state='normal')  # Garante que o campo está habilitado
+                            
+                            
+                            # Adicionar evento para detectar quando o usuário começa a digitar
+                            texto_var.trace_add('write', on_text_change)
+                            
+                            # Armazenar a referência ao campo de texto e ao checkbox
                             self.selecoes_opcoes[grupo['id']]['entry_widgets'][opcao['id']] = {
                                 'entry': entry,
-                                'text_var': texto_var
+                                'text_var': texto_var,
+                                'check_var': check_var,
+                                'check_btn': cb,
+                                'opcao': opcao  # Armazenar os dados completos da opção
                             }
                             
-                            # Adicionar dica de texto, se houver
-                            if opcao.get('dica_texto'):
-                                entry.insert(0, opcao['dica_texto'])
-                            
-                            # Adicionar evento para seleção automática do radiobutton ao clicar no campo de texto
-                            def on_entry_click(event, rb=rb, var=var, value=str(opcao['id'])):
-                                var.set(value)
-                            
-                            entry.bind("<Button-1>", on_entry_click)
+                
+                        
                         else:
                             # Opção normal (sem texto livre)
                             rb = ttk.Radiobutton(
@@ -2207,24 +2202,40 @@ class PedidosMesasModule(BaseModule):
                             
                             # Criar o campo de entrada de texto
                             texto_var = tk.StringVar()
-                            entry = ttk.Entry(opcao_frame, textvariable=texto_var, width=25)
+                            entry = ttk.Entry(opcao_frame, textvariable=texto_var, width=25, state='disabled')
                             entry.pack(side="left", padx=5)
                             
-                            # Armazenar a referência ao campo de texto
+                            # Função para atualizar o estado do campo de texto
+                            def update_entry_state():
+                                if var.get():
+                                    entry.config(state='normal')
+                                    # Não forçar o foco para evitar comportamentos indesejados
+                                else:
+                                    entry.config(state='disabled')
+                            
+                            # Função para marcar o checkbox quando o usuário começar a digitar
+                            def on_text_change(*args):
+                                if texto_var.get().strip():  # Se houver texto no campo
+                                    var.set(True)  # Marca o checkbox
+                                    entry.config(state='normal')  # Garante que o campo está habilitado
+                            
+                            # Configurar o comando do checkbox
+                            cb.config(command=update_entry_state)
+                            
+                            # Adicionar evento para detectar quando o usuário começa a digitar
+                            texto_var.trace_add('write', on_text_change)
+                            
+                            # Armazenar a referência ao campo de texto e ao checkbox
                             self.selecoes_opcoes[grupo['id']]['entry_widgets'][opcao['id']] = {
                                 'entry': entry,
-                                'text_var': texto_var
+                                'text_var': texto_var,
+                                'check_var': var,  # Adicionar referência à variável do checkbox
+                                'opcao': opcao  # Armazenar os dados completos da opção
                             }
                             
-                            # Adicionar dica de texto, se houver
-                            if opcao.get('dica_texto'):
-                                entry.insert(0, opcao['dica_texto'])
                             
-                            # Adicionar evento para marcar o checkbox ao clicar no campo de texto
-                            def on_entry_click(event, var=var):
-                                var.set(not var.get())
                             
-                            entry.bind("<Button-1>", on_entry_click)
+                            # Remover o evento de clique que estava causando o problema
                         else:
                             # Opção normal (sem texto livre)
                             cb = ttk.Checkbutton(
@@ -2238,15 +2249,24 @@ class PedidosMesasModule(BaseModule):
             btn_frame = ttk.Frame(self.janela_opcoes)
             btn_frame.pack(fill="x", padx=10, pady=10)
             
+            # Função para confirmar as opções e fechar a janela
+            def confirmar_e_fechar():
+                # Fechar a janela de opções
+                if hasattr(self, 'janela_opcoes') and self.janela_opcoes.winfo_exists():
+                    self.janela_opcoes.destroy()
+                    del self.janela_opcoes
+                # Adicionar o item com as opções
+                self._adicionar_item_com_opcoes(produto, quantidade, usuario_id)
+            
             # Botão para confirmar as opções
             btn_confirmar = tk.Button(
                 btn_frame,
                 text="Confirmar Opções",
-                bg=CORES['destaque'],
-                fg=CORES['texto_claro'],
+                bg="#4CAF50",  # Verde
+                fg="white",
                 padx=10,
                 pady=5,
-                command=lambda p=produto, q=quantidade, u=usuario_id: self._adicionar_item_com_opcoes(p, q, u)
+                command=confirmar_e_fechar
             )
             btn_confirmar.pack(side="right")
             
@@ -2303,40 +2323,12 @@ class PedidosMesasModule(BaseModule):
             )
             
             if sucesso and pedido:
-                # Adicionar à lista de itens da sessão
-                if not hasattr(self, 'itens_adicionados_na_sessao'):
-                    self.itens_adicionados_na_sessao = []
-
-                
-                # Obter o ID do item recém-adicionado diretamente do retorno do controlador
-                if hasattr(self.controller_mesas, 'ultimo_item_adicionado'):
-
-                    item_id = self.controller_mesas.ultimo_item_adicionado.get('id')
-                    if item_id:
-                        # Inicializar a lista se não existir
-                        if not hasattr(self.controller_mesas, 'itens_adicionados_na_sessao'):
-                            self.controller_mesas.itens_adicionados_na_sessao = []
-                        
-                        # Adicionar à lista local
-                        self.itens_adicionados_na_sessao.append({'id': item_id})
-                        
-                        # Garantir que o controller também tenha a lista atualizada
-                        if hasattr(self.controller_mesas, 'itens_adicionados_na_sessao'):
-                            if item_id not in [item.get('id') for item in self.controller_mesas.itens_adicionados_na_sessao if 'id' in item]:
-                                self.controller_mesas.itens_adicionados_na_sessao.append({'id': item_id})
-                    else:
-                        print("[ERRO] Não foi possível obter o ID do item recém-adicionado")
-                
-                # Atualizar a tabela de itens
+                # Atualizar a tabela de itens mantendo os itens da sessão
                 self.carregar_pedidos(manter_itens_sessao=True)
                 
-                # Verificar se os itens da sessão foram mantidos
-                if hasattr(self, 'itens_adicionados_na_sessao'):
-                    for i, item in enumerate(self.itens_adicionados_na_sessao):
-                        pass  # Código para processar cada item, se necessário
-                
                 # Ativar o modo de edição
-                self._entrar_modo_edicao()
+                if hasattr(self, 'modo_edicao'):
+                    self.modo_edicao.entrar_modo_edicao()
                 
                 return True
             else:
@@ -2374,60 +2366,46 @@ class PedidosMesasModule(BaseModule):
                 if dados['tipo'] == 'unico':
                     # Opção única (radiobutton)
                     opcao_id = dados['var'].get()
-                    # Processando seleção do radiobutton
+                    
+                    # Verificar se há opções de texto livre no grupo
+                    tem_texto_livre = any(opcao.get('tipo') == 'texto_livre' for opcao in dados.get('itens', []))
                     
                     # Se não houver seleção e o grupo tiver apenas uma opção, selecionar automaticamente
-                    if not opcao_id and 'itens' in dados and len(dados['itens']) == 1:
+                    if not opcao_id and 'itens' in dados and len(dados['itens']) == 1 and not tem_texto_livre:
                         opcao_id = str(dados['itens'][0]['id'])
                         # Selecionando automaticamente a única opção disponível
                     
-                    if not opcao_id:
-                        # Nenhuma opção selecionada para este grupo
-                        continue
-                    
                     # Buscar a opção nos itens do grupo
                     encontrou = False
-                    for opcao in dados.get('itens', []):
-                        # Converter para string para garantir comparação correta
-                        if str(opcao.get('id')) == str(opcao_id):
-                            # Opção encontrada
-                            opcoes_selecionadas.append({
-                                'id': opcao['id'],
-                                'nome': opcao.get('nome', 'Opção'),
-                                'preco_adicional': float(opcao.get('preco_adicional', 0)),
-                                'grupo_id': grupo_id
-                            })
-                            preco_adicional += float(opcao.get('preco_adicional', 0))
-                            encontrou = True
-                            break
                     
-                    if not encontrou:
-                        print(f"ERRO: Não encontrou opção com ID {opcao_id} no grupo {grupo_id}")
-                        print(f"Itens disponíveis: {[{i['id']: i['nome']} for i in dados.get('itens', [])]}")
-                        # Tentar novamente com uma abordagem diferente
+                    # Primeiro, verificar se há opções de texto livre preenchidas
+                    if 'entry_widgets' in dados:
+                        for opcao_id_widget, entry_data in dados['entry_widgets'].items():
+                            # Verificar se o checkbox está marcado e se há texto
+                            check_var = entry_data.get('check_var')
+                            text_var = entry_data.get('text_var')
+                            if (check_var and hasattr(check_var, 'get') and check_var.get() and 
+                                text_var and hasattr(text_var, 'get') and text_var.get().strip()):
+                                # Adicionar a opção com o texto informado
+                                texto = text_var.get().strip()
+                                opcao = entry_data.get('opcao', {})
+                                if opcao:
+                                    opcoes_selecionadas.append({
+                                        'id': opcao.get('id'),
+                                        'nome': f"{opcao.get('nome', 'Opção')}: {texto}",
+                                        'preco_adicional': float(opcao.get('preco_adicional', 0)),
+                                        'grupo_id': grupo_id
+                                    })
+                                    preco_adicional += float(opcao.get('preco_adicional', 0))
+                                    encontrou = True
+                                    break
+                    
+                    # Se não encontrou opção de texto livre, verificar opções normais
+                    if not encontrou and opcao_id:
                         for opcao in dados.get('itens', []):
-                            print(f"Comparando: '{opcao_id}' com '{opcao['id']}' (tipos: {type(opcao_id)} e {type(opcao['id'])})")
-                        
-                        # Se não encontrou, mas temos apenas uma opção, usar essa opção
-                        if len(dados.get('itens', [])) == 1:
-                            opcao = dados['itens'][0]
-                            print(f"Usando a única opção disponível: {opcao['nome']} (ID: {opcao['id']})")
-                            opcoes_selecionadas.append({
-                                'id': opcao['id'],
-                                'nome': opcao.get('nome', 'Opção'),
-                                'preco_adicional': float(opcao.get('preco_adicional', 0)),
-                                'grupo_id': grupo_id
-                            })
-                            preco_adicional += float(opcao.get('preco_adicional', 0))
-                        else:
-                            messagebox.showwarning("Aviso", f"Não foi possível encontrar a opção selecionada no grupo {grupo_id}.")
-                            return False
-                            
-                elif dados['tipo'] == 'multiplo':
-                    # Verificar se é uma lista de tuplas (var, opcao) ou um dicionário
-                    if isinstance(dados['var'], list):
-                        for var, opcao in dados['var']:
-                            if var.get():
+                            # Opção normal (não é texto livre)
+                            if str(opcao.get('id')) == str(opcao_id):
+                                # Opção encontrada
                                 opcoes_selecionadas.append({
                                     'id': opcao['id'],
                                     'nome': opcao.get('nome', 'Opção'),
@@ -2435,12 +2413,53 @@ class PedidosMesasModule(BaseModule):
                                     'grupo_id': grupo_id
                                 })
                                 preco_adicional += float(opcao.get('preco_adicional', 0))
+                                encontrou = True
+                                break
+                    
+                    # Se não encontrou nenhuma opção e o grupo é obrigatório, mostrar aviso
+                    if not encontrou and dados.get('obrigatorio', False):
+                        messagebox.showwarning("Aviso", f"Por favor, selecione uma opção para o grupo {dados.get('nome', '')} ou preencha o campo de texto.")
+                        return False
+                            
+                elif dados['tipo'] == 'multiplo':
+                    # Primeiro, verificar se há opções de texto livre preenchidas
+                    if 'entry_widgets' in dados and dados['entry_widgets']:
+                        for opcao_id_widget, entry_data in dados['entry_widgets'].items():
+                            # Verificar se o checkbox está marcado
+                            check_var = entry_data.get('check_var')
+                            if check_var and hasattr(check_var, 'get') and check_var.get():
+                                # Obter o texto digitado, mesmo que vazio
+                                text_var = entry_data.get('text_var')
+                                texto = text_var.get() if text_var and hasattr(text_var, 'get') else ''
+                                # Adicionar a opção com o texto informado, mesmo que vazio
+                                opcao = entry_data.get('opcao', {})
+                                if opcao:
+                                    opcoes_selecionadas.append({
+                                        'id': opcao.get('id'),
+                                        'nome': f"{opcao.get('nome', 'Opção')}: {texto.strip()}" if texto.strip() else opcao.get('nome', 'Opção'),
+                                        'preco_adicional': float(opcao.get('preco_adicional', 0)),
+                                        'grupo_id': grupo_id
+                                    })
+                                    preco_adicional += float(opcao.get('preco_adicional', 0))
+                    
+                    # Depois, verificar as opções normais (checkboxes)
+                    if 'var' in dados and dados['var']:
+                        if isinstance(dados['var'], list):
+                            for var, opcao in dados['var']:
+                                if hasattr(var, 'get') and var.get() and opcao.get('tipo') != 'texto_livre':
+                                    opcoes_selecionadas.append({
+                                        'id': opcao['id'],
+                                        'nome': opcao.get('nome', 'Opção'),
+                                        'preco_adicional': float(opcao.get('preco_adicional', 0)),
+                                        'grupo_id': grupo_id
+                                    })
+                                    preco_adicional += float(opcao.get('preco_adicional', 0))
                     else:
                         # Tratar como um dicionário de opções
                         for opcao_id, var in dados['var'].items():
                             if var.get():
                                 opcao = next((op for op in dados.get('itens', []) 
-                                            if str(op['id']) == str(opcao_id)), None)
+                                            if str(op['id']) == str(opcao_id) and op.get('tipo') != 'texto_livre'), None)
                                 if opcao:
                                     opcoes_selecionadas.append({
                                         'id': opcao['id'],
@@ -2470,68 +2489,54 @@ class PedidosMesasModule(BaseModule):
                 usuario_id=usuario_id  # Garantir que o usuario_id seja sempre passado
             )
             
-            # Se o item foi adicionado com sucesso, adicionar à lista de itens da sessão
-            if sucesso and pedido:
-                if not hasattr(self, 'itens_adicionados_na_sessao'):
-                    self.itens_adicionados_na_sessao = []
-                
-                # Obter o ID do item recém-adicionado diretamente do retorno do controlador
-                if hasattr(self.controller_mesas, 'ultimo_item_adicionado'):
-                    item_id = self.controller_mesas.ultimo_item_adicionado.get('id')
-                    if item_id:
-                        # Adicionar à lista local
-                        self.itens_adicionados_na_sessao.append({'id': item_id})
-
-                        
-                        # Garantir que o controller também tenha a lista atualizada
-                        if hasattr(self.controller_mesas, 'itens_adicionados_na_sessao'):
-                            if item_id not in [item.get('id') for item in self.controller_mesas.itens_adicionados_na_sessao if 'id' in item]:
-                                self.controller_mesas.itens_adicionados_na_sessao.append({'id': item_id})
-                                print(f"[DEBUG] Item também adicionado à sessão do controller")
-                    else:
-                        print("[ERRO] Não foi possível obter o ID do item recém-adicionado")
-            
             if sucesso and pedido:
                 # Fechar a janela de opções
                 if hasattr(self, 'janela_opcoes'):
                     self.janela_opcoes.destroy()
                 
-                # Atualizar a tabela de itens
-
-                self.carregar_pedidos(manter_itens_sessao=True)
-                
-                # Atualizar o pedido atual
+                # Atualizar a tabela de itens e o pedido atual
                 self.pedido_atual = pedido
-                
-                # Recarregar itens do pedido
-
                 self.carregar_pedidos(manter_itens_sessao=True)
-                
-                # Verificar se os itens da sessão foram mantidos
-                if hasattr(self, 'itens_adicionados_na_sessao'):
-                    pass
                 
                 # Atualizar a interface
                 self.atualizar_interface()
                 
-                # Ativar o modo de edição após adicionar um item com opções
-                self._entrar_modo_edicao()
-                
-                # Limpar campos do formulário
-                if hasattr(self, 'quantidade_var'):
-                    self.quantidade_var.set("1")
-                if hasattr(self, 'observacoes_var'):
-                    self.observacoes_var.set("")
-                
-                # Retornar sucesso sem mostrar mensagem
                 return True
             else:
                 messagebox.showerror("Erro", mensagem or "Não foi possível adicionar o item ao pedido.")
                 return False
                 
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao adicionar item com opções: {str(e)}")
+            messagebox.showerror("Erro", f"Erro ao adicionar item: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
+            
+        finally:
+            # Garantir que a janela de opções seja fechada mesmo em caso de erro
+            if hasattr(self, 'janela_opcoes') and self.janela_opcoes and self.janela_opcoes.winfo_exists():
+                try:
+                    self.janela_opcoes.destroy()
+                    del self.janela_opcoes
+                except Exception as e:
+                    print(f"Erro ao fechar janela de opções: {e}")
+            
+            # Ativar o modo de edição após adicionar um item com opções
+            if hasattr(self, 'modo_edicao'):
+                try:
+                    self.modo_edicao.entrar_modo_edicao()
+                except Exception as e:
+                    print(f"Erro ao ativar modo de edição: {e}")
+            
+            # Limpar campos do formulário
+            try:
+                if hasattr(self, 'quantidade_var'):
+                    self.quantidade_var.set("1")
+                if hasattr(self, 'observacoes_var'):
+                    self.observacoes_var.set("")
+            except Exception as e:
+                print(f"Erro ao limpar campos do formulário: {e}")
+                
     
     def _obter_todas_opcoes(self):
         """Obtém todas as opções disponíveis"""
@@ -2624,9 +2629,12 @@ class PedidosMesasModule(BaseModule):
             else:
                 # Se não tiver opções ou não tiver opções obrigatórias, adicionar diretamente
                 sucesso = self._adicionar_item_sem_opcoes(produto, quantidade, usuario_id)
-                if sucesso:
-                    # Ativar o modo de edição após adicionar um item
-                    self._entrar_modo_edicao()
+                if sucesso and hasattr(self, 'modo_edicao'):
+                    try:
+                        # Ativar o modo de edição após adicionar um item
+                        self.modo_edicao.entrar_modo_edicao()
+                    except Exception as e:
+                        print(f"Erro ao ativar modo de edição: {e}")
                 return sucesso
                 
         except Exception as e:
@@ -2635,418 +2643,6 @@ class PedidosMesasModule(BaseModule):
             traceback.print_exc()
             return False
 
-    def _criar_barras_sobreposicao(self):
-        """Cria as barras de sobreposição para cobrir a barra de navegação e superior durante a edição"""
-        # Criar barra lateral se ainda não existir
-        if self.barra_lateral_sobreposicao is None:
-            self._criar_barra_lateral_sobreposicao()
-        
-        # Criar barra superior se ainda não existir
-        if self.barra_superior_sobreposicao is None:
-            self._criar_barra_superior_sobreposicao()
-    
-    def _criar_barra_lateral_sobreposicao(self):
-        """Cria a barra lateral de sobreposição"""
-        if self.barra_lateral_sobreposicao is not None:
-            return
-            
-        # Obter a janela principal
-        janela_principal = self.frame.winfo_toplevel()
-        
-        # Calcular a altura disponível (altura total - altura da barra superior)
-        altura_disponivel = janela_principal.winfo_height() - 60  # Subtrai os 60px da barra superior
-        
-        # Criar um frame que cobre apenas a barra lateral
-        self.barra_lateral_sobreposicao = tk.Frame(
-            janela_principal,  # Usando a janela principal como pai
-            bg=CORES['terciaria'],  # Usando a cor terciária do tema
-            cursor='arrow',  # Cursor padrão para indicar que não é interativo
-            width=200,  # Largura fixa para a barra lateral (igual ao sidebar principal)
-            height=altura_disponivel  # Altura ajustada
-        )
-        
-        # Posicionar o frame para cobrir a barra lateral, começando após a barra superior
-        self.barra_lateral_sobreposicao.place(
-            x=0, 
-            y=60,  # Começa após a barra superior de 60px
-            anchor='nw',
-            height=altura_disponivel  # Usa a altura disponível
-        )
-        
-        # Adicionar texto informativo (opcional)
-        label = tk.Label(
-            self.barra_lateral_sobreposicao,
-            text="Modo Edição Ativo",
-            bg=CORES['terciaria'],
-            fg=CORES['texto_claro'],
-            font=FONTES['subtitulo'],
-            wraplength=150,
-            justify='center'
-        )
-        label.place(relx=0.5, rely=0.5, anchor='center')
-        
-        # Forçar o redesenho da janela
-        self.barra_lateral_sobreposicao.update_idletasks()
-        
-        # Trazer para frente de todos os outros widgets
-        self.barra_lateral_sobreposicao.lift()
-        
-        # Garantir que fique sempre visível
-        self.barra_lateral_sobreposicao.tkraise()
-    
-    def _criar_barra_superior_sobreposicao(self):
-        """Cria a barra superior de sobreposição"""
-        if self.barra_superior_sobreposicao is not None:
-            return
-            
-        # Obter a janela principal
-        janela_principal = self.frame.winfo_toplevel()
-        
-        # Criar um frame que cobre apenas a barra superior
-        self.barra_superior_sobreposicao = tk.Frame(
-            janela_principal,  # Usando a janela principal como pai
-            bg=CORES['primaria'],  # Usando a cor primária (azul) da barra superior
-            cursor='arrow',  # Cursor padrão para indicar que não é interativo
-            height=60  # Altura fixa para a barra superior (60px - igual ao header principal)
-        )
-        
-        # Posicionar o frame para cobrir a barra superior
-        self.barra_superior_sobreposicao.place(
-            x=0, 
-            y=0, 
-            relwidth=1.0,  # Largura total da janela
-            anchor='nw'
-        )
-        
-        # Adicionar texto informativo (opcional)
-        label = tk.Label(
-            self.barra_superior_sobreposicao,
-            text="MODO EDIÇÃO DE PEDIDO",
-            bg=CORES['primaria'],  # Usando a cor primária (azul) da barra superior
-            fg=CORES['texto_claro'],
-            font=FONTES['subtitulo'],
-            pady=15
-        )
-        label.pack(expand=True)
-        
-        # Forçar o redesenho da janela
-        self.barra_superior_sobreposicao.update_idletasks()
-        
-        # Trazer para frente de todos os outros widgets
-        self.barra_superior_sobreposicao.lift()
-        
-        # Garantir que fique sempre visível
-        self.barra_superior_sobreposicao.tkraise()
-    
-    def _remover_barras_sobreposicao(self):
-        """Remove todas as barras de sobreposição"""
-        self._remover_barra_lateral_sobreposicao()
-        self._remover_barra_superior_sobreposicao()
-    
-    def _remover_barra_lateral_sobreposicao(self):
-        """Remove a barra lateral de sobreposição"""
-        if self.barra_lateral_sobreposicao is not None:
-            self.barra_lateral_sobreposicao.destroy()
-            self.barra_lateral_sobreposicao = None
-    
-    def _remover_barra_superior_sobreposicao(self):
-        """Remove a barra superior de sobreposição"""
-        if self.barra_superior_sobreposicao is not None:
-            self.barra_superior_sobreposicao.destroy()
-            self.barra_superior_sobreposicao = None
-    
-    def _entrar_modo_edicao(self):
-        """Ativa o modo de edição, mostrando os botões de cancelar e confirmar"""
-        # Só entra no modo de edição se ainda não estiver nele
-        if not hasattr(self, '_em_modo_edicao') or not self._em_modo_edicao:
-            self._em_modo_edicao = True
-            self.botao_voltar.pack_forget()
-            self.botao_finalizar.pack_forget()
-            self.botao_cancelar.pack(side="left")
-            # Usar os mesmos parâmetros de pack que o botão finalizar para manter o mesmo tamanho
-            self.botao_confirmar.pack(fill="x", pady=5)
-            
-            # Adiciona as barras de sobreposição
-            self._criar_barras_sobreposicao()
-    
-    def _sair_modo_edicao(self, confirmar=False):
-        """
-        Desativa o modo de edição, mostrando os botões originais
-        
-        Args:
-            confirmar: Se True, mantém as alterações. Se False, descarta as alterações.
-        """
-        if hasattr(self, '_em_modo_edicao') and self._em_modo_edicao:
-            self._em_modo_edicao = False
-            self.botao_cancelar.pack_forget()
-            self.botao_confirmar.pack_forget()
-            self.botao_voltar.pack(side="left")
-            self.botao_finalizar.pack(fill="x", pady=5)
-            
-            # Remove as barras de sobreposição
-            self._remover_barras_sobreposicao()
-            
-            # Se for para confirmar as alterações, limpa a lista de itens da sessão
-            if confirmar:
-                self.itens_adicionados_na_sessao = []
-                self.itens_originais = self.itens_pedido.copy()
-    
-    def cancelar_alteracoes(self):
-        """Cancela as alterações e volta para o estado anterior"""
-        try:
-            # Obter a lista de itens adicionados na sessão do controlador
-            itens_para_remover = self.controller_mesas.itens_adicionados_na_sessao
-            
-            if not itens_para_remover:
-                # Se não houver itens adicionados na sessão, apenas sai do modo de edição
-                self._sair_modo_edicao()
-                return
-                
-            # Obter detalhes dos itens a serem removidos
-            itens_detalhes = []
-            for item in itens_para_remover:
-                if 'id' in item:
-                    # Buscar detalhes do item na tabela de itens
-                    for child in self.tabela_itens.get_children():
-                        valores = self.tabela_itens.item(child, 'values')
-                        if valores and str(valores[0]) == str(item['id']):
-                            nome_item = valores[1]
-                            quantidade = valores[2]
-                            itens_detalhes.append(f"- {quantidade}x {nome_item}")
-                            break
-            
-            # Criar mensagem com detalhes dos itens
-            mensagem = "Tem certeza que deseja cancelar as alterações?\n\n"
-            mensagem += f"Os seguintes {len(itens_para_remover)} itens serão removidos:\n"
-            
-            # Adicionar detalhes dos itens à mensagem
-            if itens_detalhes:
-                mensagem += "\n".join(itens_detalhes)
-            else:
-                mensagem += f"- {len(itens_para_remover)} itens sem detalhes disponíveis"
-            
-            # Perguntar confirmação
-            if not messagebox.askyesno(
-                "Cancelar Alterações",
-                mensagem
-            ):
-                return
-                
-            # Remover itens adicionados na sessão
-            if self.pedido_atual and 'id' in self.pedido_atual:
-                itens_removidos = 0
-                erros = []
-                
-                # Para cada item adicionado na sessão, removê-lo do pedido
-                for item in itens_para_remover:
-                    if 'id' in item:
-                        try:
-                            # Remover o item do banco de dados
-                            sucesso, mensagem = self.controller_mesas.remover_item_pedido(item_id=item['id'])
-                            if sucesso:
-                                itens_removidos += 1
-                            else:
-                                erros.append(f"Falha ao remover item {item['id']}: {mensagem}")
-                        except Exception as e:
-                            erro_msg = f"Erro ao remover item {item['id']}: {str(e)}"
-                            erros.append(erro_msg)
-                
-                # Limpar a lista de itens adicionados na sessão no controlador
-                self.controller_mesas.limpar_itens_sessao()
-                
-                # Recarregar os itens do pedido do banco de dados
-                self.carregar_pedidos(manter_itens_sessao=False)
-                
-                # Atualizar a interface
-                self.atualizar_interface()
-                
-                # Sair do modo de edição
-                self._sair_modo_edicao(confirmar=False)
-                
-                # Mostrar mensagem apenas em caso de erro
-                if erros:
-                    messagebox.showwarning(
-                        "Aviso", 
-                        f"{itens_removidos} itens removidos com sucesso.\n"
-                        f"{len(erros)} itens não puderam ser removidos.\n\n"
-                        f"Erros encontrados:\n" + "\n".join(erros[:5])
-                    )
-                
-                # Voltar para a tela de visualizar mesas
-                self.voltar_para_mesas()
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao cancelar alterações: {str(e)}")
-    
-    def confirmar_alteracoes(self):
-        """Confirma as alterações e volta para o estado normal e imprime apenas os itens adicionados na sessão"""
-        try:
-
-            
-            # Verificar se há itens adicionados na sessão para imprimir
-            if not hasattr(self, 'itens_adicionados_na_sessao') or not self.itens_adicionados_na_sessao:
-                
-                messagebox.showinfo("Aviso", "Não há novos itens para imprimir.")
-                self._sair_modo_edicao(confirmar=True)
-                return
-                
-            if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
-
-                messagebox.showerror("Erro", "Não há pedido atual para confirmar alterações.")
-                return
-                
-            for i, item in enumerate(self.itens_adicionados_na_sessao):
-                pass
-                
-            # Inicializar o gerenciador de impressão
-            config_controller = ConfigController()
-            gerenciador_impressao = GerenciadorImpressao(config_controller=config_controller)
-            
-            # Lista para armazenar os itens que serão impressos
-            itens_para_imprimir = []
-            
-                
-            # Verificar se temos conexão com o banco de dados
-            if not hasattr(self, 'db_connection') or not self.db_connection:
-           
-                messagebox.showerror("Erro", "Sem conexão com o banco de dados.")
-                return
-                
-            # Buscar os detalhes completos dos itens adicionados na sessão
-            cursor = self.db_connection.cursor(dictionary=True)
-                
-            for item_sessao in self.itens_adicionados_na_sessao:
-                if 'id' in item_sessao and item_sessao['id']:
-                    # Buscar o item completo no banco de dados
-                    cursor.execute("""
-                        SELECT ip.*, p.nome as nome_produto, p.tipo 
-                        FROM itens_pedido ip
-                        JOIN produtos p ON ip.produto_id = p.id
-                        WHERE ip.id = %s
-                    """, (item_sessao['id'],))
-                        
-                    item_completo = cursor.fetchone()
-                    
-                    if item_completo:
-                        # Buscar as opções do item, se houver
-                        cursor.execute("""
-                            SELECT * FROM itens_pedido_opcoes 
-                            WHERE item_pedido_id = %s
-                        """, (item_sessao['id'],))
-                        
-                        opcoes = cursor.fetchall()
-                        item_completo['opcoes'] = opcoes
-                        
-                        # Garantir que o tipo seja um dos tipos padrão
-                        if item_completo.get('tipo') not in ["Cozinha", "Bar", "Sobremesas", "Outros"]:
-                            item_completo['tipo'] = 'Outros'
-                        
-                        # Renomear o campo valor_unitario para preco_unitario se necessário
-                        if 'valor_unitario' in item_completo and ('preco_unitario' not in item_completo or item_completo['preco_unitario'] is None):
-                            item_completo['preco_unitario'] = item_completo['valor_unitario']
-                        
-                        # Garantir que todos os campos necessários existam
-                        campos_necessarios = {
-                            'nome': item_completo.get('nome_produto', 'Produto sem nome'),
-                            'quantidade': item_completo.get('quantidade', 1),
-                            'tipo': item_completo.get('tipo', 'Outros')
-                        }
-                        
-                        # Adicionar os campos necessários ao item
-                        for campo, valor in campos_necessarios.items():
-                            if campo not in item_completo or item_completo[campo] is None:
-                                item_completo[campo] = valor
-                            
-                        itens_para_imprimir.append(item_completo)
-                
-            cursor.close()
-            
-            # Se encontrou itens para imprimir
-            if itens_para_imprimir:
-                # Buscar o nome do usuário na tabela usuarios usando o usuario_id do pedido
-                nome_usuario = 'Não identificado'
-                usuario_id = self.pedido_atual.get('usuario_id')
-                
-                if usuario_id:
-                    try:
-                        cursor = self.db_connection.cursor(dictionary=True)
-                        cursor.execute("SELECT nome FROM usuarios WHERE id = %s", (usuario_id,))
-                        usuario = cursor.fetchone()
-                        if usuario:
-                            nome_usuario = usuario['nome']
-                        cursor.close()
-                    except Exception as e:
-                        print(f"Erro ao buscar nome do usuário: {e}")
-                
-                # Informações do pedido para o cabeçalho da impressão
-                info_pedido = {
-                    'id': self.pedido_atual['id'],
-                    'mesa': self.mesa['numero'],
-                    'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
-                    'tipo': 'ADICIONAL MESA',  # Indica que são itens adicionais
-                    'tipo_venda': 'mesa',
-                    'referencia': f"Mesa {self.mesa['numero']} - Pedido #{self.pedido_atual['id']} (Adicionais)",
-                    'usuario_nome': nome_usuario  # Adiciona o nome do usuário
-                }
-                
-                # Criar uma cópia dos itens para evitar modificar a lista original
-                itens_para_impressao = itens_para_imprimir.copy()
-                
-                # Verificar e corrigir campos antes de enviar para impressão
-                try:
-                    for item in itens_para_impressao:
-                        # Garantir que o campo nome exista (necessário para impressão)
-                        if 'nome' not in item:
-                            item['nome'] = item.get('nome_produto', 'Produto sem nome')
-
-                        
-                        # Garantir que o campo produto_id exista
-                        if 'produto_id' not in item and 'id_produto' in item:
-                            item['produto_id'] = item['id_produto']
-
-                            
-
-                    gerenciador_impressao.imprimir_comandas_por_tipo(info_pedido, itens_para_imprimir)
-                except Exception as e:
-                    messagebox.showerror("Erro", f"Erro ao preparar itens para impressão: {str(e)}")
-                    import traceback
-                    messagebox.showerror("Erro", f"Erro ao imprimir itens: {str(e)}")
-                    traceback.print_exc()
-
-            
-            # Limpar os itens da sessão no controlador e localmente
-
-            
-            # Verificar e limpar no controller
-            if hasattr(self.controller_mesas, 'limpar_itens_sessao'):
-                self.controller_mesas.limpar_itens_sessao()
-
-            elif hasattr(self.controller_mesas, 'itens_adicionados_na_sessao'):
-                self.controller_mesas.itens_adicionados_na_sessao = []
-
-            
-            # Limpar a lista local
-            if hasattr(self, 'itens_adicionados_na_sessao'):
-                qtd_antes = len(self.itens_adicionados_na_sessao)
-                self.itens_adicionados_na_sessao = []
-
-                
-            # Verificar se a limpeza foi bem-sucedida
-            if hasattr(self, 'itens_adicionados_na_sessao') and self.itens_adicionados_na_sessao:
-
-                self.itens_adicionados_na_sessao = []
-            
-            # Sair do modo de edição
-            self._sair_modo_edicao(confirmar=True)
-            
-
-            # Recarregar os itens do pedido para garantir que tudo está sincronizado
-
-            self.carregar_pedidos()
-            
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            messagebox.showerror("Erro", f"Erro ao confirmar alterações: {str(e)}")
 
     
     def remover_item_selecionado(self):
@@ -3085,7 +2681,11 @@ class PedidosMesasModule(BaseModule):
                 
                 # Se não houver mais itens, sair do modo de edição
                 if not hasattr(self, 'itens_pedido') or not self.itens_pedido:
-                    self._sair_modo_edicao(confirmar=True)
+                    if hasattr(self, 'modo_edicao') and hasattr(self.modo_edicao, '_sair_modo_edicao'):
+                        self.modo_edicao._sair_modo_edicao(confirmar=True)
+                    # Se não estiver em modo de edição, apenas atualiza a interface
+                    elif hasattr(self, 'atualizar_interface'):
+                        self.atualizar_interface()
                 
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao remover item: {str(e)}")

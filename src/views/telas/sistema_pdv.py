@@ -76,14 +76,11 @@ class SistemaPDV:
         try:
             from src.controllers.config_controller import ConfigController
             self.config_controller = ConfigController()
-            print("ConfigController inicializado com sucesso no SistemaPDV")
-            
-            # Tenta carregar as configurações de impressão para verificar se está tudo OK
+            # Tenta carregar as configurações de impressão
             try:
-                config_impressao = self.config_controller.carregar_config_impressoras()
-                print(f"Configurações de impressão carregadas: {config_impressao}")
-            except Exception as e:
-                print(f"Erro ao carregar configurações de impressão: {e}")
+                self.config_controller.carregar_config_impressoras()
+            except Exception:
+                pass
                 
         except Exception as e:
             print(f"Erro ao inicializar ConfigController: {e}")

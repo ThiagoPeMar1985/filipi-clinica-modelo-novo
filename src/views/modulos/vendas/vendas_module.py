@@ -948,19 +948,12 @@ class VendasModule:
             config_controller = self.controller.config_controller
             print("Usando config_controller do controller do VendasModule")
             
-        # Debug: verificar se o config_controller tem o método necessário
-        if config_controller:
-            if hasattr(config_controller, 'carregar_config_impressoras'):
-                print("config_controller tem o método carregar_config_impressoras")
-                try:
-                    config = config_controller.carregar_config_impressoras()
-                    print(f"Configurações de impressão carregadas: {config}")
-                except Exception as e:
-                    print(f"Erro ao carregar configurações: {e}")
-            else:
-                print("AVISO: config_controller não tem o método carregar_config_impressoras")
-        else:
-            print("AVISO: Nenhum config_controller disponível no VendasModule")
+        # Carregar configurações de impressão se disponível
+        if config_controller and hasattr(config_controller, 'carregar_config_impressoras'):
+            try:
+                config_controller.carregar_config_impressoras()
+            except Exception:
+                pass
             
         # Inicializar o módulo de pagamentos
         try:
@@ -1129,11 +1122,12 @@ class VendasModule:
             # Commit das alterações
             self.controller.db_connection.commit()
             
-            # Obter o nome do usuário logado
-            usuario_nome = "Sistema"  # Valor padrão caso não encontre o usuário
-            if hasattr(self.controller, 'usuario_atual') and self.controller.usuario_atual:
-                usuario_nome = self.controller.usuario_atual.get('nome', 'Sistema')
-                
+            # Obter as informações do usuário logado
+            usuario_info = {
+                'id': getattr(self.controller, 'usuario_atual', {}).get('id', 1),
+                'nome': getattr(self.controller, 'usuario_atual', {}).get('nome', 'Sistema')
+            }
+            
             # Preparar dados da venda para impressão
             venda = {
                 'tipo': venda_dados.get('tipo', 'avulsa'),
@@ -1143,7 +1137,10 @@ class VendasModule:
                 'data_venda': datetime.datetime.now(),
                 'pedido_id': pedido_id,
                 'entrada_id': entrada_ids[0] if entrada_ids else None,
-                'usuario_nome': usuario_nome  # Adiciona o nome do usuário para a impressão
+                'usuario_id': usuario_info['id'],
+                'usuario_nome': usuario_info['nome'],
+                'atendente_nome': usuario_info['nome'],
+                'usuario': usuario_info
             }
             
             # Limpar o carrinho
@@ -1155,6 +1152,85 @@ class VendasModule:
                 
             # Atualizar a interface
             self._atualizar_carrinho()
+            
+            # Imprimir a comanda
+            try:
+                from utils.impressao import GerenciadorImpressao
+                gerenciador = GerenciadorImpressao(self.controller.config_controller)
+                
+                # Obter o nome do usuário atual
+                print("\n=== DEBUG - Obtendo usuário atual ===")
+                print(f"Tipo do controller: {type(self.controller)}")
+                print(f"Atributos do controller: {dir(self.controller)}")
+                
+                # Tenta obter o usuário de várias maneiras diferentes
+                usuario_atual = getattr(self.controller, 'usuario_atual', None)
+                print(f"1. usuario_atual direto: {usuario_atual}")
+                
+                if not usuario_atual and hasattr(self.controller, 'controller'):
+                    usuario_atual = getattr(self.controller.controller, 'usuario_atual', None)
+                    print(f"2. usuario_atual do controller.controller: {usuario_atual}")
+                
+                if not usuario_atual and hasattr(self.controller, 'usuario'):
+                    usuario_atual = self.controller.usuario
+                    print(f"3. usuario direto do controller: {usuario_atual}")
+                
+                # Tenta obter o nome do usuário
+                usuario_nome = 'Sistema'
+                if usuario_atual:
+                    if hasattr(usuario_atual, 'get'):
+                        usuario_nome = usuario_atual.get('nome', 'Sistema')
+                    elif hasattr(usuario_atual, 'nome'):
+                        usuario_nome = usuario_atual.nome
+                    elif isinstance(usuario_atual, dict):
+                        usuario_nome = usuario_atual.get('nome', 'Sistema')
+                
+                print(f"4. Nome do usuário encontrado: {usuario_nome}")
+                print(f"5. Dados completos do usuário: {usuario_atual}")
+                print("=== FIM DEBUG ===\n")
+                
+                # Garante que o nome do usuário seja uma string
+                usuario_nome = str(usuario_nome).strip() if usuario_nome else 'Sistema'
+                
+                # Preparar itens para impressão
+                itens_para_impressao = []
+                for item in itens_venda:
+                    itens_para_impressao.append({
+                        'id': item.get('id'),
+                        'produto_id': item.get('id'),  # Adicionando chave produto_id para consistência
+                        'nome': item.get('nome') or item.get('produto_nome') or item.get('nome_produto', 'Produto sem nome'),
+                        'quantidade': item.get('quantidade', 1),
+                        'preco': item.get('preco') or item.get('valor_unitario') or 0.0,
+                        'total': item.get('total') or item.get('subtotal') or 0.0,
+                        'observacoes': item.get('observacoes', ''),
+                        'tipo': item.get('tipo', 'Outros'),  # Adiciona o tipo do produto
+                        'opcoes': item.get('opcoes', []),    # Inclui as opções do item
+                        'usuario_nome': usuario_nome  # Adiciona o nome do usuário
+                    })
+                
+                # Adiciona o nome do usuário ao dicionário da venda de várias maneiras diferentes
+                venda_com_usuario = venda.copy()
+                venda_com_usuario.update({
+                    'usuario_nome': usuario_nome,
+                    'atendente_nome': usuario_nome,
+                    'usuario': {
+                        'nome': usuario_nome,
+                        'id': getattr(usuario_atual, 'id', None) if hasattr(usuario_atual, 'id') else 
+                              (usuario_atual['id'] if isinstance(usuario_atual, dict) and 'id' in usuario_atual else None)
+                    }
+                })
+                
+                # Debug: mostra o dicionário de venda completo
+                print("\n=== DEBUG - Dicionário de venda ===")
+                for key, value in venda_com_usuario.items():
+                    print(f"{key}: {value} ({type(value)})")
+                print("=== FIM DEBUG ===\n")
+                
+                # Imprimir comanda
+                gerenciador.imprimir_comandas_por_tipo(venda_com_usuario, itens_para_impressao)
+                
+            except Exception as e:
+                print(f"Erro ao imprimir comanda: {e}")
             
             # Voltar para a tela inicial de vendas sem mostrar mensagem de sucesso
             self._show_venda_avulsa()
