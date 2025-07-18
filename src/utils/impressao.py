@@ -628,19 +628,23 @@ class GerenciadorImpressao:
                 
                 # Se for dinheiro, verifica se tem troco
                 if forma == 'dinheiro':
-                    # Procura pelo pagamento de troco
-                    for pgt in pagamentos:
-                        if pgt.get('forma_nome', '').lower() == 'troco':
-                            troco = float(pgt.get('valor', 0))
-                            if troco > 0:
-                                valor_total_pago = valor + troco
-                                conteudo.append(f"{forma_formatada.upper():<15} R$ {valor_total_pago:>9.2f}")
-                                conteudo.append(f"{'TROCO:':<15} R$ {troco:>9.2f}")
-                                break
+                    # Verifica se existe um valor de troco no dicionário da venda
+                    troco = float(venda.get('troco_para', 0))
+                    
+                    # Verifica se há um pagamento de troco na lista de pagamentos
+                    for pag in pagamentos:
+                        if pag.get('forma_nome', '').lower() == 'troco':
+                            troco = float(pag.get('valor', 0))
+                            break
+                    
+                    if troco > 0:
+                        valor_total_pago = valor + troco
+                        conteudo.append(f"{forma_formatada.upper():<15} R$ {valor_total_pago:>9.2f}")
+                        conteudo.append(f"{'Troco:':<15} R$ {troco:>9.2f}")
                     else:
-                        # Se não encontrou troco, mostra apenas o valor
+                        # Se não tiver troco, mostra apenas o valor
                         conteudo.append(f"{forma_formatada.upper():<15} R$ {valor:>9.2f}")
-                else:
+                elif forma != 'troco':  # Ignora entradas de troco, pois já foram processadas
                     # Para outras formas de pagamento, mostra apenas o valor
                     conteudo.append(f"{forma_formatada.upper():<15} R$ {valor:>9.2f}")
         
@@ -679,10 +683,6 @@ class GerenciadorImpressao:
             'outro': 'OUTRA FORMA',
         }
         
-        # Debug: Mostrar valor da taxa de serviço recebido para impressão
-        print(f"DEBUG - _gerar_conteudo_cupom - Valor de venda['taxa_servico']: {venda.get('taxa_servico')}")
-        print(f"DEBUG - _gerar_conteudo_cupom - Tipo de venda['taxa_servico']: {type(venda.get('taxa_servico'))}")
-        print(f"DEBUG - _gerar_conteudo_cupom - Conteúdo completo de venda: {venda}")
         # Largura para papel de 80mm (48 caracteres)
         largura = 48
         
@@ -933,13 +933,7 @@ class GerenciadorImpressao:
         Returns:
             bool: True se a impressão foi bem-sucedida, False caso contrário
         """
-        print(f"DEBUG - _imprimir_texto - Iniciando impressão na impressora: {impressora}")
-        print(f"DEBUG - _imprimir_texto - Tamanho do texto: {len(texto) if texto else 0} caracteres")
-            
         if not impressora or not texto:
-            print("DEBUG - _imprimir_texto - Erro: impressora ou texto vazio")
-            print(f"DEBUG - impressora: {impressora}")
-            print(f"DEBUG - texto: {texto}")
             return False
             
         # Lista todas as impressoras disponíveis
@@ -948,7 +942,7 @@ class GerenciadorImpressao:
             impressora_upper = impressora.upper()
             impressora_virtual = any(x in impressora_upper for x in ["TO PDF", "TO XPS", "MICROSOFT XPS", "MICROSOFT PRINT TO PDF"])
             
-            print(f"DEBUG - _imprimir_texto - Impressora virtual detectada: {impressora_virtual}")
+
 
             
             if impressora_virtual:
@@ -984,13 +978,11 @@ class GerenciadorImpressao:
                 hdc.SelectObject(fonte)
                 
                 # Inicia o documento
-                print("DEBUG - _imprimir_texto - Iniciando documento PDF/XPS")
                 try:
                     hdc.StartDoc("Cupom Fiscal")
                     hdc.StartPage()
-                    print("DEBUG - _imprimir_texto - Página iniciada com sucesso")
                 except Exception as e:
-                    print(f"DEBUG - _imprimir_texto - Erro ao iniciar documento/página: {str(e)}")
+
                     return False
                 
                 # Configurações de impressão
@@ -1024,7 +1016,7 @@ class GerenciadorImpressao:
                     hdc.EndPage()
                     hdc.EndDoc()
                     hdc.DeleteDC()
-                    print("DEBUG - _imprimir_texto - Documento PDF/XPS finalizado com sucesso")
+    
                     return True
                 except Exception as e:
                     print(f"DEBUG - _imprimir_texto - Erro ao finalizar documento: {str(e)}")

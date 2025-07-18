@@ -562,8 +562,8 @@ class DeliveryController:
                 cliente_endereco, taxa_entrega, total, data_abertura,
                 observacao, status_entrega, regiao_id,
                 previsao_entrega, entregador_id, forma_pagamento, troco_para,
-                usuario_id
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                usuario_id, desconto
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             # Obter dados do cliente (assumindo que estão disponíveis em dados_pedido)
@@ -611,6 +611,15 @@ class DeliveryController:
             # Obter o valor para troco, se fornecido
             troco_para = dados_pedido.get('troco_para')
             
+            # Debug: Mostrar informações sobre o troco_para
+            print("\n=== DEBUG - DADOS DO PEDIDO (REGISTRAR) ===")
+            print(f"Forma de pagamento: {forma_pagamento}")
+            print(f"troco_para recebido: {dados_pedido.get('troco_para')}")
+            print(f"tipo do troco_para: {type(dados_pedido.get('troco_para'))}")
+            print(f"troco_para a ser salvo: {troco_para}")
+            print(f"tipo do troco_para salvo: {type(troco_para) if troco_para is not None else 'None'}")
+            print("========================================\n")
+            
             # Definir status do pedido como PENDENTE por padrão
             # O status será atualizado posteriormente quando o pagamento for confirmado
             status_pedido = 'PENDENTE'
@@ -633,7 +642,8 @@ class DeliveryController:
                 None,  # entregador_id (pode ser definido posteriormente)
                 forma_pagamento,  # forma_pagamento
                 troco_para,  # troco_para
-                usuario_id  # usuario_id do usuário logado
+                usuario_id,  # usuario_id do usuário logado
+                0.00  # desconto - sempre 0.00 para delivery
             )
             
             # Executar a inserção do pedido

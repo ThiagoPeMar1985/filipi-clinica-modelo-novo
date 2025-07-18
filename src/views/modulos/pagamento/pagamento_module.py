@@ -34,9 +34,6 @@ class PagamentoModule:
             taxa_servico: Indica se há taxa de serviço (para mesas)
             config_controller: Controlador de configurações
         """
-        # Debug: Mostrar valor da taxa de serviço recebido
-        print(f"DEBUG - PagamentoModule - Taxa de serviço recebida: {taxa_servico}")
-        print(f"DEBUG - PagamentoModule - Tipo da taxa_servico: {type(taxa_servico)}")
         self.master = master
         self.db_connection = db_connection
         self.config_controller = config_controller

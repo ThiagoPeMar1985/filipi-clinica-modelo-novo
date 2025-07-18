@@ -1378,9 +1378,6 @@ class PedidosMesasModule(BaseModule):
         if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
             messagebox.showinfo("Aviso", "Não há pedido aberto para finalizar!")
             return
-            
-        # Debug: Mostrar valor da taxa de serviço
-        print(f"DEBUG - Taxa de serviço (antes de abrir pagamento): {self.taxa_servico_var.get()}")
         
         # Verificar se existem itens no pedido
         if not hasattr(self, 'itens_pedido') or not self.itens_pedido:

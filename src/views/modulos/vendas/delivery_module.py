@@ -2165,7 +2165,13 @@ class DeliveryModule:
             # Se for pagamento em dinheiro, adicionar o valor recebido e o troco
             if forma_pagamento == 'dinheiro':
                 dados_pedido['valor_recebido'] = valor_recebido_float
-                dados_pedido['troco'] = valor_recebido_float - valor_total
+                dados_pedido['troco_para'] = valor_recebido_float - valor_total
+                print(f"\n=== DEBUG - VALOR DO TROCO ===")
+                print(f"Valor recebido: {valor_recebido_float}")
+                print(f"Valor total: {valor_total}")
+                print(f"Troco calculado: {valor_recebido_float - valor_total}")
+                print(f"Chave usada: 'troco_para'")
+                print("============================\n")
             
             # Adicionar o ID do usuário logado aos dados do pedido
             if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
@@ -2318,11 +2324,21 @@ class DeliveryModule:
                             'valor': valor_total
                         }]
                         
-                        # Se for pagamento em dinheiro, adicionar o troco
-                        if forma_pagamento.lower() == 'dinheiro' and 'troco' in dados_pedido:
+                        # Se for pagamento em dinheiro, sempre adiciona o troco (mesmo que seja zero)
+                        if forma_pagamento.lower() == 'dinheiro':
+                            troco = 0.0  # Valor padrão
+                            
+                            # Tenta obter o valor do troco do pedido
+                            if 'troco_para' in dados_pedido and dados_pedido['troco_para'] is not None:
+                                try:
+                                    troco = max(0.0, float(dados_pedido['troco_para']))
+                                except (ValueError, TypeError):
+                                    troco = 0.0
+                            
+                            # Sempre adiciona o troco, mesmo que seja zero
                             pagamentos_impressao.append({
                                 'forma_nome': 'TROCO',
-                                'valor': dados_pedido['troco']
+                                'valor': troco
                             })
                         
                         # Imprimir o demonstrativo de delivery com informações do cliente e endereço

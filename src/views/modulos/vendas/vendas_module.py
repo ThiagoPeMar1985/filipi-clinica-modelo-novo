@@ -943,10 +943,8 @@ class VendasModule:
         config_controller = None
         if hasattr(self, 'config_controller'):
             config_controller = self.config_controller
-            print("Usando config_controller do VendasModule")
         elif hasattr(self, 'controller') and hasattr(self.controller, 'config_controller'):
             config_controller = self.controller.config_controller
-            print("Usando config_controller do controller do VendasModule")
             
         # Carregar configurações de impressão se disponível
         if config_controller and hasattr(config_controller, 'carregar_config_impressoras'):
@@ -968,7 +966,6 @@ class VendasModule:
                 controller=self.controller,  # Passa a referência do controlador principal
                 config_controller=config_controller  # Passa o config_controller se disponível
             )
-            print("PagamentoModule inicializado com sucesso")
         except Exception as e:
             print(f"Erro ao inicializar PagamentoModule: {e}")
             raise
@@ -987,7 +984,9 @@ class VendasModule:
         """
         # Calcular totais
         valor_total = sum(item['total'] for item in self.carrinho)
-        desconto = float(self.desconto_var.get() or 0) if hasattr(self, 'desconto_var') else 0
+        
+        # Obter o desconto dos dados da venda (vem do módulo de pagamento)
+        desconto = float(venda_dados.get('desconto', 0))
         valor_final = valor_total - desconto
         
         # Obter informações do usuário logado do controlador principal
@@ -1159,23 +1158,13 @@ class VendasModule:
                 gerenciador = GerenciadorImpressao(self.controller.config_controller)
                 
                 # Obter o nome do usuário atual
-                print("\n=== DEBUG - Obtendo usuário atual ===")
-                print(f"Tipo do controller: {type(self.controller)}")
-                print(f"Atributos do controller: {dir(self.controller)}")
-                
-                # Tenta obter o usuário de várias maneiras diferentes
                 usuario_atual = getattr(self.controller, 'usuario_atual', None)
-                print(f"1. usuario_atual direto: {usuario_atual}")
                 
                 if not usuario_atual and hasattr(self.controller, 'controller'):
                     usuario_atual = getattr(self.controller.controller, 'usuario_atual', None)
-                    print(f"2. usuario_atual do controller.controller: {usuario_atual}")
                 
                 if not usuario_atual and hasattr(self.controller, 'usuario'):
                     usuario_atual = self.controller.usuario
-                    print(f"3. usuario direto do controller: {usuario_atual}")
-                
-                # Tenta obter o nome do usuário
                 usuario_nome = 'Sistema'
                 if usuario_atual:
                     if hasattr(usuario_atual, 'get'):
@@ -1184,10 +1173,6 @@ class VendasModule:
                         usuario_nome = usuario_atual.nome
                     elif isinstance(usuario_atual, dict):
                         usuario_nome = usuario_atual.get('nome', 'Sistema')
-                
-                print(f"4. Nome do usuário encontrado: {usuario_nome}")
-                print(f"5. Dados completos do usuário: {usuario_atual}")
-                print("=== FIM DEBUG ===\n")
                 
                 # Garante que o nome do usuário seja uma string
                 usuario_nome = str(usuario_nome).strip() if usuario_nome else 'Sistema'
@@ -1220,11 +1205,6 @@ class VendasModule:
                     }
                 })
                 
-                # Debug: mostra o dicionário de venda completo
-                print("\n=== DEBUG - Dicionário de venda ===")
-                for key, value in venda_com_usuario.items():
-                    print(f"{key}: {value} ({type(value)})")
-                print("=== FIM DEBUG ===\n")
                 
                 # Imprimir comanda
                 gerenciador.imprimir_comandas_por_tipo(venda_com_usuario, itens_para_impressao)

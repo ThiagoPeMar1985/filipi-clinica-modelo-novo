@@ -676,7 +676,6 @@ class StatusPedidosModule:
             config_controller = None
             if hasattr(self.controller, 'config_controller'):
                 config_controller = self.controller.config_controller
-                print(f"ConfigController obtido do controlador principal: {config_controller is not None}")
             else:
                 # Se não houver config_controller no controlador principal, criar um novo
                 config_controller = ConfigController()
