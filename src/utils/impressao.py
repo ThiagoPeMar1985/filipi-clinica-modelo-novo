@@ -24,26 +24,59 @@ class GerenciadorImpressao:
         self.impressoras = {}
         self._carregar_configuracoes()
         
-        # Mapeamento de tipos de produtos para tipos de impressoras
-        self.mapeamento_tipos = {
-            'Bar': 'bar',
-            'Cozinha': 'cozinha',
-            'Sobremesa': 'sobremesas',
-            'Sobremesas': 'sobremesas',  # Mantém compatibilidade com ambos os nomes
-            'Outros': 'outros',
-            'Cupom': 'cupom',
-            'cupom': 'cupom'  # Garante que mesmo em minúsculo funcione
-        }
+        # Inicializa o mapeamento de tipos vazio - será carregado do banco
+        self.mapeamento_tipos = {}
+        self._carregar_mapeamento_banco()  
+        
+    def _carregar_mapeamento_banco(self):
+        """
+        Carrega o mapeamento de tipos de produtos para impressoras do banco de dados.
+        
+        Returns:
+            bool: True se o carregamento foi bem-sucedido, False caso contrário
+        """
+        try:
+            import mysql.connector
+            from src.db.config import get_db_config
+            
+            db_config = get_db_config()
+            conn = mysql.connector.connect(**db_config)
+            cursor = conn.cursor(dictionary=True)
+            
+            # Busca todos os mapeamentos de tipos para impressoras
+            cursor.execute("""
+                SELECT tp.nome as tipo, it.impressora_id 
+                FROM impressoras_tipos it
+                JOIN tipos_produtos tp ON it.tipo_id = tp.id
+            """)
+            
+            resultados = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            if resultados:
+                self.mapeamento_tipos = {item['tipo']: str(item['impressora_id']) for item in resultados}
+    
+                return True
+                
+            print("[AVISO] Nenhum mapeamento encontrado no banco de dados")
+            return False
+            
+        except Exception as e:
+            print(f"[ERRO] Falha ao carregar mapeamento do banco: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
     
     def _carregar_configuracoes(self):
         """Carrega as configurações de impressoras do sistema."""
         # Inicializa dicionário vazio de impressoras
         self.impressoras = {
-            'cupom': '',
-            'bar': '',
-            'cozinha': '',
-            'sobremesas': '',
-            'outros': ''
+            'impressora 1': '',  # Padrão para cupom fiscal
+            'impressora 2': '',
+            'impressora 3': '',
+            'impressora 4': '',
+            'impressora 5': ''
         }
         
         # Verifica se temos um config_controller válido
@@ -58,23 +91,15 @@ class GerenciadorImpressao:
                     
                     if config and isinstance(config, dict):
                         # Mapeia as configurações para as chaves corretas
-                        mapeamento = {
-                            'cupom_fiscal': 'cupom',
-                            'bar': 'bar',
-                            'cozinha': 'cozinha',
-                            'sobremesas': 'sobremesas',
-                            'outros': 'outros'
-                        }
-                        
-                        # Atualiza apenas as configurações que existem no mapeamento
-                        for chave_config, chave_impressora in mapeamento.items():
-                            if chave_config in config and config[chave_config]:
-                                self.impressoras[chave_impressora] = config[chave_config]
+                        for i in range(1, 6):
+                            chave = f'impressora {i}'
+                            if chave in config and config[chave]:
+                                self.impressoras[chave] = config[chave]
                         
                         return
                     
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[ERRO] Erro ao carregar configurações de impressão: {e}")
         
         # Se chegou aqui, não conseguiu carregar as configurações do config_controller
         # Tenta obter a impressora padrão do sistema
@@ -88,7 +113,7 @@ class GerenciadorImpressao:
         except Exception as e:
             # Mantém o dicionário vazio em caso de erro
             self.impressoras = {}
-    
+        
     def imprimir_cupom_fiscal(self, venda, itens, pagamentos):
         """
         Imprime um cupom fiscal para a venda finalizada.
@@ -102,76 +127,76 @@ class GerenciadorImpressao:
             bool: True se a impressão foi bem-sucedida, False caso contrário
         """
         try:
-            impressora = self.impressoras.get('cupom', '')
+            # Sempre usa a impressora 1 para cupom fiscal
+            impressora = self.impressoras.get('impressora 1', '')
             if not impressora:
+                print("[ERRO] Nenhuma impressora configurada para o cupom fiscal (impressora 1)")
                 return False
             
             # Gerar o conteúdo do cupom
             conteudo = self._gerar_conteudo_cupom(venda, itens, pagamentos)
             
             # Imprimir o conteúdo
-            resultado = self._imprimir_texto(impressora, conteudo)
+            return self._imprimir_texto(impressora, conteudo)
             
-            return resultado
         except Exception as e:
-
+            print(f"[ERRO] Erro ao imprimir cupom fiscal: {e}")
+            import traceback
+            traceback.print_exc()
             return False
             
     def imprimir_comandas_por_tipo(self, venda, itens):
         """
-        Imprime comandas separadas por tipo de produto nas impressoras configuradas.
-        
-        Args:
-            venda: Dicionário com informações da venda
-            itens: Lista de itens da venda
-            
-        Returns:
-            bool: True se a impressão foi bem-sucedida, False caso contrário
+        Imprime comandas agrupadas por impressora, juntando todos os itens da mesma impressora.
         """
         try:
-            # Verificar se há itens para imprimir
             if not itens:
                 return True
-                
-            # Agrupar itens por tipo
-            itens_por_tipo = {}
+
+            
+            
+            # Dicionário para agrupar itens por impressora
+            itens_por_impressora = {}
+            
+            # Agrupa os itens por impressora
             for item in itens:
-                # Garantir que cada item vá para apenas um tipo de impressora
                 tipo = str(item.get('tipo', 'Outros')).strip()
+               
                 
                 # Padroniza o nome do tipo
                 if tipo.lower() == 'sobremesa':
                     tipo = 'Sobremesas'
                 
-                # Se o tipo não estiver no mapeamento, define como 'Outros'
-                if tipo not in self.mapeamento_tipos:
-                    tipo = 'Outros'
+                # Obtém o ID da impressora para este tipo
+                impressora_id = self.mapeamento_tipos.get(tipo, '5')  # Default para 'Outros' se não encontrar
                 
-                # Adiciona o item ao grupo correspondente
-                if tipo not in itens_por_tipo:
-                    itens_por_tipo[tipo] = []
+                # Inicializa a lista de itens para esta impressora se não existir
+                if impressora_id not in itens_por_impressora:
+                    itens_por_impressora[impressora_id] = []
                 
-                # Adiciona o item ao tipo correspondente
-                itens_por_tipo[tipo].append(item)
+                # Adiciona o item à impressora correspondente
+                itens_por_impressora[impressora_id].append(item)
             
-            # Imprimir cada grupo na impressora correspondente
-            for tipo, itens_tipo in itens_por_tipo.items():
-                # Obter o tipo de impressora correspondente
-                tipo_impressora = self.mapeamento_tipos.get(tipo, 'cupom')
-                impressora = self.impressoras.get(tipo_impressora.lower(), '')
+            # Imprime cada grupo de itens na impressora correspondente
+            for impressora_id, itens_impressora in itens_por_impressora.items():
                 
-                if impressora:
-                    # Gerar conteúdo da comanda
-                    conteudo = self._gerar_conteudo_comanda(venda, itens_tipo, tipo)
+                # Obtém o nome da impressora
+                impressora = self.impressoras.get(f'impressora {impressora_id}')
+                
+                if not impressora:
+                    print(f"[ERRO] Impressora {impressora_id} não configurada")
+                    continue
                     
-                    # Imprimir na impressora correspondente
-                    self._imprimir_texto(impressora, conteudo)
-                else:
-                    pass
+                # Gera e imprime o conteúdo com todos os itens juntos
+                conteudo = self._gerar_conteudo_comanda(venda, itens_impressora, f"Impressora {impressora_id}")
+                self._imprimir_texto(impressora, conteudo)
                 
             return True
+            
         except Exception as e:
-
+            print(f"[ERRO] Falha ao imprimir comandas por tipo: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
             
     def _gerar_conteudo_comanda(self, venda, itens, tipo_produto):
@@ -514,28 +539,42 @@ class GerenciadorImpressao:
             conteudo.append(f"Nome: {venda['cliente_nome']}")
         if venda.get('cliente_telefone'):
             conteudo.append(f"Telefone: {venda['cliente_telefone']}")
-            
-       
         
         if venda.get('endereco_entrega'):
-            # Quebra o endereço em linhas se for muito longo
-            endereco = venda['endereco_entrega']
-            while endereco:
-                linha = endereco[:largura-2]
-                conteudo.append(linha)
-                endereco = endereco[largura-2:]
-        else:
-            # Adiciona cada parte do endereço separadamente
-            if venda.get('endereco'):
-                conteudo.append(f"Rua: {venda['endereco']}")
-            if venda.get('numero'):
-                conteudo.append(f"Número: {venda['numero']}")
-            if venda.get('bairro'):
-                conteudo.append(f"Bairro: {venda['bairro']}")
+            # Se veio o endereço completo, adiciona como está
+            conteudo.append(venda['endereco_entrega'])
+            
+            # Adiciona cidade e referência se existirem
+            endereco_extra = []
             if venda.get('cidade'):
-                conteudo.append(f"Cidade: {venda['cidade']}")
-            if venda.get('referencia'):
-                conteudo.append(f"Referência: {venda['referencia']}")
+                endereco_extra.append(f"Cidade: {venda['cidade']}")
+            if venda.get('ponto_referencia'):
+                endereco_extra.append(f"Ref: {venda['ponto_referencia']}")
+
+            if endereco_extra:
+                conteudo.append(", ".join(endereco_extra))
+        else:
+            # Primeira linha: Rua, Número, Bairro
+            endereco_parts = []
+            if venda.get('endereco'):
+                endereco_parts.append(f"Rua: {venda['endereco']}")
+            if venda.get('numero'):
+                endereco_parts.append(f"Nº: {venda['numero']}")
+            if venda.get('bairro'):
+                endereco_parts.append(f"Bairro: {venda['bairro']}")
+            
+            if endereco_parts:
+                conteudo.append(", ".join(endereco_parts))
+            
+            # Segunda linha: Cidade e Referência
+            segunda_linha_parts = []
+            if venda.get('cidade'):
+                segunda_linha_parts.append(f"Cidade: {venda['cidade']}")
+            if venda.get('ponto_referencia'):
+                segunda_linha_parts.append(f"Ref: {venda['ponto_referencia']}")
+            
+            if segunda_linha_parts:
+                conteudo.append(", ".join(segunda_linha_parts))
         
         
         # Linha de separação
@@ -543,16 +582,16 @@ class GerenciadorImpressao:
         # Itens
 
         # Cabeçalho da tabela de itens
-        cabecalho = f"{'DESCRIÇÃO':<15} {'QTD':>2} {'VALOR':>12} {'SUBTOTAL':>12}"
+        cabecalho = f"{'DESCRIÇÃO':<25} {'QTD':>2} {'VALOR':>9} {'SUBTOTAL':>9}"
         conteudo.append(cabecalho)
         conteudo.append("-" * largura)
         total = 0.0
         
         for item in itens:
-            # Nome do produto (limita a 15 caracteres)
+            # Nome do produto (limita a 25 caracteres)
             nome = item.get('nome', 'Produto sem nome')
-            if len(nome) > 15:
-                nome = nome[:12] + '...'
+            if len(nome) > 25:
+                nome = nome[:25] + '...'
             
             # Quantidade (padrão 1 se não informado)
             qtd = int(item.get('quantidade', 1))
@@ -565,14 +604,14 @@ class GerenciadorImpressao:
             total += subtotal_item
             
             # Formata a linha do item
-            linha_item = f"{nome:<15} {qtd:>2}x {preco:>10.2f} {subtotal_item:>11.2f}"
+            linha_item = f"{nome:<25} {qtd:>2}x {preco:>9.2f} {subtotal_item:>9.2f}"
             conteudo.append(linha_item)
             
-            # Linha de separação após cada item
-            conteudo.append("-" * largura)
+            
         
         # Total
         # Formata o valor com 2 casas decimais
+        conteudo.append("-" * largura)
         valor_formatado = f"{total:7.2f}"
         # Cria a string do total alinhada à esquerda
         linha_total = f"{'TOTAL:':<38}R$ {valor_formatado}"
@@ -757,7 +796,7 @@ class GerenciadorImpressao:
         conteudo.append("-" * largura)
         
         # Cabeçalho da tabela de itens
-        cabecalho = f"{'DESCRIÇÃO':<15} {'QTD':>2} {'VALOR':>12} {'SUBTOTAL':>12}"
+        cabecalho = f"{'DESCRIÇÃO':<25} {'QTD':>2} {'VALOR':>9} {'SUBTOTAL':>9}"
         conteudo.append(cabecalho)
         
         # Linha de separação
@@ -811,20 +850,19 @@ class GerenciadorImpressao:
             preco = dados['preco']
             subtotal_item = dados['subtotal']
             
-            # Limita o tamanho do nome para 15 caracteres
+            # Limita o tamanho do nome para 25 caracteres
             nome_exibicao = nome
-            if len(nome_exibicao) > 15:
-                nome_exibicao = nome_exibicao[:12] + '...'
+            if len(nome_exibicao) > 25:
+                nome_exibicao = nome_exibicao[:25] + '...'
             
             # Formata a linha do item
-            linha_item = f"{nome_exibicao:<15} {qtd:>2}x {preco:>10.2f} {subtotal_item:>11.2f}"
+            linha_item = f"{nome_exibicao:<25} {qtd:>2}x {preco:>9.2f} {subtotal_item:>9.2f}"
             conteudo.append(linha_item)
-            
-            # Linha de separação após cada item
-            conteudo.append("-" * largura)
         
+
         # Total
         # Formata o valor com 2 casas decimais
+        conteudo.append("-" * largura)
         valor_formatado = f"{total:7.2f}"
         # Cria a string do total alinhada à esquerda
         linha_total = f"{'TOTAL:':<38}R$ {valor_formatado}"
@@ -942,9 +980,6 @@ class GerenciadorImpressao:
             impressora_upper = impressora.upper()
             impressora_virtual = any(x in impressora_upper for x in ["TO PDF", "TO XPS", "MICROSOFT XPS", "MICROSOFT PRINT TO PDF"])
             
-
-
-            
             if impressora_virtual:
                 # Método gráfico para impressoras virtuais (PDF, XPS, etc.)
                 hdc = win32ui.CreateDC()
@@ -954,7 +989,6 @@ class GerenciadorImpressao:
                 hdc.SetMapMode(win32con.MM_TWIPS)
                 
                 # Configura o tamanho do papel para 80mm x 297mm (comprimento contínuo)
-                # 1mm = 56.693 TWIPS
                 PAPER_WIDTH = int(80 * 56.693)      # Largura: 80mm
                 PAPER_HEIGHT = int(297 * 56.693)    # Altura: 297mm (comprimento contínuo)
                 
@@ -982,7 +1016,6 @@ class GerenciadorImpressao:
                     hdc.StartDoc("Cupom Fiscal")
                     hdc.StartPage()
                 except Exception as e:
-
                     return False
                 
                 # Configurações de impressão
@@ -1005,7 +1038,7 @@ class GerenciadorImpressao:
                     # Atualiza a posição Y para a próxima linha
                     y_position += line_height
                     
-                    # Verifica se precisa de uma nova página (deixa 1cm de margem inferior)
+                    # Verifica se precisa de uma nova página
                     if y_position > (PAPER_HEIGHT - int(10 * 56.693)):  # 10mm de margem inferior
                         hdc.EndPage()
                         hdc.StartPage()
@@ -1016,66 +1049,36 @@ class GerenciadorImpressao:
                     hdc.EndPage()
                     hdc.EndDoc()
                     hdc.DeleteDC()
-    
                     return True
                 except Exception as e:
-                    print(f"DEBUG - _imprimir_texto - Erro ao finalizar documento: {str(e)}")
                     try:
                         hdc.DeleteDC()
-                    except Exception as e:
-                        print(f"DEBUG - _imprimir_texto - Erro ao deletar DC: {str(e)}")
+                    except:
+                        pass
                     return False
-                    return False
-                
-                # Adiciona comandos para avançar e cortar o papel (para impressoras virtuais)
-                # Isso é feito adicionando os comandos ao final do texto
-                texto += '\n\n\n\x1DVA\x00'  # Avança 3 linhas e corta o papel
-                
-                return True
-                
+                    
             else:
                 # Método RAW para impressoras térmicas reais
-                print(f"DEBUG - _imprimir_texto - Iniciando impressão em impressora térmica: {impressora}")
+               
                 hprinter = None
+                
                 try:
-                    # Tenta abrir a impressora com permissões corretas
+                    # Tenta abrir a impressora
+                  
+                    hprinter = win32print.OpenPrinter(impressora)
+                    
+                    # Verificação simplificada de status
                     try:
-                        print(f"DEBUG - _imprimir_texto - Tentando abrir a impressora: {impressora}")
-                        hprinter = win32print.OpenPrinter(impressora)
-                        print(f"DEBUG - _imprimir_texto - Impressora aberta com sucesso")
-                        
-                        # Verifica se a impressora está pronta
-                        try:
-                            printer_info = win32print.GetPrinter(hprinter, 2)
-                            print(f"DEBUG - _imprimir_texto - Informações da impressora: {printer_info}")
-                            if printer_info.get('Status') != 0:
-                                print(f"DEBUG - _imprimir_texto - Status da impressora: {printer_info.get('Status')}")
-                        except Exception as e:
-                            print(f"DEBUG - _imprimir_texto - Erro ao obter informações da impressora: {str(e)}")
-                            # Continua mesmo com erro, pois algumas impressoras podem não suportar essa operação
-                            
+                        printer_info = win32print.GetPrinter(hprinter, 2)
+                        status = printer_info.get('Status', 0)
+                        if status != 0:
+                          
+                            if status & 1:  # Verifica se está sem papel
+                                print("ERRO - A impressora está sem papel")
+                                return False
                     except Exception as e:
-                        # Tenta abrir a impressora padrão
-                        try:
-                            impressora_padrao = win32print.GetDefaultPrinter()
-                            hprinter = win32print.OpenPrinter(impressora_padrao)
-                        except Exception as e2:
-                            # Cria um arquivo de log com o conteúdo que seria impresso
-                            print(f"DEBUG - _imprimir_texto - Erro ao abrir a impressora: {str(e)}")
-                            try:
-                                with open("erro_impressao.txt", "a", encoding="utf-8") as f:
-                                    f.write(f"=== Erro de impressão em {datetime.datetime.now()} ===\n")
-                                    f.write(f"Impressora: {impressora}\n")
-                                    f.write(f"Erro: {e}\n")
-                                    f.write("Conteúdo:\n")
-                                    f.write(texto)
-                                    f.write("\n\n")
-                                print("DEBUG - _imprimir_texto - Erro registrado no arquivo erro_impressao.txt")
-                            except Exception as log_error:
-                                print(f"DEBUG - _imprimir_texto - Erro ao salvar log: {str(log_error)}")
-                            return False
-                                
-                            return False
+                        print(f"DEBUG - _imprimir_texto - Erro ao verificar status: {str(e)}")
+                        # Continua mesmo com erro
                     
                     # Comandos de inicialização para impressoras térmicas
                     init_commands = [
@@ -1106,37 +1109,37 @@ class GerenciadorImpressao:
                             continue
                     
                     # Prepara o texto para impressão
-                    # Remove linhas vazias extras e adiciona quebra de linha no final de cada linha
                     linhas = [linha.rstrip() for linha in texto.split('\n') if linha.strip()]
                     texto_formatado = '\n'.join(linhas) + '\n\n\n'  # Adiciona 3 linhas em branco no final
                     
                     # Adiciona comandos para avançar e cortar o papel
-                    texto_formatado += '\n\n\n\x1DVA\x00'  # Avança 3 linhas e corta o papel (GS V 0)
+                    texto_formatado += '\n\n\n\x1DVA\x00'  # Avança 3 linhas e corta o papel
                     
-                    # Converte para bytes usando codificação cp850 (compatível com a maioria das impressoras térmicas)
+                    # Converte para bytes usando codificação cp850
                     try:
                         texto_bytes = texto_formatado.encode('cp850', errors='replace')
                         win32print.WritePrinter(hprinter, texto_bytes)
-                    except:
+                    except Exception as e:
+                        print(f"DEBUG - _imprimir_texto - Erro ao enviar texto: {str(e)}")
                         # Tenta enviar o texto em partes menores
-                        try:
-                            for linha in texto_formatado.split('\n'):
-                                if linha.strip():  # Ignora linhas vazias
+                        for linha in texto_formatado.split('\n'):
+                            if linha.strip():  # Ignora linhas vazias
+                                try:
                                     linha_bytes = (linha + '\n').encode('cp850', errors='replace')
                                     win32print.WritePrinter(hprinter, linha_bytes)
-                        except:
-                            raise
+                                except:
+                                    continue
                     
                     # Finaliza a impressão
-                    print("DEBUG - _imprimir_texto - Finalizando impressão")
+                   
                     try:
                         win32print.EndPagePrinter(hprinter)
                         win32print.EndDocPrinter(hprinter)
                         win32print.ClosePrinter(hprinter)
-                        print("DEBUG - _imprimir_texto - Impressão finalizada com sucesso")
+                      
                         return True
                     except Exception as e:
-                        print(f"DEBUG - _imprimir_texto - Erro ao finalizar impressão: {str(e)}")
+
                         try:
                             win32print.ClosePrinter(hprinter)
                         except:
@@ -1148,12 +1151,12 @@ class GerenciadorImpressao:
                     try:
                         if hprinter:
                             win32print.ClosePrinter(hprinter)
-                    except Exception as close_error:
-                        print(f"DEBUG - _imprimir_texto - Erro ao fechar a impressora: {str(close_error)}")
+                    except:
+                        pass
                     return False
                 
         except Exception as e:
-
+            print(f"DEBUG - _imprimir_texto - Erro inesperado: {str(e)}")
             return False
             
     def _obter_preco_item(self, item):

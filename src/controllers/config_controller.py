@@ -59,11 +59,11 @@ class ConfigController:
             
             # Garante que todas as chaves necessárias existam no dicionário
             config_impressoras = {
-                'cupom_fiscal': impressoras.get('cupom_fiscal', ''),
-                'bar': impressoras.get('bar', ''),
-                'cozinha': impressoras.get('cozinha', ''),
-                'sobremesas': impressoras.get('sobremesas', ''),
-                'outros': impressoras.get('outros', '')
+                'impressora 1': impressoras.get('impressora 1', ''),
+                'impressora 2': impressoras.get('impressora 2', ''),
+                'impressora 3': impressoras.get('impressora 3', ''),
+                'impressora 4': impressoras.get('impressora 4', ''),
+                'impressora 5': impressoras.get('impressora 5', '')
             }
             
             return config_impressoras

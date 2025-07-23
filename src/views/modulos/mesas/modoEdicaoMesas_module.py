@@ -462,10 +462,7 @@ class ModoEdicaoMesas:
                             opcoes = cursor.fetchall()
                             item_completo['opcoes'] = opcoes
                             
-                            # Garantir que o tipo seja um dos tipos padrão
-                            tipo_original = item_completo.get('tipo')
-                            if tipo_original not in ["Cozinha", "Bar", "Sobremesas", "Outros"]:
-                                item_completo['tipo'] = 'Outros'
+                           
                             
                             # Renomear o campo valor_unitario para preco_unitario se necessário
                             if 'valor_unitario' in item_completo and ('preco_unitario' not in item_completo or item_completo['preco_unitario'] is None):

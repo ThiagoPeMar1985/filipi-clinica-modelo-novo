@@ -15,6 +15,7 @@ from views.modulos.pagamento.pagamento_module import PagamentoModule
 from utils.impressao import GerenciadorImpressao
 from views.modulos.vendas.delivery_module import DeliveryModule
 from views.modulos.vendas.status_module import StatusPedidosModule
+from utils.produtos_utils import obter_tipos_produtos, criar_botoes_tipos_produtos
 
 class VendasModule:
     def __init__(self, parent, controller):
@@ -176,8 +177,8 @@ class VendasModule:
         # Container principal com grid para melhor divisão do espaço
         container = ttk.Frame(frame)
         container.pack(fill="both", expand=True, padx=15, pady=5)
-        container.columnconfigure(0, weight=3)  # Coluna da lista de produtos (mais larga)
-        container.columnconfigure(1, weight=2)  # Coluna do carrinho
+        container.columnconfigure(0, weight=1)  # Coluna da lista de produtos (menor largura)
+        container.columnconfigure(1, weight=4)  # Coluna do carrinho (maior largura)
         
         # Frame esquerdo - Lista de produtos
         produtos_frame = ttk.Frame(container)
@@ -194,53 +195,30 @@ class VendasModule:
             font=('Arial', 12, 'bold')
         ).pack(side="left", anchor="w")
         
-        # Campo de busca integrado ao cabeçalho
-        busca_frame = ttk.Frame(header_frame)
-        busca_frame.pack(side="right", fill="x")
-        
-        ttk.Label(busca_frame, text="Buscar:").pack(side="left", padx=(0, 5))
-        
-        busca_entry = ttk.Entry(busca_frame, width=20)
-        busca_entry.pack(side="left")
-        
-        self.busca_entry = busca_entry
-        busca_button = tk.Button(
-            busca_frame, 
-            text="Buscar", 
-            command=self._buscar_produtos,
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
-            bd=0,
-            padx=10,
-            pady=5,
-            relief='flat',
-            cursor='hand2'
-        )
-        busca_button.pack(side="left", padx=(5, 0))
-        
         # Botões para filtrar por tipo de produto em uma barra horizontal
         tipos_frame = ttk.Frame(produtos_frame)
-        tipos_frame.pack(fill="x", pady=(0, 10))
+        tipos_frame.pack(fill="x", pady=(0, 0))
         
-        # Definir os tipos de produtos
-        tipos_produtos = ["Bar", "Cozinha", "Sobremesas", "Outros"]
+        # Obter tipos de produtos do banco de dados
+        tipos_produtos = obter_tipos_produtos(self.controller.db_connection)
         
-        # Criar botões para cada tipo com distribuição uniforme
-        for i, tipo in enumerate(tipos_produtos):
-            tipos_frame.columnconfigure(i, weight=1)  # Distribuição uniforme
-            btn = tk.Button(
-                tipos_frame,
-                text=tipo,
-                bg=self.cores["primaria"],
-                fg=self.cores["texto_claro"],
-                bd=0,
-                padx=10,
-                pady=5,
-                relief='flat',
-                cursor='hand2',
-                command=lambda t=tipo: self._filtrar_produtos_por_tipo(t)
-            )
-            btn.grid(row=0, column=i, sticky="ew", padx=2)
+        # Se não houver tipos cadastrados, usar os tipos padrão
+        if not tipos_produtos:
+            tipos_produtos = [
+                {"id": 1, "nome": "Bar"},
+                {"id": 2, "nome": "Cozinha"},
+                {"id": 3, "nome": "Sobremesas"},
+                {"id": 4, "nome": "Outros"}
+            ]
+        
+        # Criar botões dinâmicos para os tipos de produtos
+        criar_botoes_tipos_produtos(
+            tipos_frame, 
+            tipos_produtos, 
+            self.cores, 
+            self._filtrar_produtos_por_tipo,
+            botoes_por_linha=5  # Alterado para 5 botões por linha
+        )
         
         # Criação de um frame para conter a tabela e a barra de rolagem
         tabela_frame = ttk.Frame(produtos_frame)
@@ -453,7 +431,13 @@ class VendasModule:
     
     def _filtrar_produtos_por_tipo(self, tipo):
         """Filtra produtos por tipo"""
-        self._carregar_produtos(tipo)
+        # Se receber um dicionário (do botão dinâmico), extrair o nome do tipo
+        if isinstance(tipo, dict):
+            tipo_nome = tipo.get('nome')
+        else:
+            tipo_nome = tipo
+            
+        self._carregar_produtos(tipo_nome)
         
     def _buscar_produtos(self):
         """Busca produtos pelo termo digitado"""

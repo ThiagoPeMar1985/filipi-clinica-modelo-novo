@@ -611,14 +611,7 @@ class DeliveryController:
             # Obter o valor para troco, se fornecido
             troco_para = dados_pedido.get('troco_para')
             
-            # Debug: Mostrar informações sobre o troco_para
-            print("\n=== DEBUG - DADOS DO PEDIDO (REGISTRAR) ===")
-            print(f"Forma de pagamento: {forma_pagamento}")
-            print(f"troco_para recebido: {dados_pedido.get('troco_para')}")
-            print(f"tipo do troco_para: {type(dados_pedido.get('troco_para'))}")
-            print(f"troco_para a ser salvo: {troco_para}")
-            print(f"tipo do troco_para salvo: {type(troco_para) if troco_para is not None else 'None'}")
-            print("========================================\n")
+          
             
             # Definir status do pedido como PENDENTE por padrão
             # O status será atualizado posteriormente quando o pagamento for confirmado

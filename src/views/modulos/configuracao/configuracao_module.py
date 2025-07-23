@@ -699,35 +699,30 @@ class ConfiguracaoModule(BaseModule):
                 row=row_start, column=0, columnspan=3, pady=(30, 15), sticky='w'
             )
             
-            valor_cupom = config_salva.get('cupom_fiscal', '')
-            self.imp_cupom = self.criar_linha_impressora(
-                frame, "Cupom Fiscal:", row_start+1, impressoras,
-                valor_cupom
+            self.imp_impressora1 = self.criar_linha_impressora(
+                frame, "impressora 1:", row_start+1, impressoras,
+                config_salva.get('impressora 1', '')
             )
-            
-            # Impressora da Cozinha
-            self.imp_cozinha = self.criar_linha_impressora(
-                frame, "Cozinha:", row_start+2, impressoras,
-                config_salva.get('cozinha', '')
+           
+            self.imp_impressora2 = self.criar_linha_impressora(
+                frame, "impressora 2:", row_start+2, impressoras,
+                config_salva.get('impressora 2', '')
             )
-            
-            # Impressora do Bar
-            self.imp_bar = self.criar_linha_impressora(
-                frame, "Bar:", row_start+3, impressoras,
-                config_salva.get('bar', '')
+
+            self.imp_impressora3 = self.criar_linha_impressora(
+                frame, "impressora 3:", row_start+3, impressoras,
+                config_salva.get('impressora 3', '')
             )
-            
-            # Impressora de Sobremesas
-            self.imp_sobremesas = self.criar_linha_impressora(
-                frame, "Sobremesas:", row_start+4, impressoras,
-                config_salva.get('sobremesas', '')
+
+            self.imp_impressora4 = self.criar_linha_impressora(
+                frame, "impressora 4:", row_start+4, impressoras,
+                config_salva.get('impressora 4', '')
             )
-            
-            # Impressora para Outros
-            self.imp_outros = self.criar_linha_impressora(
-                frame, "Outros:", row_start+5, impressoras,
-                config_salva.get('outros', '')
-            )
+
+            self.imp_impressora5 = self.criar_linha_impressora(
+                frame, "impressora 5:", row_start+5, impressoras,
+                config_salva.get('impressora 5', '')
+            )   
             
             # Configura o tamanho da fonte
             tk.Label(
@@ -899,11 +894,11 @@ class ConfiguracaoModule(BaseModule):
         try:
             # Coleta os dados das impressoras
             dados = {
-                'cupom_fiscal': self.imp_cupom.get() if hasattr(self, 'imp_cupom') else '',
-                'cozinha': self.imp_cozinha.get() if hasattr(self, 'imp_cozinha') else '',
-                'bar': self.imp_bar.get() if hasattr(self, 'imp_bar') else '',
-                'sobremesas': self.imp_sobremesas.get() if hasattr(self, 'imp_sobremesas') else '',
-                'outros': self.imp_outros.get() if hasattr(self, 'imp_outros') else '',
+                'impressora 1': self.imp_impressora1.get() if hasattr(self, 'imp_impressora1') else '',
+                'impressora 2': self.imp_impressora2.get() if hasattr(self, 'imp_impressora2') else '',
+                'impressora 3': self.imp_impressora3.get() if hasattr(self, 'imp_impressora3') else '',
+                'impressora 4': self.imp_impressora4.get() if hasattr(self, 'imp_impressora4') else '',
+                'impressora 5': self.imp_impressora5.get() if hasattr(self, 'imp_impressora5') else '',
                 'tamanho_fonte': self.imp_tamanho_fonte.get() if hasattr(self, 'imp_tamanho_fonte') else '12'
             }
             

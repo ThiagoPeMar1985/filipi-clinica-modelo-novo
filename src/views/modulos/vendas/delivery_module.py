@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox, simpledialog
 import datetime
 import sys
 from pathlib import Path
+from utils.produtos_utils import obter_tipos_produtos, criar_botoes_tipos_produtos
 
 # Importar configurações de estilo
 from config.estilos import CORES, FONTES, aplicar_estilo
@@ -101,8 +102,8 @@ class DeliveryModule:
         # Container principal com grid para melhor divisão do espaço
         container = ttk.Frame(frame)
         container.pack(fill="both", expand=True, padx=15, pady=5)
-        container.columnconfigure(0, weight=3)  # Coluna da lista de produtos (mais larga)
-        container.columnconfigure(1, weight=2)  # Coluna do carrinho
+        container.columnconfigure(0, weight=1)  # Coluna da lista de produtos (menor largura)
+        container.columnconfigure(1, weight=4)  # Coluna do carrinho (maior largura)
         
         # Área de busca de cliente (entre o título e a lista de produtos)
         cliente_frame = ttk.Frame(container)
@@ -243,52 +244,42 @@ class DeliveryModule:
             font=('Arial', 12, 'bold')
         ).pack(side="left", anchor="w")
         
-        # Campo de busca integrado ao cabeçalho
-        busca_frame = ttk.Frame(header_frame)
-        busca_frame.pack(side="right", fill="x")
-        
-        ttk.Label(busca_frame, text="Buscar:").pack(side="left", padx=(0, 5))
-        
-        self.busca_produto_entry = ttk.Entry(busca_frame, width=20)
-        self.busca_produto_entry.pack(side="left")
-        
-        busca_button = tk.Button(
-            busca_frame, 
-            text="Buscar", 
-            command=self._buscar_produtos,
-            bg=self.cores["primaria"],
-            fg=self.cores["texto_claro"],
-            bd=0,
-            padx=10,
-            pady=5,
-            relief='flat',
-            cursor='hand2'
-        )
-        busca_button.pack(side="left", padx=(5, 0))
+        # Campo de busca removido conforme solicitado
         
         # Botões para filtrar por tipo de produto em uma barra horizontal
-        tipos_frame = ttk.Frame(produtos_frame)
-        tipos_frame.pack(fill="x", pady=(0, 10))
+        self.tipos_frame = ttk.Frame(produtos_frame)
+        self.tipos_frame.pack(fill="x", pady=(0, 0))
         
-        # Definir os tipos de produtos
-        tipos_produtos = ["Bar", "Cozinha", "Sobremesas", "Outros"]
-        
-        # Criar botões para cada tipo com distribuição uniforme
-        for i, tipo in enumerate(tipos_produtos):
-            tipos_frame.columnconfigure(i, weight=1)  # Distribuição uniforme
-            btn = tk.Button(
-                tipos_frame,
-                text=tipo,
-                bg=self.cores["primaria"],
-                fg=self.cores["texto_claro"],
-                bd=0,
-                padx=10,
-                pady=5,
-                relief='flat',
-                cursor='hand2',
-                command=lambda t=tipo: self._filtrar_produtos_por_tipo(t)
+        # Obter tipos de produtos do banco de dados
+        db_connection = getattr(self.controller, 'db_connection', None)
+        if db_connection:
+            tipos_produtos = obter_tipos_produtos(db_connection)
+            # Criar botões dinâmicos para os tipos de produtos
+            criar_botoes_tipos_produtos(
+                self.tipos_frame, 
+                tipos_produtos, 
+                self.cores, 
+                self._filtrar_produtos_por_tipo,
+                botoes_por_linha=5  # Definindo 5 botões por linha
             )
-            btn.grid(row=0, column=i, sticky="ew", padx=2)
+        else:
+            # Fallback para botões estáticos se não houver conexão com o banco
+            tipos_estaticos = ["Bar", "Cozinha", "Sobremesas", "Outros"]
+            for i, tipo in enumerate(tipos_estaticos):
+                self.tipos_frame.columnconfigure(i, weight=1)  # Distribuição uniforme
+                btn = tk.Button(
+                    self.tipos_frame,
+                    text=tipo,
+                    bg=self.cores["primaria"],
+                    fg=self.cores["texto_claro"],
+                    bd=0,
+                    padx=10,
+                    pady=5,
+                    relief='flat',
+                    cursor='hand2',
+                    command=lambda t=tipo: self._filtrar_produtos_por_tipo(t)
+                )
+                btn.grid(row=0, column=i, sticky="ew", padx=2)
         
         # Criação de um frame para conter a tabela e a barra de rolagem
         tabela_frame = ttk.Frame(produtos_frame)
@@ -1105,6 +1096,9 @@ class DeliveryModule:
     
     def _filtrar_produtos_por_tipo(self, tipo):
         """Filtra produtos por tipo"""
+        # Se tipo for um dicionário (vindo dos botões dinâmicos), extrair o nome
+        if isinstance(tipo, dict) and "nome" in tipo:
+            tipo = tipo["nome"]
         self._carregar_produtos(tipo)
         
     def _mostrar_menu_contexto_produto(self, event):
@@ -2218,7 +2212,6 @@ class DeliveryModule:
                         # Verificar se o controller principal tem um config_controller
                         if hasattr(self.controller, 'config_controller') and self.controller.config_controller:
                             config_controller = self.controller.config_controller
-                            print("Usando config_controller do controller principal")
                             
                         # Inicializar o gerenciador de impressão
                         gerenciador = GerenciadorImpressao(config_controller)
@@ -2229,6 +2222,11 @@ class DeliveryModule:
                             'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
                             'cliente_nome': self.cliente_atual.get('nome', 'Cliente não identificado'),
                             'cliente_telefone': self.cliente_atual.get('telefone', ''),
+                            'endereco': self.cliente_atual.get('endereco', ''),  # Adiciona o endereço
+                            'numero': self.cliente_atual.get('numero', ''),      # Adiciona o número
+                            'bairro': self.cliente_atual.get('bairro', ''),      # Adiciona o bairro
+                            'cidade': self.cliente_atual.get('cidade', ''),      # Adiciona a cidade
+                            'ponto_referencia': self.cliente_atual.get('ponto_referencia', ''),  # Adiciona a referência
                             'valor_total': valor_total,
                             'tipo': 'DELIVERY',
                             'observacoes': observacoes,
@@ -2246,6 +2244,8 @@ class DeliveryModule:
                             endereco.append(str(self.cliente_atual['numero']))
                         if 'bairro' in self.cliente_atual and self.cliente_atual['bairro']:
                             endereco.append(self.cliente_atual['bairro'])
+                       
+                       
                         
                         dados_venda['endereco_entrega'] = ", ".join(endereco) if endereco else "Endereço não informado"
                         

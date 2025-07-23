@@ -94,10 +94,14 @@ quantidade_minima decimal(10,2)
 import tkinter as tk
 from tkinter import ttk, messagebox
 import datetime
+import uuid
+import json
+from src.utils.produtos_utils import obter_tipos_produtos, criar_botoes_tipos_produtos
 from ..base_module import BaseModule
 from src.config.estilos import CORES, FONTES
 from src.controllers.mesas_controller import MesasController
 from src.controllers.opcoes_controller import OpcoesController
+from src.controllers.tipos_produtos_controller import TiposProdutosController
 from src.utils.impressao import GerenciadorImpressao
 from src.controllers.config_controller import ConfigController
 from .modoEdicaoMesas_module import ModoEdicaoMesas
@@ -124,6 +128,7 @@ class PedidosMesasModule(BaseModule):
         # Inicializa os controllers
         self.controller_mesas = MesasController(db_connection=db_connection)
         self.opcoes_controller = OpcoesController(db_connection=db_connection)
+        self.tipos_controller = TiposProdutosController(db_connection=db_connection)
         
         # Inicializa as listas vazias
         self.pedidos = []
@@ -166,26 +171,96 @@ class PedidosMesasModule(BaseModule):
         # Carregar dados em segundo plano após a interface estar pronta
         self.parent.after(100, self.carregar_dados)
         
+    def _filtrar_produtos_por_tipo(self, tipo):
+        """
+        Filtra os produtos por tipo e atualiza a tabela de produtos.
+        
+        Args:
+            tipo (dict): Dicionário com as informações do tipo de produto selecionado
+        """
+        try:
+            self.tipo_selecionado = tipo if tipo else None
+            
+            # Limpar o campo de busca se existir
+            if hasattr(self, 'busca_entry') and self.busca_entry.winfo_exists():
+                self.busca_entry.delete(0, tk.END)
+            
+            # Se não houver produtos, não faz nada
+            if not hasattr(self, 'produtos') or not self.produtos:
+                print("Nenhum produto disponível para filtragem.")
+                self.preencher_tabela_produtos([])
+                return
+            
+            # Se for o botão "Todos", mostra todos os produtos
+            if tipo and tipo.get('nome') == 'Todos' and tipo.get('id') is None:
+                self.preencher_tabela_produtos(self.produtos)
+                return
+                
+            # Usar o método _carregar_produtos para fazer a filtragem
+            self._carregar_produtos(tipo)
+            
+        except Exception as e:
+            print(f"Erro ao filtrar produtos por tipo: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Em caso de erro, mostra lista vazia
+            self.preencher_tabela_produtos([])
+    
     def carregar_dados(self):
         """Carrega os dados essenciais para iniciar o módulo e agenda o carregamento dos dados restantes"""
         try:
-            # Primeiro, carregar os produtos
+            # Carregar pedidos da mesa
+            self.carregar_pedidos()
+            
+            # Carregar produtos disponíveis
             if self.controller_mesas.carregar_produtos():
-                self.produtos = self.controller_mesas.produtos
-                self.preencher_tabela_produtos()
+                # Garantir que self.produtos seja uma lista
+                self.produtos = list(self.controller_mesas.produtos) if self.controller_mesas.produtos else []
+                
+                # Carregar tipos de produtos e criar botões dinâmicos
+                try:
+                    # Usar o controller para obter os tipos de produtos
+                    tipos_produtos = self.tipos_controller.listar_tipos()
+                    
+                    # Garantir que tipos_produtos seja uma lista
+                    if not isinstance(tipos_produtos, list):
+                        tipos_produtos = []
+                    
+                    if tipos_produtos:  # Verifica se a lista não está vazia
+                        criar_botoes_tipos_produtos(
+                            self.tipos_frame, 
+                            tipos_produtos, 
+                            CORES, 
+                            self._filtrar_produtos_por_tipo,
+                            botoes_por_linha=5  # Definindo 5 botões por linha
+                        )
+                    else:
+                        print("Nenhum tipo de produto encontrado.")
+                except Exception as e:
+                    print(f"Erro ao carregar tipos de produtos: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                # Preencher a tabela de produtos apenas se houver produtos
+                if self.produtos:
+                    self.preencher_tabela_produtos()
+                else:
+                    messagebox.showwarning("Aviso", "Nenhum produto cadastrado no sistema.")
+            else:
+                messagebox.showerror("Erro", "Não foi possível carregar os produtos.")
+                self.produtos = []
             
-            # Em seguida, carregar os pedidos da mesa
-            if self.mesa and self.controller_mesas.carregar_pedidos(self.mesa['id']):
-                self.pedidos = self.controller_mesas.pedidos
-                self.pedido_atual = self.controller_mesas.pedido_atual
-                self.itens_pedido = self.controller_mesas.itens_pedido
-                self.preencher_tabela_itens()
+            # Atualizar a interface
+            self.atualizar_interface()
             
+            return True
         except Exception as e:
-            print(f"Erro ao carregar dados: {str(e)}")
             import traceback
             traceback.print_exc()
-    
+            messagebox.showerror("Erro", f"Erro ao carregar dados: {str(e)}")
+            return False
+            
     def carregar_pedidos(self, manter_itens_sessao=False):
         """
         Carrega os pedidos da mesa atual usando o controller
@@ -245,7 +320,7 @@ class PedidosMesasModule(BaseModule):
             pady=5,
             relief='flat',
             cursor='hand2',
-            command=self.voltar_para_mesas
+            command=self._voltar_para_mesas
         )
         self.botao_voltar.pack(side="left")
         
@@ -279,8 +354,8 @@ class PedidosMesasModule(BaseModule):
         # Container principal com grid para melhor divisão do espaço
         container = ttk.Frame(main_frame)
         container.pack(fill="both", expand=True, padx=15, pady=5)
-        container.columnconfigure(0, weight=3)  # Coluna da lista de produtos (mais larga)
-        container.columnconfigure(1, weight=2)  # Coluna do carrinho
+        container.columnconfigure(0, weight=1)  # Coluna da lista de produtos (menor largura)
+        container.columnconfigure(1, weight=4)  # Coluna do carrinho (maior largura)
         
         # Frame esquerdo - Lista de produtos
         produtos_frame = ttk.Frame(container)
@@ -297,52 +372,12 @@ class PedidosMesasModule(BaseModule):
             font=FONTES['subtitulo']
         ).pack(side="left", anchor="w")
         
-        # Campo de busca integrado ao cabeçalho
-        busca_frame = ttk.Frame(header_frame)
-        busca_frame.pack(side="right", fill="x")
-        
-        ttk.Label(busca_frame, text="Buscar:").pack(side="left", padx=(0, 5))
-        
-        self.busca_entry = ttk.Entry(busca_frame, width=20)
-        self.busca_entry.pack(side="left")
-        
-        busca_button = tk.Button(
-            busca_frame, 
-            text="Buscar", 
-            command=self._buscar_produtos,
-            bg=CORES["primaria"],
-            fg=CORES["texto_claro"],
-            bd=0,
-            padx=10,
-            pady=5,
-            relief='flat',
-            cursor='hand2'
-        )
-        busca_button.pack(side="left", padx=(5, 0))
-        
         # Botões para filtrar por tipo de produto em uma barra horizontal
-        tipos_frame = ttk.Frame(produtos_frame)
-        tipos_frame.pack(fill="x", pady=(0, 10))
+        self.tipos_frame = ttk.Frame(produtos_frame)
+        self.tipos_frame.pack(fill="x", pady=(0, 0))
         
-        # Definir os tipos de produtos
-        tipos_produtos = ["Bar", "Cozinha", "Sobremesas", "Outros"]
-        
-        # Criar botões para cada tipo com distribuição uniforme
-        for i, tipo in enumerate(tipos_produtos):
-            tipos_frame.columnconfigure(i, weight=1)  # Distribuição uniforme
-            btn = tk.Button(
-                tipos_frame,
-                text=tipo,
-                bg=CORES["primaria"],
-                fg=CORES["texto_claro"],
-                bd=0,
-                padx=10,
-                pady=5,
-                relief='flat',
-                cursor='hand2',
-                command=lambda t=tipo: self._filtrar_produtos_por_tipo(t)
-            )
-            btn.grid(row=0, column=i, sticky="ew", padx=2)
+        # Os botões de tipos de produtos serão carregados dinamicamente
+        # quando os dados forem carregados
         
         # Criar tabela de produtos
         self.criar_tabela_produtos(produtos_frame)
@@ -494,63 +529,58 @@ class PedidosMesasModule(BaseModule):
     
     def criar_tabela_produtos(self, parent):
         """Cria a tabela de produtos disponíveis"""
-        # Criar frame para a tabela com scrollbar - sem bordas
-        tabela_container = tk.Frame(parent, bg=CORES['fundo_conteudo'], bd=0, highlightthickness=0)
-        tabela_container.pack(fill="both", expand=True, padx=0, pady=0)
+        # Criação de um frame para conter a tabela e a barra de rolagem
+        tabela_frame = ttk.Frame(parent)
+        tabela_frame.pack(fill="both", expand=True)
         
-        # Scrollbar
-        scrollbar = ttk.Scrollbar(tabela_container)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Colunas da tabela - usar as mesmas do módulo de vendas
+        # Tabela de produtos com altura ajustada para aproveitar mais espaço
         colunas = ("Código", "Produto", "Preço", "Estoque")
         
         # Configurar estilo para a Treeview
         from src.config.estilos import configurar_estilo_tabelas
         style = configurar_estilo_tabelas()
-        style.configure("Treeview", borderwidth=0, relief="flat")
-        style.layout("Treeview", [("Treeview.treearea", {"sticky": "nswe", "border": "0"})])
         
-        # Criar Treeview
+        # Criar Treeview com estilo personalizado
         self.tabela_produtos = ttk.Treeview(
-            tabela_container,
-            columns=colunas,
-            show="headings",
-            selectmode="browse",
-            height=10,
-            style="Treeview",
-            padding=0
+            tabela_frame, 
+            columns=colunas, 
+            show="headings", 
+            height=20, 
+            style="Produtos.Treeview"
         )
         
-        # Configurar scrollbar
-        self.tabela_produtos.config(yscrollcommand=scrollbar.set)
-        scrollbar.config(command=self.tabela_produtos.yview)
+        # Configurar menu de contexto para a tabela de produtos (apenas opções)
+        self.menu_contexto_produto = tk.Menu(self.tabela_produtos, tearoff=0)
+        self.menu_contexto_produto.add_command(
+            label="Adicionar ao Pedido", 
+            command=self._mostrar_opcoes_produto
+        )
         
         # Configurar cabeçalhos com larguras proporcionais
         larguras = {"Código": 80, "Produto": 200, "Preço": 100, "Estoque": 80}
-        self.tabela_produtos.heading("#0", text="", anchor="w")
         for col in colunas:
             self.tabela_produtos.heading(col, text=col)
             self.tabela_produtos.column(col, width=larguras.get(col, 100))
         
-        # Esconder a coluna #0
-        self.tabela_produtos.column("#0", width=0, stretch=tk.NO)
+        # Carregar produtos do banco de dados
+        try:
+            self.preencher_tabela_produtos()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao carregar produtos: {str(e)}")
         
-        # Preencher a tabela com os produtos
-        self.preencher_tabela_produtos()
+        # Barra de rolagem
+        scrollbar = ttk.Scrollbar(tabela_frame, orient="vertical", command=self.tabela_produtos.yview)
+        self.tabela_produtos.configure(yscroll=scrollbar.set)
         
-        # Empacotar a tabela
-        self.tabela_produtos.pack(fill="both", expand=True)
+        # Empacotar widgets
+        self.tabela_produtos.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         
-        # Configurar menu de contexto para a tabela de produtos (opções)
-        self.menu_contexto_produto = tk.Menu(self.tabela_produtos, tearoff=0)
-        self.menu_contexto_produto.add_command(label="Adicionar Opções", command=self._mostrar_opcoes_produto)
-        
-        # Vincular evento de clique duplo para mostrar opções do produto
+        # Vincular eventos
         self.tabela_produtos.bind("<Double-1>", lambda e: self._mostrar_opcoes_produto())
-        
-        # Vincular evento de clique direito
         self.tabela_produtos.bind("<Button-3>", self._mostrar_menu_contexto_produto)
+        self.tabela_produtos.bind("<Return>", lambda e: self._mostrar_opcoes_produto())
+        self.tabela_produtos.bind("<KeyPress>", self._on_key_press)
     
     def preencher_tabela_produtos(self, produtos_filtrados=None):
         """Preenche a tabela de produtos com os dados carregados ou filtrados"""
@@ -569,41 +599,358 @@ class PedidosMesasModule(BaseModule):
         if not produtos_a_mostrar:
             return
         
-        # Preparar todos os produtos antes de inserir (melhora o desempenho)
-        produtos_para_inserir = []
-        for produto in produtos_a_mostrar:
-            # Formatar o preço - usando valor_unitario ou outro campo disponível
-            # Verificar quais campos estão disponíveis no produto
-            preco_campo = None
-            for campo in ['preco', 'valor', 'valor_unitario', 'price', 'valor_venda', 'preco_venda']:
-                if campo in produto:
-                    preco_campo = campo
-                    break
+        # Ordenar produtos por nome
+        produtos_ordenados = sorted(produtos_a_mostrar, key=lambda x: x.get('nome', '').lower())
+        
+        # Inserir produtos na tabela
+        for produto in produtos_ordenados:
+            # Obter o preço do produto
+            preco = 0.0
+            for campo in ['preco_venda', 'preco', 'valor', 'valor_unitario', 'price', 'valor_venda']:
+                if campo in produto and produto[campo] is not None:
+                    try:
+                        preco = float(produto[campo])
+                        break
+                    except (ValueError, TypeError):
+                        continue
             
-            # Se encontrou um campo de preço, usar; caso contrário, usar 0.0
-            if preco_campo:
-                preco = f"R$ {float(produto[preco_campo]):.2f}".replace('.', ',')
-            else:
-                # Imprimir as chaves disponíveis para debug
-                print(f"Campos disponíveis no produto: {list(produto.keys())}")
-                preco = "R$ 0,00"
+            # Formatar preço
+            preco_formatado = f"R$ {preco:.2f}".replace('.', ',')
             
-            # Adicionar à lista de produtos para inserir (usando as mesmas colunas do módulo de vendas)
-            produtos_para_inserir.append((
-                produto['id'],                # Código
-                produto['nome'],              # Produto
-                preco,                        # Preço
-                produto.get('quantidade_minima', '0')  # Estoque (usando quantidade_minima como estoque)
+            # Obter quantidade em estoque
+            estoque = str(produto.get('estoque_atual', produto.get('quantidade_estoque', produto.get('quantidade', '0'))))
+            
+            # Inserir na tabela
+            self.tabela_produtos.insert("", "end", values=(
+                str(produto.get('id', '')),
+                produto.get('nome', 'Produto sem nome'),
+                preco_formatado,
+                estoque
             ))
         
-        # Inserir todos os produtos de uma vez
-        for valores in produtos_para_inserir:
-            self.tabela_produtos.insert("", "end", values=valores)
+        # Ajustar largura das colunas
+        for col in self.tabela_produtos["columns"]:
+            self.tabela_produtos.column(col, anchor="center" if col != "Produto" else "w")
+    
+    def _on_key_press(self, event):
+        """Lida com eventos de teclado na tabela de produtos"""
+        # Verificar se a tecla pressionada foi Enter
+        if event.keysym == 'Return':
+            self._mostrar_opcoes_produto()
+            return 'break'  # Impedir o comportamento padrão
+        
+        # Permitir navegação com as setas
+        if event.keysym in ('Up', 'Down', 'Left', 'Right'):
+            return  # Deixar o comportamento padrão
+            
+        # Focar no campo de busca quando o usuário começar a digitar
+        if event.char.isprintable() and not event.keysym.startswith('Control'):
+            if hasattr(self, 'busca_entry') and self.busca_entry.winfo_exists():
+                self.busca_entry.focus_set()
+                # Inserir o caractere digitado no campo de busca
+                self.busca_entry.insert(tk.INSERT, event.char)
+                # Disparar a busca após um pequeno atraso para garantir que o caractere foi inserido
+                self.after(10, self._buscar_produtos)
+            return 'break'  # Impedir o comportamento padrão
     
     # O método selecionar_produto foi removido pois agora o duplo clique mostra as opções do produto
     
-   
+    def _mostrar_menu_contexto_produto(self, event):
+        """Exibe o menu de contexto para o produto selecionado"""
+        # Identificar o item clicado
+        item = self.tabela_produtos.identify_row(event.y)
+        if not item:
+            return
+            
+        # Selecionar o item clicado
+        self.tabela_produtos.selection_set(item)
+        
+        try:
+            # Exibir o menu de contexto
+            self.menu_contexto_produto.tk_popup(event.x_root, event.y_root)
+        finally:
+            # Garantir que o menu seja fechado
+            self.menu_contexto_produto.grab_release()
     
+    def _mostrar_opcoes_produto(self, event=None):
+        """Exibe as opções disponíveis para o produto selecionado"""
+        # Verificar se há algum item selecionado
+        selecionado = self.tabela_produtos.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Nenhum produto selecionado.")
+            return
+        
+        # Obter os dados do produto selecionado
+        item = selecionado[0]
+        valores = self.tabela_produtos.item(item, 'values')
+        
+        # Obter o ID do produto (primeira coluna)
+        produto_id = int(valores[0])
+        
+        # Encontrar o produto na lista de produtos
+        produto = next((p for p in self.produtos if p['id'] == produto_id), None)
+        if not produto:
+            messagebox.showerror("Erro", "Produto não encontrado.")
+            return
+        
+        # Verificar se o produto tem opções
+        if produto.get('opcoes'):
+            # Se tiver opções, exibir um diálogo para selecionar as opções
+            self._mostrar_dialogo_opcoes(produto)
+        else:
+            # Se não tiver opções, adicionar diretamente ao pedido
+            self._adicionar_ao_pedido(produto_id, produto)
+    
+    def _mostrar_dialogo_opcoes(self, produto):
+        """Exibe um diálogo para selecionar as opções do produto"""
+        # Criar uma janela de diálogo
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Opções - {produto['nome']}")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Centralizar o diálogo na tela
+        largura = 400
+        altura = 300
+        x = (dialog.winfo_screenwidth() // 2) - (largura // 2)
+        y = (dialog.winfo_screenheight() // 2) - (altura // 2)
+        dialog.geometry(f"{largura}x{altura}+{x}+{y}")
+        
+        # Frame para as opções
+        frame_opcoes = ttk.LabelFrame(dialog, text="Selecione as opções desejadas")
+        frame_opcoes.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Variáveis para armazenar as seleções
+        opcoes_selecionadas = {}
+        
+        # Adicionar opções ao diálogo
+        for opcao in produto['opcoes']:
+            # Frame para cada opção
+            frame_opcao = ttk.Frame(frame_opcoes)
+            frame_opcao.pack(fill="x", padx=5, pady=5)
+            
+            # Label com o nome da opção
+            ttk.Label(frame_opcao, text=opcao['nome']).pack(side="left")
+            
+            # Se for uma opção de múltipla escolha (select)
+            if opcao['tipo'] == 'select':
+                var = tk.StringVar(value=opcao['valores'][0]['valor'] if opcao['valores'] else "")
+                opcoes_selecionadas[opcao['nome']] = var
+                
+                # Criar o menu suspenso
+                valores = [v['valor'] for v in opcao['valores']]
+                if valores:
+                    menu = ttk.OptionMenu(frame_opcao, var, *valores)
+                    menu.pack(side="right", padx=5)
+            
+            # Se for uma opção de texto
+            elif opcao['tipo'] == 'text':
+                var = tk.StringVar()
+                opcoes_selecionadas[opcao['nome']] = var
+                
+                # Campo de entrada de texto
+                entry = ttk.Entry(frame_opcao, textvariable=var)
+                entry.pack(side="right", fill="x", expand=True, padx=5)
+                
+                # Definir texto de exemplo se fornecido
+                if 'placeholder' in opcao:
+                    entry.insert(0, opcao['placeholder'])
+        
+        # Frame para os botões
+        frame_botoes = ttk.Frame(dialog)
+        frame_botoes.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # Botão de cancelar
+        btn_cancelar = ttk.Button(
+            frame_botoes, 
+            text="Cancelar", 
+            command=dialog.destroy
+        )
+        btn_cancelar.pack(side="right", padx=5)
+        
+        # Botão de confirmar
+        btn_confirmar = ttk.Button(
+            frame_botoes, 
+            text="Adicionar ao Pedido", 
+            command=lambda: self._processar_opcoes(produto, opcoes_selecionadas, dialog)
+        )
+        btn_confirmar.pack(side="right", padx=5)
+        
+        # Configurar tecla Enter para confirmar
+        dialog.bind("<Return>", lambda e: btn_confirmar.invoke())
+        
+        # Focar no diálogo
+        dialog.focus_set()
+    
+    def _processar_opcoes(self, produto, opcoes_selecionadas, dialog):
+        """Processa as opções selecionadas e adiciona o produto ao pedido"""
+        # Coletar as opções selecionadas
+        opcoes = {}
+        for nome, var in opcoes_selecionadas.items():
+            if isinstance(var, tk.StringVar):
+                opcoes[nome] = var.get()
+        
+        # Fechar o diálogo
+        dialog.destroy()
+        
+        # Adicionar o produto ao pedido com as opções selecionadas
+        self._adicionar_ao_pedido(produto['id'], produto, opcoes)
+    
+    def _carregar_produtos(self, tipo=None):
+        """
+        Carrega todos os produtos ou filtra por tipo.
+        
+        Args:
+            tipo (dict or str): Tipo de produto para filtrar. Pode ser um dicionário com 'id' e 'nome' ou uma string com o nome do tipo.
+                              Se for None, mostra todos os produtos.
+        """
+        # Limpar a tabela atual
+        for item in self.tabela_produtos.get_children():
+            self.tabela_produtos.delete(item)
+            
+        try:
+            # Obter produtos do banco de dados se necessário
+            if not hasattr(self, 'produtos') or not self.produtos:
+                if not self.controller_mesas.carregar_produtos():
+                    messagebox.showerror("Erro", "Não foi possível carregar os produtos.")
+                    return
+                self.produtos = list(self.controller_mesas.produtos) if self.controller_mesas.produtos else []
+            
+            # Se não houver tipo especificado, mostrar todos os produtos
+            if not tipo:
+                self.preencher_tabela_produtos(self.produtos)
+                return
+                
+            # Inicializar lista de produtos filtrados
+            produtos_filtrados = []
+            
+            # Se for um dicionário (do botão de filtro)
+            if isinstance(tipo, dict):
+                tipo_id = tipo.get('id')
+                tipo_nome = tipo.get('nome', '').strip().lower()
+                
+                # Primeiro tenta filtrar por tipo_id se disponível
+                if tipo_id is not None:
+                    produtos_filtrados = [p for p in self.produtos if p.get('tipo_id') == tipo_id]
+                    
+                # Se não encontrou pelo ID ou não tem ID, tenta pelo nome
+                if not produtos_filtrados and tipo_nome:
+                    produtos_filtrados = [
+                        p for p in self.produtos 
+                        if str(p.get('tipo', '')).strip().lower() == tipo_nome
+                    ]
+                    
+                # Se ainda não encontrou produtos, verifica se é o botão "Todos"
+                if not produtos_filtrados and tipo_id is None and tipo_nome == 'todos':
+                    produtos_filtrados = self.produtos
+            # Se for uma string (filtro por nome)
+            elif isinstance(tipo, str):
+                tipo_nome = tipo.strip().lower()
+                # Se for 'todos', mostra todos os produtos
+                if tipo_nome == 'todos':
+                    produtos_filtrados = self.produtos
+                else:
+                    produtos_filtrados = [
+                        p for p in self.produtos 
+                        if str(p.get('tipo', '')).strip().lower() == tipo_nome
+                    ]
+            
+            # Mostrar apenas os produtos filtrados, mesmo que a lista esteja vazia
+            self.preencher_tabela_produtos(produtos_filtrados)
+            
+        except Exception as e:
+            print(f"Erro ao carregar produtos: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", f"Ocorreu um erro ao carregar os produtos: {str(e)}")
+            # Em caso de erro, mostra todos os produtos
+            self.preencher_tabela_produtos(self.produtos)
+    
+    def _buscar_produtos(self, event=None):
+        """Busca produtos pelo termo digitado"""
+        termo = self.busca_entry.get().strip().lower()
+        
+        if not termo:
+            self._carregar_produtos(self.tipo_selecionado if hasattr(self, 'tipo_selecionado') else None)
+            return
+            
+        # Limpar a tabela atual
+        for item in self.tabela_produtos.get_children():
+            self.tabela_produtos.delete(item)
+            
+        try:
+            # Obter todos os produtos
+            if not hasattr(self, 'produtos') or not self.produtos:
+                if not self.controller_mesas.carregar_produtos():
+                    messagebox.showerror("Erro", "Não foi possível carregar os produtos.")
+                    return
+                self.produtos = list(self.controller_mesas.produtos) if self.controller_mesas.produtos else []
+            
+            # Filtrar pelo termo de busca
+            produtos_filtrados = [p for p in self.produtos if termo in p.get('nome', '').lower()]
+                
+            # Inserir na tabela
+            for produto in produtos_filtrados:
+                # Obter o preço do produto
+                preco = 0.0
+                for campo in ['preco_venda', 'preco', 'valor', 'valor_unitario', 'price', 'valor_venda']:
+                    if campo in produto and produto[campo] is not None:
+                        try:
+                            preco = float(produto[campo])
+                            break
+                        except (ValueError, TypeError):
+                            continue
+                
+                # Formatar preço
+                preco_formatado = f"R$ {preco:.2f}".replace('.', ',')
+                
+                # Obter quantidade em estoque
+                estoque = str(produto.get('estoque_atual', produto.get('quantidade_estoque', produto.get('quantidade', '0'))))
+                
+                # Inserir na tabela
+                self.tabela_produtos.insert(
+                    "", 
+                    "end", 
+                    values=(
+                        str(produto.get('id', '')), 
+                        produto.get('nome', ''), 
+                        preco_formatado, 
+                        estoque
+                    )
+                )
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao buscar produtos: {str(e)}")
+    
+    def _adicionar_ao_pedido(self, produto_id, produto, opcoes=None):
+        """Adiciona o produto ao pedido atual"""
+        # Verificar se há uma mesa selecionada
+        if not hasattr(self, 'mesa_selecionada') or not self.mesa_selecionada:
+            messagebox.showwarning("Aviso", "Selecione uma mesa primeiro.")
+            return
+        
+        # Verificar se há um pedido em andamento para a mesa
+        if self.mesa_selecionada not in self.pedidos_em_andamento:
+            self.pedidos_em_andamento[self.mesa_selecionada] = []
+        
+        # Criar o item do pedido
+        item_pedido = {
+            'produto_id': produto_id,
+            'nome': produto['nome'],
+            'quantidade': 1,  # Quantidade padrão
+            'preco': produto.get('preco_venda', 0),
+            'opcoes': opcoes or {}
+        }
+        
+        # Adicionar ao pedido
+        self.pedidos_em_andamento[self.mesa_selecionada].append(item_pedido)
+        
+        # Atualizar a exibição do pedido
+        self.atualizar_pedido()
+        
+        # Mostrar mensagem de confirmação
+        messagebox.showinfo("Sucesso", f"{produto['nome']} adicionado ao pedido.")
+    
+
     def mostrar_sem_pedidos(self, parent):
         """Exibe uma mensagem quando não há pedidos para a mesa"""
         # Frame para centralizar o conteúdo
@@ -1401,36 +1748,6 @@ class PedidosMesasModule(BaseModule):
             for item in self.itens_pedido:
                 # Criar uma cópia do item para não modificar o original
                 item_pagamento = item.copy()
-                
-                # Verificar se o item já tem o campo 'tipo'
-                if 'tipo' not in item_pagamento or not item_pagamento['tipo']:
-                    # Tentar obter o tipo do produto do banco de dados
-                    produto_id = item_pagamento.get('produto_id')
-                    if produto_id:
-                        try:
-                            cursor = self.db_connection.cursor(dictionary=True)
-                            cursor.execute("SELECT tipo FROM produtos WHERE id = %s", (produto_id,))
-                            produto = cursor.fetchone()
-                            cursor.close()
-                            
-                            if produto and produto.get('tipo'):
-                                item_pagamento['tipo'] = produto['tipo']
-                            else:
-                                # Tipo padrão se não encontrar
-                                item_pagamento['tipo'] = 'Outros'
-                        except Exception as e:
-                            print(f"Erro ao obter tipo do produto: {e}")
-                            item_pagamento['tipo'] = 'Outros'
-                    else:
-                        item_pagamento['tipo'] = 'Outros'
-                
-                # Garantir que o tipo seja um dos tipos padrão do sistema
-                # No cadastro de produtos, os tipos já são definidos como: Cozinha, Bar, Sobremesas, Outros
-                if item_pagamento['tipo'] not in ["Cozinha", "Bar", "Sobremesas", "Outros"]:
-                    # Se por algum motivo o tipo não for um dos padrões, usar 'Outros'
-                    print(f"Tipo de produto não reconhecido: {item_pagamento['tipo']}. Usando 'Outros' como padrão.")
-                    item_pagamento['tipo'] = 'Outros'
-                
                 itens_para_pagamento.append(item_pagamento)
             
             # Itens preparados para pagamento
@@ -1690,12 +2007,12 @@ class PedidosMesasModule(BaseModule):
             self.atualizar_interface()
             
             # Voltar para a tela de mesas
-            self.voltar_para_mesas()
+            self._voltar_para_mesas()
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao atualizar a interface: {str(e)}")
             # Mesmo em caso de erro, tente voltar para a tela de mesas
-            self.parent.after(500, self.voltar_para_mesas)
+            self.parent.after(500, self._voltar_para_mesas)
     
     def remover_item(self, item_id):
         """
@@ -1759,51 +2076,38 @@ class PedidosMesasModule(BaseModule):
     
     
     def _voltar_para_mesas(self):
-        """Método interno para voltar para a tela de mesas após finalizar pedido"""
+        """Método interno para voltar para a tela de mesas"""
         try:
-            # Usar o método existente para voltar para a tela de mesas
-            self.voltar_para_mesas()
+            # Ocultar este módulo
+            self.frame.pack_forget()
+            
+            # Destruir este frame para liberar memória
+            self.frame.destroy()
+            
+            # Importar o módulo de visualização de mesas
+            from src.views.modulos.mesas.visualizar_module import VisualizarMesasModule
+            
+            # Criar uma nova instância do módulo de visualização de mesas
+            visualizar_module = VisualizarMesasModule(self.parent, self.controller, self.db_connection)
+            
+            # Mostrar o módulo de visualização de mesas
+            visualizar_module.frame.pack(fill="both", expand=True)
+            
+            # Forçar atualização da interface
+            self.parent.update_idletasks()
+            
         except Exception as e:
             print(f"[ERRO] Erro ao voltar para tela de mesas: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            # Tentar uma abordagem alternativa se o método voltar_para_mesas falhar
+            # Em caso de erro, tentar uma abordagem alternativa
             try:
-                # Ocultar este módulo
-                self.frame.pack_forget()
-                
-                # Destruir este frame para liberar memória
-                self.frame.destroy()
-                
-                # Importar o módulo de visualização de mesas
-                from src.views.modulos.mesas.visualizar_module import VisualizarMesasModule
-                
-                # Criar uma nova instância do módulo de visualização de mesas
-                visualizar_module = VisualizarMesasModule(self.parent, self.controller, self.db_connection)
-                
-                # Mostrar o módulo de visualização de mesas
-                visualizar_module.frame.pack(fill="both", expand=True)
+                if hasattr(self, 'modulo_anterior') and self.modulo_anterior:
+                    self.modulo_anterior.frame.pack(fill="both", expand=True)
             except Exception as e2:
-                print(f"[ERRO] Falha na tentativa alternativa de voltar para tela de mesas: {e2}")
-                messagebox.showerror("Erro", "Não foi possível voltar para a tela de mesas. Feche e abra o sistema novamente.")
+                print(f"[ERRO] Falha ao retornar ao módulo anterior: {e2}")
+                # Se nada mais funcionar, pelo menos tente atualizar a interface
+                self.parent.update()
+
     
-    def voltar_para_mesas(self):
-        """Volta para a visualização de mesas"""
-        # Ocultar este módulo
-        self.frame.pack_forget()
-        
-        # Destruir este frame para liberar memória
-        self.frame.destroy()
-        
-        # Importar o módulo de visualização de mesas
-        from src.views.modulos.mesas.visualizar_module import VisualizarMesasModule
-        
-        # Criar uma nova instância do módulo de visualização de mesas
-        visualizar_module = VisualizarMesasModule(self.parent, self.controller, self.db_connection)
-        
-        # Mostrar o módulo de visualização de mesas
-        visualizar_module.frame.pack(fill="both", expand=True)
     
     def show(self):
         """Mostra o módulo"""
@@ -1825,22 +2129,6 @@ class PedidosMesasModule(BaseModule):
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao buscar produtos: {str(e)}")
     
-    def _filtrar_produtos_por_tipo(self, tipo):
-        """Filtra produtos por tipo"""
-        # Se não houver produtos carregados, não fazer nada
-        if not hasattr(self, 'produtos') or not self.produtos:
-            return
-            
-        # Converter para minúsculas para comparação case-insensitive
-        tipo_busca = tipo.lower()
-        
-        # Filtrar produtos pelo tipo
-        produtos_filtrados = [p for p in self.produtos 
-                            if p.get('tipo', '').lower() == tipo_busca]
-        
-        # Atualizar a tabela com os produtos filtrados
-        self.preencher_tabela_produtos(produtos_filtrados)
-            
 
     def _mostrar_menu_contexto_produto(self, event):
         """Exibe o menu de contexto para o produto selecionado"""
@@ -2688,6 +2976,9 @@ class PedidosMesasModule(BaseModule):
             messagebox.showerror("Erro", f"Erro ao remover item: {str(e)}")
             import traceback
             traceback.print_exc()
+    
+
+
     
     def _atualizar_taxa_servico(self):
         """Atualiza o valor da taxa de serviço e recalcula o total"""
