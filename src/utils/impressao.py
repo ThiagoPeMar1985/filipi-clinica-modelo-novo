@@ -1074,11 +1074,10 @@ class GerenciadorImpressao:
                         if status != 0:
                           
                             if status & 1:  # Verifica se está sem papel
-                                print("ERRO - A impressora está sem papel")
+
                                 return False
                     except Exception as e:
-                        print(f"DEBUG - _imprimir_texto - Erro ao verificar status: {str(e)}")
-                        # Continua mesmo com erro
+                        pass
                     
                     # Comandos de inicialização para impressoras térmicas
                     init_commands = [
@@ -1092,13 +1091,11 @@ class GerenciadorImpressao:
                     ]
                     
                     # Inicia um trabalho de impressão RAW
-                    print("DEBUG - _imprimir_texto - Iniciando trabalho de impressão RAW")
                     try:
                         job = win32print.StartDocPrinter(hprinter, 1, ("Cupom Fiscal", None, "RAW"))
                         win32print.StartPagePrinter(hprinter)
-                        print("DEBUG - _imprimir_texto - Trabalho de impressão iniciado com sucesso")
+
                     except Exception as e:
-                        print(f"DEBUG - _imprimir_texto - Erro ao iniciar trabalho de impressão: {str(e)}")
                         raise
                     
                     # Envia os comandos de inicialização

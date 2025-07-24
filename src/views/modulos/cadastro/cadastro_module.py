@@ -1743,7 +1743,7 @@ class CadastroModule(BaseModule):
         self._criar_formulario_config_impressoras("Configuração Impressoras")
         
     def _criar_formulario_config_impressoras(self, titulo):
-        """Cria formulário para configurar tipos de produtos por impressora"""
+        """Cria formulário para configurar tipos de produtos por impressora em formato de tabela"""
         self.limpar_conteudo()
         
         # Verificar se a tabela tipos_produtos existe, se não, criá-la
@@ -1757,127 +1757,266 @@ class CadastroModule(BaseModule):
         self.cadastro_controller = CadastroController()
         self.config_impressoras = self.cadastro_controller.carregar_config_impressoras()
         
-        # Frame principal
-        main_frame = tk.Frame(self.conteudo_frame)
-        main_frame.pack(fill='both', expand=True, padx=20, pady=10)
-        
-        # Título
-        tk.Label(main_frame, text=titulo, font=('Arial', 14, 'bold')).pack(pady=10)
-        
-        # Definição das impressoras disponíveis usando o mapeamento do controller
-        impressoras = []
-        for id_impressora, info in self.cadastro_controller.MAPEAMENTO_IMPRESSORAS.items():
-            impressoras.append({
-                "id": int(id_impressora),
-                "nome": info["nome_exibicao"],
-                "nome_interno": info["nome_interno"]
-            })
-        
-        # Frame para as listas de tipos por impressora
-        config_frame = tk.Frame(main_frame)
-        config_frame.pack(fill='both', expand=True, pady=10)
-        
-        # Criar uma coluna para cada impressora
-        for i, impressora in enumerate(impressoras):
-            # Frame para a impressora
-            imp_frame = tk.LabelFrame(config_frame, text=impressora["nome"], padx=10, pady=10)
-            imp_frame.grid(row=0, column=i, padx=10, sticky='nsew')
+        try:
+            # Frame principal com grid
+            main_frame = tk.Frame(self.conteudo_frame, bg='#f0f2f5')
+            main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+            main_frame.columnconfigure(1, weight=1)
+            main_frame.rowconfigure(1, weight=1)
             
-            # Lista de tipos para esta impressora
-            tipos_listbox = tk.Listbox(imp_frame, width=25, height=15, selectmode=tk.MULTIPLE)
-            tipos_listbox.pack(side='left', fill='both', expand=True)
+            # Frame do título
+            title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+            title_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 10))
             
-            # Barra de rolagem
-            scrollbar = tk.Scrollbar(imp_frame, orient="vertical", command=tipos_listbox.yview)
-            scrollbar.pack(side='right', fill='y')
-            tipos_listbox.config(yscrollcommand=scrollbar.set)
+            tk.Label(
+                title_frame, 
+                text="CONFIGURAÇÃO IMPRESSORAS", 
+                font=('Arial', 16, 'bold'),
+                bg='#f0f2f5',
+                fg='#000000'
+            ).pack(side='left')
             
-            # Guardar referência à listbox
-            setattr(self, f"tipos_impressora_{impressora['id']}", tipos_listbox)
-        
-        # Configurar o grid para expandir corretamente
-        for i in range(5):  # 5 impressoras
-            config_frame.columnconfigure(i, weight=1)
+            # Frame para os botões (lado esquerdo)
+            botoes_frame = tk.Frame(main_frame, bg='#f0f2f5', padx=10, pady=10)
+            botoes_frame.grid(row=1, column=0, sticky='nsew', padx=(0, 5))
+            botoes_frame.columnconfigure(0, weight=1)
             
-        # Preencher as listas com os tipos salvos anteriormente
-        self._preencher_listas_com_config_salva(tipos_existentes)
-        
-        # Frame para os botões de transferência entre listas
-        botoes_transfer_frame = tk.Frame(main_frame)
-        botoes_transfer_frame.pack(fill='x', pady=10)
-        
-        # Botões para mover tipos entre impressoras
-        botoes_config = [
-            ("Mover impressora 1", lambda: self._mover_para_impressora(1)),
-            ("Mover impressora 2", lambda: self._mover_para_impressora(2)),
-            ("Mover impressora 3", lambda: self._mover_para_impressora(3)),
-            ("Mover impressora 4", lambda: self._mover_para_impressora(4)),
-            ("Mover impressora 5", lambda: self._mover_para_impressora(5)),
-            ("Remover Selecionados", self._remover_tipos_selecionados)
-        ]
-        
-        for texto, comando in botoes_config:
-            btn = tk.Button(
-                botoes_transfer_frame,
-                text=texto,
-                command=comando,
-                bg='#4a6fa5',
-                fg='white',
-                font=('Arial', 10, 'bold'),
-                padx=10,
-                pady=5
+            # Configurando o estilo dos botões
+            btn_style = {
+                'font': ('Arial', 10, 'bold'),
+                'bg': '#4a6fa5',
+                'fg': 'white',
+                'bd': 0,
+                'padx': 20,
+                'pady': 8,
+                'relief': 'flat',
+                'cursor': 'hand2',
+                'width': 15
+            }
+            
+            # Botões para cada impressora
+            for i, info in self.cadastro_controller.MAPEAMENTO_IMPRESSORAS.items():
+                btn = tk.Button(
+                    botoes_frame,
+                    text=f"Impressora {i}",
+                    command=lambda idx=i: self._mover_para_impressora(idx),
+                    **btn_style
+                )
+                btn.pack(pady=5, fill='x')
+            
+            # Botão Salvar
+            btn_salvar = tk.Button(
+                botoes_frame, 
+                text="Salvar", 
+                command=self._salvar_config_impressoras_tabela,
+                **btn_style
             )
-            btn.pack(side='left', padx=5)
+            btn_salvar.pack(pady=5, fill='x')
+            
+            # Botão Voltar
+            btn_voltar_style = btn_style.copy()
+            btn_voltar_style['bg'] = '#f44336'  # Cor vermelha para o botão voltar
+            btn_cancelar = tk.Button(
+                botoes_frame, 
+                text="Voltar", 
+                command=self.mostrar_produtos,
+                **btn_voltar_style
+            )
+            btn_cancelar.pack(pady=5, fill='x')
+            
+            # Frame para a tabela (lado direito)
+            tabela_container = tk.Frame(main_frame, bg='#d1d8e0')
+            tabela_container.grid(row=1, column=1, sticky='nsew', padx=(5, 0))
+            
+            # Frame interno para a tabela
+            tabela_frame = tk.Frame(tabela_container, bg='white', padx=1, pady=1)
+            tabela_frame.pack(fill='both', expand=True, padx=1, pady=1)
+            
+            # Adicionar as impressoras como colunas
+            colunas = []
+            impressoras = []
+            for id_impressora, info in self.cadastro_controller.MAPEAMENTO_IMPRESSORAS.items():
+                nome_impressora = info["nome_exibicao"]
+                colunas.append(nome_impressora)
+                impressoras.append({
+                    'id': int(id_impressora),
+                    'nome': nome_impressora,
+                    'nome_interno': info["nome_interno"]
+                })
+            
+            # Configurar estilo para a Treeview
+            style = ttk.Style()
+            style.configure("Treeview", 
+                background="#ffffff",
+                foreground="#000000",
+                rowheight=30,
+                fieldbackground="#ffffff",
+                borderwidth=0)
+                
+            
+            style.configure("Treeview.Heading", 
+                font=('Arial', 10, 'bold'),
+                background='#4a6fa5',
+                foreground='black',
+                relief='flat')
+                
+            style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
+            
+            # Criar a tabela
+            self.tabela_impressoras = ttk.Treeview(
+                tabela_frame,
+                columns=colunas,
+                show='headings',
+                selectmode='browse',
+                style="Treeview"
+            )
+            
+            # Configurar as colunas
+            for col in colunas:
+                self.tabela_impressoras.heading(col, text=col, anchor='center')
+                self.tabela_impressoras.column(col, anchor='center', width=200)
+            
+            # Adicionar barra de rolagem
+            scrollbar_y = ttk.Scrollbar(tabela_frame, orient="vertical", command=self.tabela_impressoras.yview)
+            scrollbar_x = ttk.Scrollbar(tabela_frame, orient="horizontal", command=self.tabela_impressoras.xview)
+            self.tabela_impressoras.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+            
+            # Posicionar a tabela e as barras de rolagem
+            self.tabela_impressoras.pack(side='left', fill='both', expand=True)
+            scrollbar_y.pack(side='right', fill='y')
+            scrollbar_x.pack(side='bottom', fill='x')
+            
+            # Preencher a tabela com os tipos de produtos
+            self._preencher_tabela_impressoras(tipos_existentes, impressoras)
+            
+            # Configurar estilo para linhas alternadas
+            self.tabela_impressoras.tag_configure('linha', background='white')
+            self.tabela_impressoras.tag_configure('linha_selecionada', background='#e6f3ff')
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao criar formulário de configuração: {str(e)}")
+            print(f"Erro detalhado: {e}")
+            import traceback
+            traceback.print_exc()
         
-        # Frame para os botões de ação
-        botoes_frame = tk.Frame(main_frame)
-        botoes_frame.pack(fill='x', pady=20)
+    def _preencher_tabela_impressoras(self, tipos, impressoras):
+        """Preenche a tabela com os tipos de produtos, um por linha, na coluna correta"""
+        # Limpar a tabela
+        for item in self.tabela_impressoras.get_children():
+            self.tabela_impressoras.delete(item)
         
-        # Botão Salvar
-        btn_salvar = tk.Button(
-            botoes_frame, 
-            text="Salvar Configurações", 
-            command=self._salvar_config_impressoras,
-            bg='#4a6fa5',
-            fg='white',
-            font=('Arial', 10, 'bold'),
-            padx=20,
-            pady=5
-        )
-        btn_salvar.pack(side='left', padx=(0, 10))
+        # Para cada impressora
+        for impressora in impressoras:
+            impressora_id = str(impressora['id'])
+            if impressora_id in self.config_impressoras:
+                # Para cada tipo de produto nesta impressora
+                for tipo_nome in self.config_impressoras[impressora_id]:
+                    # Criar uma linha com o item na coluna correta
+                    valores = [""] * len(impressoras)  # Lista vazia com tamanho do número de impressoras
+                    idx = next((i for i, imp in enumerate(impressoras) if str(imp['id']) == impressora_id), -1)
+                    if idx >= 0:
+                        valores[idx] = tipo_nome
+                        # Inserir a linha na tabela
+                        self.tabela_impressoras.insert('', 'end', values=valores, tags=('linha',))
         
-        # Botão Cancelar
-        btn_cancelar = tk.Button(
-            botoes_frame, 
-            text="Cancelar", 
-            command=self.mostrar_produtos,
-            bg='#f44336',
-            fg='white',
-            font=('Arial', 10, 'bold'),
-            padx=20,
-            pady=5
-        )
-        btn_cancelar.pack(side='left')
+        # Manter as configurações de estilo existentes
+        self.tabela_impressoras.tag_configure('linha', background='white')
+        self.tabela_impressoras.tag_configure('linha_selecionada', background='#e6f3ff')
+        
+    def _salvar_config_impressoras_tabela(self):
+        """Salva a configuração de impressoras a partir da tabela"""
+        try:
+            from src.controllers.cadastro_controller import CadastroController
+            controller = CadastroController()
+            
+            # Salvar as configurações
+            sucesso = controller.salvar_config_impressoras(self.config_impressoras)
+            
+            if sucesso:
+                messagebox.showinfo("Sucesso", "Configurações de impressoras salvas com sucesso!")
+                self.mostrar_produtos()
+            else:
+                messagebox.showerror("Erro", "Não foi possível salvar as configurações.")
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro ao salvar as configurações: {str(e)}")
+            print(f"Erro ao salvar configurações: {e}")
+            import traceback
+            traceback.print_exc()
         
     def _mover_para_impressora(self, impressora_id):
         """Move os tipos selecionados para a impressora especificada"""
-        # Obter todos os tipos selecionados em todas as listas
-        tipos_selecionados = []
-        for imp_id in range(1, 6):  # 5 impressoras
-            listbox = getattr(self, f"tipos_impressora_{imp_id}")
-            selecao = listbox.curselection()
-            if selecao:
-                tipos = [listbox.get(i) for i in selecao]
-                tipos_selecionados.extend(tipos)
+        try:
+            # Obter o item selecionado na tabela
+            selecionado = self.tabela_impressoras.selection()
+            
+            if not selecionado:
+                messagebox.showwarning("Aviso", "Nenhum item selecionado.")
+                return
+
+            # Obter os valores da linha selecionada
+            valores = self.tabela_impressoras.item(selecionado[0], 'values')
+            
+            # Encontrar o índice da coluna onde está o valor (não vazio)
+            coluna_idx = None
+            for i, valor in enumerate(valores):
+                if valor:  # Encontrou a coluna com valor
+                    coluna_idx = i
+                    break
+                    
+            if coluna_idx is None:
+                return  # Nenhum valor encontrado na linha
+
+            # Obter o nome do tipo
+            tipo_nome = valores[coluna_idx]
+            
+            # Ajuste: O índice da coluna é igual ao ID da impressora - 1
+            # pois as colunas são: 0=impressora1, 1=impressora2, etc.
+            impressora_destino_id = int(impressora_id)  # Já vem como 1, 2, 3, 4, 5
+            
+            if not 1 <= impressora_destino_id <= 5:
+                messagebox.showerror("Erro", "ID de impressora inválido.")
+                return
                 
-                # Remover os itens selecionados da lista atual
-                for i in reversed(selecao):
-                    listbox.delete(i)
-        
-        # Adicionar os tipos selecionados à impressora de destino
-        listbox_destino = getattr(self, f"tipos_impressora_{impressora_id}")
-        for tipo in tipos_selecionados:
-            listbox_destino.insert(tk.END, tipo)
+            
+            # Obter o ID da coluna de origem (a que contém o item selecionado)
+            # Lembrando que as colunas são indexadas a partir de 0, mas os IDs de impressora começam em 1
+            coluna_origem_id = coluna_idx + 1
+
+            
+            # Atualizar a configuração
+            if str(impressora_destino_id) not in self.config_impressoras:
+                self.config_impressoras[str(impressora_destino_id)] = []
+                
+            # Adicionar o tipo à impressora de destino
+            if tipo_nome not in self.config_impressoras[str(impressora_destino_id)]:
+                self.config_impressoras[str(impressora_destino_id)].append(tipo_nome)
+                
+            # Remover o tipo da impressora de origem (se não for a mesma impressora)
+            if coluna_origem_id != impressora_destino_id and str(coluna_origem_id) in self.config_impressoras:
+                if tipo_nome in self.config_impressoras[str(coluna_origem_id)]:
+                    self.config_impressoras[str(coluna_origem_id)].remove(tipo_nome)
+            
+            # Recriar a lista de tipos existentes a partir das configurações atuais
+            tipos_existentes = []
+            for tipos in self.config_impressoras.values():
+                for tipo in tipos:
+                    if {'nome': tipo} not in tipos_existentes:
+                        tipos_existentes.append({'nome': tipo})
+            
+            # Obter a lista de impressoras
+            impressoras = [
+                {'id': int(id_imp), 'nome': info['nome_exibicao']} 
+                for id_imp, info in self.cadastro_controller.MAPEAMENTO_IMPRESSORAS.items()
+            ]
+            
+            
+            # Atualizar a tabela
+            self._preencher_tabela_impressoras(tipos_existentes, impressoras)
+
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro ao mover o tipo: {str(e)}")
             
     def _preencher_listas_com_config_salva(self, tipos_existentes):
         """Preenche as listas de impressoras com as configurações salvas"""
