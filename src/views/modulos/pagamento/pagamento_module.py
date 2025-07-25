@@ -72,6 +72,25 @@ class PagamentoModule:
         
         self.frame = None
         self._criar_interface()
+
+    def _calcular_troco(self, *args):
+        try:
+            # Pega o valor pago
+            valor_pago_str = self.valor_pagamento_var.get().replace('.', '').replace(',', '.')
+            valor_pago = float(valor_pago_str) if valor_pago_str else 0.0
+            
+            # Calcula o valor restante a pagar
+            valor_restante = self.valor_final - sum(p['valor'] for p in self.pagamentos)
+            
+            # Calcula o troco (só mostra se for positivo)
+            troco = valor_pago - valor_restante
+            if troco > 0:
+                self.troco_label.config(text=f"R$ {troco:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','))
+            else:
+                self.troco_label.config(text="R$ 0,00")
+                
+        except (ValueError, AttributeError):
+            self.troco_label.config(text="R$ 0,00")    
         
     def _criar_interface(self):
         """Cria a interface do módulo de pagamentos."""
@@ -224,7 +243,23 @@ class PagamentoModule:
         # Estilo para o campo de entrada
         style.configure("Valor.TLabel", background=self.cores["fundo"], foreground=self.cores["texto"], font=("Arial", 12, "bold"))
         
-        ttk.Label(valor_frame, text="Valor a pagar:", style="Valor.TLabel").pack(side="left")
+        ttk.Label(valor_frame, text="Valor Recebido:", style="Valor.TLabel").pack(side="left")
+
+        # Frame para exibir o troco
+        troco_frame = ttk.Frame(formas_frame, style="Custom.TFrame")
+        troco_frame.pack(fill="x", pady=(0, 15), padx=10)
+
+        # Label "Troco:"
+        ttk.Label(troco_frame, text="Troco:", style="Valor.TLabel").pack(side="left")
+
+        # Label que vai exibir o valor do troco
+        self.troco_label = ttk.Label(
+            troco_frame, 
+            text="R$ 0,00", 
+            style="Valor.TLabel",
+            foreground="green"  # Opcional: deixa o valor em verde
+        )
+        self.troco_label.pack(side="right")
         
         self.valor_pagamento_var = tk.StringVar()
         self.valor_pagamento_entry = ttk.Entry(
@@ -235,6 +270,8 @@ class PagamentoModule:
             justify="right"
         )
         self.valor_pagamento_entry.pack(side="right")
+
+        self.valor_pagamento_var.trace_add("write", self._calcular_troco)
         
         # Definir valor padrão como o valor restante
         valor_restante = self.valor_final - sum(p['valor'] for p in self.pagamentos)
@@ -347,24 +384,41 @@ class PagamentoModule:
         # Vincular evento de clique direito
         self.pagamentos_tree.bind("<Button-3>", self._mostrar_menu_contexto)
         
-        # Botão de finalizar venda
-        finalizar_frame = ttk.Frame(coluna_direita)
-        finalizar_frame.pack(fill="x", pady=10)
+          # Frame para os botões de finalização
+        botoes_frame = ttk.Frame(coluna_direita)
+        botoes_frame.pack(fill="x", pady=10, expand=True)
         
-        self.finalizar_btn = tk.Button(
-            finalizar_frame,
-            text="FINALIZAR VENDA",
-            bg=self.cores["destaque"],
+        # Botão Finalizar sem Imprimir
+        self.finalizar_sem_imprimir_btn = tk.Button(
+            botoes_frame,
+            text="FINALIZAR SEM IMPRIMIR",
+            bg=self.cores["secundaria"],  # Cor azul claro do tema
             fg=self.cores["texto_claro"],
-            font=("Arial", 12, "bold"),
-            padx=15,
-            pady=12,
+            font=("Arial", 10, "bold"),
+            padx=5,
+            pady=10,
             relief="flat",
             cursor="hand2",
             state="disabled",
-            command=self._finalizar_venda
+            command=lambda: self._finalizar_venda(imprimir_cupom=False)  # Adicione este parâmetro ao método _finalizar_venda
         )
-        self.finalizar_btn.pack(fill="x")
+        self.finalizar_sem_imprimir_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        # Botão Finalizar Venda
+        self.finalizar_btn = tk.Button(
+            botoes_frame,
+            text="FINALIZAR VENDA",
+            bg=self.cores["destaque"],
+            fg=self.cores["texto_claro"],
+            font=("Arial", 10, "bold"),
+            padx=5,
+            pady=10,
+            relief="flat",
+            cursor="hand2",
+            state="disabled",
+            command=lambda: self._finalizar_venda(imprimir_cupom=True)  # Adicione este parâmetro ao método _finalizar_venda
+        )
+        self.finalizar_btn.pack(side="right", fill="x", expand=True)
         
     def _validar_desconto(self):
         """Valida se o desconto é válido."""
@@ -548,8 +602,10 @@ class PagamentoModule:
         # Usar round para evitar problemas de arredondamento com ponto flutuante
         if round(sum(p['valor'] for p in self.pagamentos), 2) >= round(self.valor_final, 2):
             self.finalizar_btn.config(state="normal")
+            self.finalizar_sem_imprimir_btn.config(state="normal") 
         else:
             self.finalizar_btn.config(state="disabled")
+            self.finalizar_sem_imprimir_btn.config(state="disabled") 
     
     def _mostrar_menu_contexto(self, event):
         """Exibe o menu de contexto ao clicar com o botão direito."""
@@ -664,7 +720,7 @@ class PagamentoModule:
         else:
             self.valor_pagamento_var.set("0,00")
     
-    def _finalizar_venda(self):
+    def _finalizar_venda(self, imprimir_cupom=True):
         """Finaliza a venda com os pagamentos realizados."""
         # Verificar se o valor pago é suficiente
         # Usar round para evitar problemas de arredondamento com ponto flutuante
@@ -678,8 +734,6 @@ class PagamentoModule:
             )
             return
             
-        # Finalizar a venda sem confirmação
-        
         # Obter o nome do usuário logado, se disponível
         nome_usuario = 'Não identificado'
         if hasattr(self, 'controller') and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
@@ -736,8 +790,8 @@ class PagamentoModule:
         if self.callback_finalizar:
             self.callback_finalizar(venda_dados, self.itens_venda, pagamentos_formatados)
         
-        # Imprimir o cupom fiscal
-        self._imprimir_cupom_fiscal(venda_dados)
+        if imprimir_cupom:
+            self._imprimir_cupom_fiscal(venda_dados)
         
         # Destruir a janela de pagamento
         if isinstance(self.master, tk.Toplevel):

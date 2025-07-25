@@ -206,7 +206,8 @@ class CadastroController:
         "2": {"nome_interno": "impressora 2", "nome_exibicao": "impressora 2"},
         "3": {"nome_interno": "impressora 3", "nome_exibicao": "impressora 3"},
         "4": {"nome_interno": "impressora 4", "nome_exibicao": "impressora 4"},
-        "5": {"nome_interno": "impressora 5", "nome_exibicao": "impressora 5"}
+        "5": {"nome_interno": "impressora 5", "nome_exibicao": "impressora 5"},
+        "6": {"nome_interno": "não imprimir", "nome_exibicao": "não imprimir"}
     }
     
     def carregar_config_impressoras(self):
@@ -225,7 +226,8 @@ class CadastroController:
             "2": [],  # Cozinha
             "3": [],  # Bar
             "4": [],  # Sobremesas
-            "5": []   # Outros
+            "5": [],  # Outros
+            "6": []   # Não imprimir
         }
         
         try:

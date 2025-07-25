@@ -76,7 +76,8 @@ class GerenciadorImpressao:
             'impressora 2': '',
             'impressora 3': '',
             'impressora 4': '',
-            'impressora 5': ''
+            'impressora 5': '',
+            'impressora 6': ''
         }
         
         # Verifica se temos um config_controller válido
@@ -91,7 +92,7 @@ class GerenciadorImpressao:
                     
                     if config and isinstance(config, dict):
                         # Mapeia as configurações para as chaves corretas
-                        for i in range(1, 6):
+                        for i in range(1, 7):
                             chave = f'impressora {i}'
                             if chave in config and config[chave]:
                                 self.impressoras[chave] = config[chave]
@@ -169,6 +170,9 @@ class GerenciadorImpressao:
                 
                 # Obtém o ID da impressora para este tipo
                 impressora_id = self.mapeamento_tipos.get(tipo, '5')  # Default para 'Outros' se não encontrar
+
+                if impressora_id == '6':
+                    continue
                 
                 # Inicializa a lista de itens para esta impressora se não existir
                 if impressora_id not in itens_por_impressora:

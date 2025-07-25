@@ -13,7 +13,8 @@ class ImpressaoController:
         2: "02 - BAR",
         3: "03 - COZINHA",
         4: "04 - AREA 1",
-        5: "05 - AREA 2"
+        5: "05 - AREA 2",
+        6: "06 - NÃO IMPRIMIR" 
     }
 
     def __init__(self, db):
@@ -48,6 +49,9 @@ class ImpressaoController:
             """, (produto['tipo'],))
             
             impressora = cursor.fetchone()
+
+            if impressora and impressora['impressora_id'] == 6:
+                return None
             
             # 3. Retornar nome da impressora ou cupom fiscal como padrão
             return self.MAPEAMENTO_IMPRESSORAS.get(

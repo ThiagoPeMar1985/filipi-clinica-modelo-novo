@@ -1658,31 +1658,7 @@ class CadastroModule(BaseModule):
             print(f"Erro detalhado: {e}")
             import traceback
             traceback.print_exc()
-            
-    
-        
 
-    def _selecionar_tipo_produto(self, event):
-        """Manipula a seleção de um tipo de produto na lista"""
-        try:
-            # Obter o índice selecionado
-            selection = self.tipos_listbox.curselection()
-            if not selection:
-                return
-                
-            index = selection[0]
-            tipo_selecionado = self.tipos_dados[index]
-            self.tipo_selecionado = tipo_selecionado
-            
-            # Habilitar botões de edição e exclusão
-            self.btn_editar_tipo.config(state='normal')
-            self.btn_excluir_tipo.config(state='normal')
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao selecionar tipo: {str(e)}")
-            print(f"Erro detalhado: {e}")
-            import traceback
-            traceback.print_exc()
-            
 
         
     def _excluir_tipo_selecionado(self):
@@ -1969,20 +1945,19 @@ class CadastroModule(BaseModule):
 
             # Obter o nome do tipo
             tipo_nome = valores[coluna_idx]
-            
+
             # Ajuste: O índice da coluna é igual ao ID da impressora - 1
             # pois as colunas são: 0=impressora1, 1=impressora2, etc.
-            impressora_destino_id = int(impressora_id)  # Já vem como 1, 2, 3, 4, 5
+            impressora_destino_id = int(impressora_id)  # Já vem como 1, 2, 3, 4, 5, 6
             
-            if not 1 <= impressora_destino_id <= 5:
+            # Verificar se o ID da impressora é válido (1-6)
+            if not 1 <= impressora_destino_id <= 6:
                 messagebox.showerror("Erro", "ID de impressora inválido.")
                 return
                 
-            
             # Obter o ID da coluna de origem (a que contém o item selecionado)
             # Lembrando que as colunas são indexadas a partir de 0, mas os IDs de impressora começam em 1
             coluna_origem_id = coluna_idx + 1
-
             
             # Atualizar a configuração
             if str(impressora_destino_id) not in self.config_impressoras:
@@ -2009,14 +1984,15 @@ class CadastroModule(BaseModule):
                 {'id': int(id_imp), 'nome': info['nome_exibicao']} 
                 for id_imp, info in self.cadastro_controller.MAPEAMENTO_IMPRESSORAS.items()
             ]
-            
-            
             # Atualizar a tabela
             self._preencher_tabela_impressoras(tipos_existentes, impressoras)
-
-            
+           
         except Exception as e:
-            messagebox.showerror("Erro", f"Ocorreu um erro ao mover o tipo: {str(e)}")
+            error_msg = f"Ocorreu um erro ao mover o tipo: {str(e)}"
+            print(f"[ERRO CRÍTICO] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", error_msg)
             
     def _preencher_listas_com_config_salva(self, tipos_existentes):
         """Preenche as listas de impressoras com as configurações salvas"""
