@@ -612,37 +612,7 @@ class StatusPedidosModule:
         
         return data_pedido == data_hoje
     
-    def _criar_menu_contexto(self):
-        """Cria o menu de contexto para ações nos pedidos"""
-        self.popup_menu = tk.Menu(self.frame, tearoff=0)
-        
-        # Opção para imprimir cupom
-        self.popup_menu.add_command(
-            label=" Imprimir Cupom",
-            command=self._imprimir_cupom
-        )
-        
-        # Separador
-        self.popup_menu.add_separator()
-        
-        # Opções de status disponíveis
-        status_options = [
-            ('EM_PREPARO', ' Em Preparo'),
-            ('PRONTO_ENTREGA', ' Pronto para Entrega'),
-            ('EM_ROTA', ' Em Rota de Entrega'),
-            ('ENTREGUE', ' Entregue'),
-            ('CANCELADO', ' Cancelado')
-        ]
-        
-        # Submenu para alterar status
-        status_menu = tk.Menu(self.popup_menu, tearoff=0)
-        for status_code, status_label in status_options:
-            status_menu.add_command(
-                label=status_label,
-                command=lambda status=status_code: self._alterar_status_pedido(status)
-            )
-        
-        self.popup_menu.add_cascade(label="Alterar Status", menu=status_menu)
+   
     
     def _mostrar_menu_contexto(self, event, tree):
         """Exibe o menu de contexto ao clicar com o botão direito em um pedido"""
@@ -655,6 +625,161 @@ class StatusPedidosModule:
             self.pedido_selecionado_id = tree.item(item, 'values')[0]
             # Exibir o menu de contexto na posição do clique
             self.popup_menu.post(event.x_root, event.y_root)
+
+    def _criar_menu_contexto(self):
+        """Cria o menu de contexto para ações nos pedidos"""
+        self.popup_menu = tk.Menu(self.frame, tearoff=0)
+        
+        # Opção para visualizar produtos
+        self.popup_menu.add_command(
+            label=" Ver Produtos do Pedido",
+            command=self._ver_produtos_pedido,
+            compound='left',
+            image=''  # Pode adicionar um ícone aqui se desejar
+        )
+            
+        # Opção para imprimir cupom
+        self.popup_menu.add_command(
+            label=" Imprimir Cupom",
+            command=self._imprimir_cupom
+        )
+            
+        # Separador
+        self.popup_menu.add_separator()
+            
+        # Opções de status disponíveis
+        status_options = [
+            ('EM_PREPARO', ' Em Preparo'),
+            ('PRONTO_ENTREGA', ' Pronto para Entrega'),
+            ('EM_ROTA', ' Em Rota de Entrega'),
+            ('ENTREGUE', ' Entregue'),
+            ('CANCELADO', ' Cancelado')
+        ]
+            
+        # Submenu para alterar status
+        status_menu = tk.Menu(self.popup_menu, tearoff=0)
+        for status_code, status_label in status_options:
+            status_menu.add_command(
+                label=status_label,
+                command=lambda status=status_code: self._alterar_status_pedido(status)
+                )
+            
+        self.popup_menu.add_cascade(label="Alterar Status", menu=status_menu)
+    
+    def _ver_produtos_pedido(self):
+        """Exibe os produtos do pedido selecionado em uma janela com Treeview."""
+        if not hasattr(self, 'pedido_selecionado_id') or not self.pedido_selecionado_id:
+            messagebox.showwarning("Aviso", "Nenhum pedido selecionado.")
+            return
+            
+        pedido_id = self.pedido_selecionado_id
+        
+        try:
+            # Criar janela
+            janela_produtos = tk.Toplevel(self.frame.master)
+            janela_produtos.title(f"Produtos do Pedido #{pedido_id}")
+            janela_produtos.transient(self.frame.master)
+            janela_produtos.grab_set()
+            
+            # Tamanho e posicionamento
+            largura = 500
+            altura = 500
+            x = (self.frame.master.winfo_screenwidth() // 2) - (largura // 2)
+            y = (self.frame.master.winfo_screenheight() // 2) - (altura // 2)
+            janela_produtos.geometry(f'{largura}x{altura}+{x}+{y}')
+            
+            # Frame principal
+            frame_principal = ttk.Frame(janela_produtos)
+            frame_principal.pack(fill='both', expand=True, padx=10, pady=10)
+            
+            # Criar Treeview com 2 colunas
+            tree = ttk.Treeview(
+                frame_principal,
+                columns=('item', 'quantidade'),
+                show='headings',
+                selectmode='browse'
+            )
+            
+            # Configurar colunas
+            tree.heading('item', text='Item')
+            tree.heading('quantidade', text='Qtd')
+            
+            # Ajustar largura das colunas
+            tree.column('item', width=400, anchor='w')
+            tree.column('quantidade', width=50, anchor='center')
+            
+            # Adicionar scrollbar
+            scrollbar = ttk.Scrollbar(frame_principal, orient='vertical', command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+            
+            # Posicionar widgets
+            tree.pack(side='left', fill='both', expand=True)
+            scrollbar.pack(side='right', fill='y')
+            
+            # Conectar ao banco de dados
+            delivery_controller = DeliveryController()
+            cursor = delivery_controller.db.cursor(dictionary=True)
+            
+            try:
+                # Buscar itens do pedido
+                cursor.execute("""
+                    SELECT 
+                        ip.id,
+                        p.nome as produto_nome,
+                        ip.quantidade
+                    FROM itens_pedido ip
+                    JOIN produtos p ON ip.produto_id = p.id
+                    WHERE ip.pedido_id = %s
+                    ORDER BY ip.id
+                """, (pedido_id,))
+                
+                itens = cursor.fetchall()
+                
+                # Adicionar itens à árvore
+                for item in itens:
+                    # Adicionar o item principal
+                    item_id = tree.insert(
+                        "", 
+                        'end',
+                        values=(item['produto_nome'], item['quantidade']),
+                        tags=('item_principal',)
+                    )
+                    
+                    # Buscar opções do item atual
+                    cursor.execute("""
+                        SELECT nome 
+                        FROM itens_pedido_opcoes 
+                        WHERE item_pedido_id = %s
+                        ORDER BY id
+                    """, (item['id'],))
+                        
+                    opcoes = cursor.fetchall()
+                    
+                    # Adicionar opções como filhos
+                    for opcao in opcoes:
+                        # Mostrar o nome da opção, tratando texto livre
+                        nome_opcao = opcao['nome']
+                        if nome_opcao.startswith('Texto: '):
+                            nome_opcao = nome_opcao[7:].strip()
+                        
+                        tree.insert(
+                            item_id,
+                            'end',
+                            values=(f"  • {nome_opcao}", ""),
+                            tags=('opcao_item',)
+                        )
+                
+                # Configurar tags para estilização
+                tree.tag_configure('item_principal', font=('Arial', 10, 'bold'))
+                tree.tag_configure('opcao_item', font=('Arial', 9))
+                
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao buscar itens do pedido: {str(e)}")
+            finally:
+                cursor.close()
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao exibir produtos: {str(e)}")
     
     def _imprimir_cupom(self):
         """Imprime o cupom fiscal do pedido selecionado"""

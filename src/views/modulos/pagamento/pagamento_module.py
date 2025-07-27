@@ -5,8 +5,9 @@ Permite processar pagamentos para vendas avulsas, delivery e mesas.
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sys
-import datetime
+from datetime import datetime
 from pathlib import Path
+
 
 # Adiciona o diretório raiz do projeto ao path para importar módulos
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
@@ -90,7 +91,119 @@ class PagamentoModule:
                 self.troco_label.config(text="R$ 0,00")
                 
         except (ValueError, AttributeError):
-            self.troco_label.config(text="R$ 0,00")    
+            self.troco_label.config(text="R$ 0,00")   
+
+    def _atualizar_previa_cupom(self):
+        """Atualiza a prévia do cupom fiscal."""
+        try:
+            # Cria um dicionário com os dados da venda para o cupom
+            venda_dados = {
+                'itens': self.itens_venda,
+                'pagamentos': [{
+                    'forma': p['forma_nome'],
+                    'valor': p['valor'],
+                    'troco': p.get('troco',0)
+                } for p in self.pagamentos],
+                'total': self.valor_final,
+                'desconto': self.desconto,
+                'taxa_servico': self.taxa_servico if hasattr(self, 'taxa_servico') else 0
+            }
+            
+            # Gera o conteúdo do cupom
+            conteudo_cupom = self._gerar_conteudo_cupom(venda_dados)
+            
+            # Atualiza o widget de texto
+            self.cupom_texto.config(state="normal")
+            self.cupom_texto.delete(1.0, tk.END)
+            self.cupom_texto.insert(tk.END, conteudo_cupom)
+            self.cupom_texto.config(state="disabled")
+            
+        except Exception as e:
+            print(f"Erro ao atualizar prévia do cupom: {e}")
+            self.cupom_texto.config(state="normal")
+            self.cupom_texto.delete(1.0, tk.END)
+            self.cupom_texto.insert(tk.END, "Erro ao gerar prévia do cupom.")
+            self.cupom_texto.config(state="disabled")
+
+    def _gerar_conteudo_cupom(self, venda_dados):
+        """Gera o conteúdo formatado do cupom fiscal."""
+        # Largura do cupom (48 caracteres para papel de 80mm)
+        largura = 40
+        
+        # Função auxiliar para centralizar texto
+        def centralizar(texto, largura=largura):
+            return texto.center(largura)
+        
+        # Função para formatar valores monetários
+        def formatar_valor(valor):
+            return f"R$ {float(valor):9.2f}".replace('.', ',')
+        
+        linhas = []
+        
+        # Cabeçalho
+        
+        linhas.append(centralizar("CUPOM FISCAL"))
+        linhas.append("=" * largura)
+        
+        # Data/Hora
+        data_hora = datetime.now().strftime("%d/%m/%Y %H:%M")
+        linhas.append(f"Data: {data_hora}")
+        
+        # Número da venda
+        if 'id' in venda_dados:
+            linhas.append(f"Venda: #{venda_dados['id']}")
+        
+        # Linha separadora
+        linhas.append("-" * largura)
+        
+        # Cabeçalho dos itens
+        linhas.append("DESCRIÇÃO                   QTD   VALOR")
+        linhas.append("-" * largura)
+        
+        # Itens
+        for item in venda_dados['itens']:
+            # Obtém o nome do item
+            nome = item.get('nome') or item.get('produto_nome', 'Produto')
+            quantidade = item.get('quantidade', 1)
+            preco = item.get('preco') or item.get('valor_unitario', 0)
+            total = quantidade * preco
+            
+            # Formata a linha do item
+            nome_linha = f"{quantidade}x {nome[:20]}"
+            linha = f"{nome_linha.ljust(25)} {quantidade:>2} {formatar_valor(total)}"
+            linhas.append(linha)
+        
+        # Totais
+        linhas.append("-" * largura)
+        linhas.append(f"{'Subtotal:':<25}{formatar_valor(self.valor_total)}")
+        
+        if venda_dados.get('desconto', 0) > 0:
+            linhas.append(f"{'Desconto:':<25}{formatar_valor(venda_dados['desconto'])}")
+        
+        if venda_dados.get('taxa_servico', 0) > 0:
+            linhas.append(f"{'Taxa Serviço:':<25}{formatar_valor(venda_dados['taxa_servico'])}")
+        
+        linhas.append("-" * largura)
+        linhas.append(f"{'TOTAL:':<25}{formatar_valor(venda_dados['total'])}")
+        
+        # Pagamentos
+        if 'pagamentos' in venda_dados and venda_dados['pagamentos']:
+            linhas.append("-" * largura)
+            linhas.append(centralizar("FORMA DE PAGAMENTO"))
+            linhas.append("-" * largura)
+            
+            for pagamento in venda_dados['pagamentos']:
+                forma = pagamento.get('forma', '')
+                valor = pagamento.get('valor', 0)
+                troco = pagamento.get('troco', 0)
+                
+                if forma.lower() == 'dinheiro' and troco > 0:
+                    linhas.append(f"{'Dinheiro:':<15}{formatar_valor(valor + troco)}")
+                    linhas.append(f"{'Troco:':<15}{formatar_valor(troco)}")
+                else:
+                    linhas.append(f"{forma.capitalize() + ':':<15}{formatar_valor(valor)}")
+        
+        return "\n".join(linhas)
         
     def _criar_interface(self):
         """Cria a interface do módulo de pagamentos."""
@@ -138,7 +251,48 @@ class PagamentoModule:
         
         # Coluna da esquerda - Resumo e formas de pagamento
         coluna_esquerda = ttk.Frame(container)
-        coluna_esquerda.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        coluna_esquerda.pack(side="left", fill="both", expand=True, padx=5)
+
+        # Coluna do meio - Pagamentos realizados
+        coluna_meio = ttk.Frame(container)
+        coluna_meio.pack(side="left", fill="both", expand=True, padx=5)
+    
+        # Coluna da direita - Visualização do cupom fiscal
+        coluna_direita = ttk.Frame(container)  # Largura fixa para o cupom
+        coluna_direita.pack(side="right", fill="both", padx=5)
+        
+
+       # Frame do cupom fiscal
+        cupom_frame = ttk.LabelFrame(
+           coluna_direita,
+           text="Pré-visualização do Cupom",
+           style="Resumo.TLabelframe"
+        )
+        cupom_frame.pack(fill="both", expand=True, pady=(0, 10), padx=5)
+
+        # Área de visualização do cupom (com rolagem)
+        cupom_container = ttk.Frame(cupom_frame)
+        cupom_container.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Adiciona barra de rolagem
+        scrollbar = ttk.Scrollbar(cupom_container)
+        scrollbar.pack(side="right", fill="y")
+
+        # Widget de texto para exibir o cupom
+        self.cupom_texto = tk.Text(
+            cupom_container,
+            wrap="word",
+            font=("Courier New", 10),  # Fonte monoespaçada para alinhamento correto
+            height=30,
+            bg="white",
+            fg="black",
+            padx=10,
+            pady=10,
+            state="disabled",
+            yscrollcommand=scrollbar.set
+        )
+        self.cupom_texto.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=self.cupom_texto.yview)
         
         # Estilo para os frames e labels
         style.configure("Resumo.TLabelframe", background=self.cores["fundo"])
@@ -322,12 +476,8 @@ class PagamentoModule:
         for i in range(max_cols):
             botoes_frame.columnconfigure(i, weight=1)
         
-        # Coluna da direita - Pagamentos realizados
-        coluna_direita = ttk.Frame(container)
-        coluna_direita.pack(side="right", fill="both", expand=True, padx=(10, 0))
-        
         # Lista de pagamentos realizados
-        pagamentos_frame = ttk.LabelFrame(coluna_direita, text="Pagamentos Realizados", style="Resumo.TLabelframe")
+        pagamentos_frame = ttk.LabelFrame(coluna_meio, text="Pagamentos Realizados", style="Resumo.TLabelframe")
         pagamentos_frame.pack(fill="both", expand=True, padx=5)
         
         # Estilo para o Treeview
@@ -385,7 +535,7 @@ class PagamentoModule:
         self.pagamentos_tree.bind("<Button-3>", self._mostrar_menu_contexto)
         
           # Frame para os botões de finalização
-        botoes_frame = ttk.Frame(coluna_direita)
+        botoes_frame = ttk.Frame(coluna_meio)
         botoes_frame.pack(fill="x", pady=10, expand=True)
         
         # Botão Finalizar sem Imprimir
@@ -416,9 +566,10 @@ class PagamentoModule:
             relief="flat",
             cursor="hand2",
             state="disabled",
-            command=lambda: self._finalizar_venda(imprimir_cupom=True)  # Adicione este parâmetro ao método _finalizar_venda
+            command=lambda: self._finalizar_venda(imprimir_cupom=True) if hasattr(self, '_finalizar_venda') else None
         )
         self.finalizar_btn.pack(side="right", fill="x", expand=True)
+        self._atualizar_previa_cupom() 
         
     def _validar_desconto(self):
         """Valida se o desconto é válido."""
@@ -499,7 +650,8 @@ class PagamentoModule:
             }
             
             self.pagamentos.append(pagamento)
-            
+            self._atualizar_previa_cupom()
+
             # Atualizar a interface
             self._atualizar_pagamentos()
             
@@ -722,85 +874,110 @@ class PagamentoModule:
     
     def _finalizar_venda(self, imprimir_cupom=True):
         """Finaliza a venda com os pagamentos realizados."""
-        # Verificar se o valor pago é suficiente
-        # Usar round para evitar problemas de arredondamento com ponto flutuante
-        valor_pago = sum(p['valor'] for p in self.pagamentos)
-        if round(valor_pago, 2) < round(self.valor_final, 2):
-            messagebox.showerror(
-                "Erro de Pagamento", 
-                f"O valor pago (R$ {valor_pago:.2f}) é menor que o valor final " + 
-                f"(R$ {self.valor_final:.2f}).",
-                icon="error"
-            )
-            return
+        try:
+            # Verificar se o valor pago é suficiente
+            # Usar round para evitar problemas de arredondamento com ponto flutuante
+            valor_pago = sum(p['valor'] for p in self.pagamentos)
+            if round(valor_pago, 2) < round(self.valor_final, 2):
+                messagebox.showerror(
+                    "Erro de Pagamento", 
+                    f"O valor pago (R$ {valor_pago:.2f}) é menor que o valor final " + 
+                    f"(R$ {self.valor_final:.2f}).",
+                    icon="error"
+                )
+                return 
             
-        # Obter o nome do usuário logado, se disponível
-        nome_usuario = 'Não identificado'
-        if hasattr(self, 'controller') and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
-            nome_usuario = self.controller.usuario.nome
-        
-        # Para mesas, o valor_total já inclui a taxa de serviço
-        if self.venda_tipo == 'mesa' and self.taxa_servico:
-            # Calcular o valor dos itens (sem a taxa) para depois calcular os 10%
-            valor_itens = self.valor_total / 1.1
-            valor_taxa_servico = round(valor_itens * 0.1, 2)  # 10% do valor dos itens
-            valor_final = self.valor_total - self.desconto  # Já inclui a taxa
-        else:
-            # Para outros tipos de venda, calcular a taxa normalmente
-            valor_taxa_servico = getattr(self, 'valor_taxa_servico', 0.0)
-            valor_com_taxa = self.valor_total + valor_taxa_servico
-            valor_final = valor_com_taxa - self.desconto
+            # Verificar se callback existe
+            if not hasattr(self, 'callback_finalizar') or not callable(self.callback_finalizar):
+                messagebox.showerror("Erro", "Configuração incompleta - função de finalização não disponível")
+                return False    
             
-        # Preparar dados da venda para o callback
-        venda_dados = {
-            'valor_total': self.valor_total,
-            'desconto': self.desconto,
-            'valor_final': round(valor_final, 2),  # Arredondar para evitar problemas com decimais
-            'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
-            'tipo': self.venda_tipo.upper(),
-            'observacoes': '',
-            'taxa_servico': valor_taxa_servico,  # Agora envia o valor monetário
-            'usuario_nome': nome_usuario  
-        }
-        
-        # Preparar os pagamentos no formato esperado
-        pagamentos_formatados = []
-        for pagamento in self.pagamentos:
-            pagamento_formatado = {
-                'forma_id': pagamento['forma_id'],
-                'forma_nome': pagamento['forma_nome'],
-                'valor': pagamento['valor'],
-                'troco': pagamento.get('troco', 0)
+            # Obter o nome do usuário logado, se disponível
+            nome_usuario = 'Não identificado'
+            if hasattr(self, 'controller') and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
+                nome_usuario = self.controller.usuario.nome
+            
+            # Para mesas, o valor_total já inclui a taxa de serviço
+            if self.venda_tipo == 'mesa' and self.taxa_servico:
+                # Calcular o valor dos itens (sem a taxa) para depois calcular os 10%
+                valor_itens = self.valor_total / 1.1
+                valor_taxa_servico = round(valor_itens * 0.1, 2)  # 10% do valor dos itens
+                valor_final = self.valor_total - self.desconto  # Já inclui a taxa
+            else:
+                # Para outros tipos de venda, calcular a taxa normalmente
+                valor_taxa_servico = getattr(self, 'valor_taxa_servico', 0.0)
+                valor_com_taxa = self.valor_total + valor_taxa_servico
+                valor_final = valor_com_taxa - self.desconto
+                
+            # Preparar dados da venda para o callback
+            venda_dados = {
+                'valor_total': self.valor_total,
+                'desconto': self.desconto,
+                'valor_final': round(valor_final, 2),  # Arredondar para evitar problemas com decimais
+                'data_hora': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+                'tipo': self.venda_tipo.upper(),
+                'observacoes': '',
+                'taxa_servico': valor_taxa_servico,  # Agora envia o valor monetário
+                'usuario_nome': nome_usuario  
             }
             
-            # Adicionar informações adicionais, se disponíveis
-            if 'cliente_id' in pagamento:
-                pagamento_formatado['cliente_id'] = pagamento['cliente_id']
-                if 'cliente_nome' in pagamento:
-                    pagamento_formatado['cliente_nome'] = pagamento['cliente_nome']
+            # Preparar os pagamentos no formato esperado
+            pagamentos_formatados = []
+            for pagamento in self.pagamentos:
+                pagamento_formatado = {
+                    'forma_id': pagamento['forma_id'],
+                    'forma_nome': pagamento['forma_nome'],
+                    'valor': pagamento['valor'],
+                    'troco': pagamento.get('troco', 0)
+                }
                 
-                # Adicionar observação para pagamentos vinculados a cliente
-                pagamento_formatado['observacao'] = f"{pagamento['forma_nome']} - Cliente: {pagamento.get('cliente_nome', '')}"
-            else:
-                pagamento_formatado['observacao'] = pagamento['forma_nome']
-                
-            pagamentos_formatados.append(pagamento_formatado)
+                # Adicionar informações adicionais, se disponíveis
+                if 'cliente_id' in pagamento:
+                    pagamento_formatado['cliente_id'] = pagamento['cliente_id']
+                    if 'cliente_nome' in pagamento:
+                        pagamento_formatado['cliente_nome'] = pagamento['cliente_nome']
+                    
+                    # Adicionar observação para pagamentos vinculados a cliente
+                    pagamento_formatado['observacao'] = f"{pagamento['forma_nome']} - Cliente: {pagamento.get('cliente_nome', '')}"
+                else:
+                    pagamento_formatado['observacao'] = pagamento['forma_nome']
+                    
+                pagamentos_formatados.append(pagamento_formatado)
+            # Chamar o callback de finalização, se existir
+            if self.callback_finalizar:
+                resultado = self.callback_finalizar(venda_dados, self.itens_venda, pagamentos_formatados)
+                if not resultado:  
+                    return False
             
-        # Chamar o callback de finalização, se existir
-        if self.callback_finalizar:
-            self.callback_finalizar(venda_dados, self.itens_venda, pagamentos_formatados)
-        
-        if imprimir_cupom:
-            self._imprimir_cupom_fiscal(venda_dados)
-        
-        # Destruir a janela de pagamento
-        if isinstance(self.master, tk.Toplevel):
-            self.master.destroy()
-        else:
-            # Destruir o frame
-            if self.frame:
-                self.frame.destroy()
-    
+            if imprimir_cupom:
+                try:
+                    self._imprimir_cupom_fiscal(venda_dados)
+                except Exception as e:
+                    print(f"Erro ao imprimir cupom: {e}")
+                    # Continua mesmo com erro de impressão
+            
+            # Destruir a janela de pagamento
+            try:
+                if hasattr(self, 'master') and self.master:
+                    if isinstance(self.master, tk.Toplevel):
+                        self.master.destroy()
+                    elif hasattr(self, 'frame') and self.frame:
+                        self.frame.destroy()
+            except Exception as e:
+                print(f"Erro ao fechar janela: {e}")
+            
+            return True  # Indica sucesso
+            
+        except Exception as e:
+            messagebox.showerror(
+                "Erro ao Finalizar Venda", 
+                f"Ocorreu um erro ao finalizar a venda: {str(e)}",
+                icon="error"
+            )
+            print(f"Erro em _finalizar_venda: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
 
 
     def _voltar(self):
@@ -826,6 +1003,7 @@ class PagamentoModule:
                 self.frame = None
                 
     def _imprimir_cupom_fiscal(self, venda_dados):
+      
         """Imprime o cupom fiscal da venda finalizada"""
         try:
             # Obter os itens da venda (produtos)
@@ -887,108 +1065,3 @@ class PagamentoModule:
     def _obter_itens_venda(self):
         """Obtém os itens da venda para impressão do cupom fiscal"""
         return self.itens_venda
-    def _imprimir_cupom_visualizacao(self):
-        """Exibe o cupom fiscal em uma janela de visualização antes da impressão"""
-        try:
-            # Criar dados da venda simulados para visualização
-            venda_dados = {
-                'id': 'VISUALIZAÇÃO',
-                'data_hora': datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
-                'tipo': self.venda_tipo,
-                'referencia': self.referencia,
-                'valor_total': self.valor_total,
-                'desconto': self.desconto,
-                'valor_final': self.valor_final,
-                'taxa_servico': getattr(self, 'taxa_servico', 0)
-            }
-            
-            # Criar janela de visualização
-            janela_visualizacao = tk.Toplevel(self.master)
-            janela_visualizacao.title("Visualização do Cupom Fiscal")
-            janela_visualizacao.geometry("400x600")
-            
-            # Frame principal com barra de rolagem
-            main_frame = ttk.Frame(janela_visualizacao)
-            main_frame.pack(fill="both", expand=True, padx=10, pady=10)
-            
-            # Área de texto para o cupom
-            cupom_texto = tk.Text(
-                main_frame,
-                wrap=tk.WORD,
-                font=("Courier New", 10),
-                width=48,
-                height=30,
-                bd=0,
-                highlightthickness=0
-            )
-            cupom_texto.pack(fill="both", expand=True)
-            
-            # Adicionar cabeçalho
-            cabecalho = f"""
-    {'='*48}
-    {'CUPOM FISCAL':^48}
-    {'='*48}
-    Data/Hora: {venda_dados['data_hora']}
-    {'='*48}
-    {'CÓDIGO DESCRIÇÃO':<30} QTD   VL UN  VL ITEM
-    {'-'*48}
-    """
-            cupom_texto.insert(tk.END, cabecalho)
-            
-            # Adicionar itens
-            for item in self.itens_venda:
-                descricao = item.get('nome', '')[:25]
-                if len(descricao) < 25:
-                    descricao = descricao.ljust(25)
-                    
-                linha = f"{item.get('id', ''):<6} {descricao} {item.get('quantidade', 0):>3} {item.get('valor_unitario', 0):>7.2f} {item.get('subtotal', 0):>8.2f}\n"
-                cupom_texto.insert(tk.END, linha)
-                
-                # Adicionar observações se houver
-                if item.get('observacao'):
-                    cupom_texto.insert(tk.END, f"  Obs: {item['observacao']}\n")
-            
-            # Adicionar totais
-            totais = f"""
-    {'-'*48}
-    {'SUBTOTAL:':<40} R$ {self.valor_total:>8.2f}
-    {'DESCONTO:':<40} R$ {self.desconto:>8.2f}
-    """
-            if venda_dados['taxa_servico']:
-                totais += f"{'TAXA SERVIÇO:':<40} R$ {(self.valor_total * 0.1):>8.2f}\n"
-                
-            totais += f"{'TOTAL:':<40} R$ {self.valor_final:>8.2f}\n"
-            totais += "="*48 + "\n"
-            
-            # Adicionar formas de pagamento
-            if self.pagamentos:
-                totais += "\nFORMA DE PAGAMENTO:\n"
-                for pag in self.pagamentos:
-                    totais += f"{pag['forma_nome']}: R$ {pag['valor']:.2f}\n"
-            
-            cupom_texto.insert(tk.END, totais)
-            
-            # Tornar o texto somente leitura
-            cupom_texto.config(state=tk.DISABLED)
-            
-            # Botão para imprimir
-            btn_frame = ttk.Frame(main_frame)
-            btn_frame.pack(fill="x", pady=(10, 0))
-            
-            ttk.Button(
-                btn_frame,
-                text="Imprimir Cupom",
-                command=lambda: self._imprimir_cupom_fiscal(venda_dados),
-                style="Accent.TButton"
-            ).pack(side="right")
-            
-            # Centralizar a janela
-            janela_visualizacao.update_idletasks()
-            width = janela_visualizacao.winfo_width()
-            height = janela_visualizacao.winfo_height()
-            x = (janela_visualizacao.winfo_screenwidth() // 2) - (width // 2)
-            y = (janela_visualizacao.winfo_screenheight() // 2) - (height // 2)
-            janela_visualizacao.geometry(f'+{x}+{y}')
-            
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao gerar visualização do cupom: {str(e)}")

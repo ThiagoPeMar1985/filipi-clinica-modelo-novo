@@ -16,7 +16,7 @@ from utils.impressao import GerenciadorImpressao
 from views.modulos.vendas.delivery_module import DeliveryModule
 from views.modulos.vendas.status_module import StatusPedidosModule
 from utils.produtos_utils import obter_tipos_produtos, criar_botoes_tipos_produtos
-
+from views.modulos.mostrar_opcoes_module import MostrarOpcoesModule
 class VendasModule:
     def __init__(self, parent, controller):
         # Importar o controlador de cadastro para acessar produtos
@@ -28,7 +28,12 @@ class VendasModule:
         # Inicializar o controlador de cadastro
         self.cadastro_controller = CadastroController()
         self.financeiro_controller = FinanceiroController(controller.db_connection)
-        
+        self.opcoes_module = MostrarOpcoesModule(
+            master=self.frame,  # ou self.root, dependendo da sua estrutura
+            root_window=self.parent,  # janela principal
+            callback_confirmar=self._processar_produto_com_opcoes,
+            db_connection=controller.db_connection 
+        )
         # Inicializar o carrinho de compras
         self.carrinho = []
         
@@ -50,10 +55,45 @@ class VendasModule:
             {"nome": "🛵 Delivery", "acao": "delivery"},
             {"nome": "📊 Status Pedidos", "acao": "status_pedidos"}
         ]
-        
-    def get_opcoes(self):
-        """Retorna a lista de opções para a barra lateral"""
-        return self.opcoes
+    def _processar_produto_com_opcoes(self, produto, opcoes):
+        """Processa o produto com as opções selecionadas"""
+        try:
+            print(f"\n=== INÍCIO _processar_produto_com_opcoes ===")
+            print(f"Produto recebido: {produto}")
+            print(f"Opções recebidas: {opcoes}")
+            
+            # Se for um dicionário, extrai os valores
+            if isinstance(produto, dict):
+                if 'id' in produto:
+                    produto_id = produto['id']
+                    valores = [
+                        produto_id,
+                        produto.get('nome', ''),
+                        f"R$ {produto.get('preco', 0):.2f}",
+                        produto.get('quantidade_minima', 0)
+                    ]
+                    print(f"Processando produto com ID: {produto_id}")
+                    print(f"Valores extraídos: {valores}")
+                    # Chama o método para adicionar ao carrinho com as opções
+                    self._adicionar_ao_carrinho_com_opcoes(produto_id, valores, opcoes)
+                    return
+                else:
+                    print("Aviso: Dicionário de produto sem 'id'")
+            
+            # Se chegou aqui, tenta adicionar diretamente (compatibilidade)
+            print(f"Tentando adicionar produto diretamente: {produto}")
+            if isinstance(produto, (int, str)):
+                print(f"Usando {produto} como ID do produto")
+                self._adicionar_ao_carrinho_com_opcoes(produto, [], opcoes)
+            else:
+                print("Erro: Tipo de produto não suportado:", type(produto))
+                messagebox.showerror("Erro", "Tipo de produto não suportado")
+                
+        except Exception as e:
+            print(f"ERRO em _processar_produto_com_opcoes: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", f"Erro ao processar produto: {str(e)}")
         
     def show(self, acao=None):
         # Limpar o frame principal
@@ -300,6 +340,8 @@ class VendasModule:
         # Tabela do carrinho com altura ajustada
         colunas_carrinho = ("Produto", "Qtd", "Preço Unit.", "Total")
         
+        
+
         self.carrinho_tree = ttk.Treeview(tabela_carrinho_frame, columns=colunas_carrinho, show="headings", height=15, style="Carrinho.Treeview")
         
         # Configurar cabeçalhos com larguras proporcionais
@@ -484,7 +526,7 @@ class VendasModule:
             self.menu_contexto_produto.post(event.x_root, event.y_root)
     
     def _mostrar_opcoes_produto(self):
-        """Exibe as opções disponíveis para o produto selecionado"""
+        """Exibe as opções disponíveis para o produto selecionado usando o módulo centralizado"""
         # Obter o item selecionado
         selecionado = self.produtos_tree.selection()
         if not selecionado:
@@ -494,214 +536,127 @@ class VendasModule:
         # Obter os dados do produto selecionado
         item = self.produtos_tree.item(selecionado[0])
         valores = item['values']
+        
+        # Obter o ID do produto
         produto_id = valores[0]
         
-        # Verificar se o produto tem opções antes de criar a janela
+        # Verificar se o produto tem opções antes de criar o dicionário
         try:
             from controllers.opcoes_controller import OpcoesController
+            db_connection = getattr(self.controller, 'db_connection', None)
+            if db_connection:
+                opcoes_controller = OpcoesController(db_connection=db_connection)
+                grupos_opcoes = opcoes_controller.listar_grupos_por_produto(produto_id)
+                
+                if grupos_opcoes:
+                    # Criar um dicionário com os dados do produto e suas opções
+                    produto = {
+                        'id': produto_id,
+                        'nome': valores[1],
+                        'preco': float(valores[2].replace('R$', '').replace(',', '.').strip()),
+                        'opcoes': grupos_opcoes
+                    }
+                    self.opcoes_module.mostrar_opcoes(produto)
+                else:
+                    messagebox.showinfo("Informação", "Este produto não possui opções configuradas.")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao verificar opções: {str(e)}")
+        
+    def _adicionar_ao_carrinho_com_opcoes(self, produto_id, valores_produto, opcoes=None):
+        print(f"\n=== INÍCIO _adicionar_ao_carrinho_com_opcoes ===")
+        print(f"Produto ID: {produto_id}")
+        print(f"Valores do produto: {valores_produto}")
+        print(f"Opções recebidas: {opcoes}")
+        
+        try:
+            # Extrair os valores do produto
+            if isinstance(valores_produto, (list, tuple)) and len(valores_produto) >= 3:
+                nome = valores_produto[1]
+                preco_str = str(valores_produto[2]).replace('R$', '').replace(',', '.').strip()
+                preco = float(preco_str)
+                quantidade_minima = valores_produto[3] if len(valores_produto) > 3 else 0
+            else:
+                # Se não for uma lista, usar os valores diretamente
+                nome = valores_produto.get('nome', 'Produto sem nome')
+                preco = float(valores_produto.get('preco', 0))
+                quantidade_minima = valores_produto.get('quantidade_minima', 0)
             
-            # Obter a conexão com o banco de dados do controlador principal
+            # Se já tivermos as opções, adiciona ao carrinho
+            if opcoes is not None:
+                print("Opções fornecidas, adicionando ao carrinho...")
+                
+                # Calcular preço total considerando as opções
+                preco_total = preco
+                for opcao in opcoes:
+                    preco_total += opcao.get('preco_adicional', 0)
+                
+                # Verificar se o item já está no carrinho com as mesmas opções
+                item_existente = None
+                for item in self.carrinho:
+                    if (item['id'] == produto_id and 
+                        item.get('opcoes') == opcoes and 
+                        item.get('preco_base') == preco):
+                        item_existente = item
+                        break
+                
+                if item_existente:
+                    # Se o item já está no carrinho, apenas incrementa a quantidade
+                    item_existente['quantidade'] += 1
+                    item_existente['total'] = item_existente['quantidade'] * preco_total
+                else:
+                    # Se não está no carrinho, adiciona como novo item
+                    novo_item = {
+                        'id': produto_id,
+                        'nome': nome,
+                        'preco': preco_total,  # Preço já com os adicionais
+                        'preco_base': preco,   # Guarda o preço base sem adicionais
+                        'quantidade': 1,
+                        'total': preco_total,
+                        'opcoes': opcoes,      # Armazena as opções selecionadas
+                        'tipo': 'Produto com opções',
+                        'quantidade_minima': quantidade_minima
+                    }
+                    self.carrinho.append(novo_item)
+                
+                # Atualizar a exibição do carrinho
+                self._atualizar_carrinho()
+                return
+                
+            # Se não tiver opções, buscar as opções do produto
+            print("Buscando opções para o produto...")
+            from controllers.opcoes_controller import OpcoesController
             db_connection = getattr(self.controller, 'db_connection', None)
             if not db_connection:
+                print("ERRO: Não foi possível conectar ao banco de dados")
                 messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados.")
                 return
-                
-            # Criar o controlador de opções com a conexão
+                    
             opcoes_controller = OpcoesController(db_connection=db_connection)
-            
-            # Verificar se o controlador foi criado corretamente
-            if not hasattr(opcoes_controller, 'db') or opcoes_controller.db is None:
-                messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados de opções.")
-                return
+            grupos_opcoes = opcoes_controller.listar_grupos_por_produto(produto_id)
+            print(f"Grupos de opções encontrados: {grupos_opcoes}")
+                        
+            # Exibir o diálogo de opções
+            print("Preparando dados do produto para exibição das opções")
+            produto = {
+                'id': produto_id,
+                'nome': nome,
+                'preco': preco,
+                'opcoes': grupos_opcoes
+            }
                 
-            # Verificar se o produto tem opções antes de criar a janela
-            grupos_opcoes = opcoes_controller.listar_opcoes_por_produto(produto_id)
-            
-            if not grupos_opcoes:
-                messagebox.showinfo("Informação", "Este produto não possui opções configuradas.")
-                return
+            print("Exibindo diálogo de opções...")
+            self.opcoes_module.mostrar_opcoes(produto)
+            print("Diálogo de opções exibido com sucesso")
                 
-            # Só cria a janela se o produto tiver opções
-            self.janela_opcoes = tk.Toplevel(self.parent)
-            self.janela_opcoes.title(f"Opções para {valores[1]}")
-            self.janela_opcoes.geometry("400x500")
-            
-            # Frame principal
-            frame_principal = ttk.Frame(self.janela_opcoes, padding="10")
-            frame_principal.pack(fill="both", expand=True)
-                
-            # Dicionário para armazenar as seleções do usuário
-            self.selecoes_opcoes = {}
-            
-            # Para cada grupo de opções
-            for grupo_id, grupo_info in grupos_opcoes.items():
-                grupo_frame = ttk.LabelFrame(frame_principal, text=grupo_info['nome'], padding="5")
-                grupo_frame.pack(fill="x", pady=5)
-                
-                # Verificar se é seleção única ou múltipla
-                if grupo_info['selecao_maxima'] == 1:
-                    # Seleção única (Radiobuttons)
-                    var = tk.StringVar()
-                    self.selecoes_opcoes[grupo_id] = {'var': var, 'tipo': 'unico'}
-                    
-                    for opcao in grupo_info['itens']:
-                        if opcao.get('tipo') == 'texto_livre':
-                            # Adiciona um campo de entrada de texto para opções de texto livre
-                            frame_opcao = ttk.Frame(grupo_frame)
-                            frame_opcao.pack(fill="x", pady=2)
-                            
-                            rb = ttk.Radiobutton(
-                                frame_opcao,
-                                text=f"{opcao['nome']}:",
-                                variable=var,
-                                value=str(opcao['id'])
-                            )
-                            rb.pack(side="left", anchor="w")
-                            
-                            # Campo de entrada de texto
-                            texto_entry = ttk.Entry(frame_opcao)
-                            texto_entry.pack(side="right", fill="x", expand=True, padx=5)
-                            
-                            # Armazenar referência ao campo de texto
-                            opcao['texto_entry'] = texto_entry
-                        else:
-                            # Opção normal (sem texto livre)
-                            rb = ttk.Radiobutton(
-                                grupo_frame,
-                                text=f"{opcao['nome']} (+R$ {opcao['preco_adicional']:.2f})",
-                                variable=var,
-                                value=str(opcao['id'])
-                            )
-                            rb.pack(anchor="w")
-                else:
-                    # Seleção múltipla (Checkbuttons)
-                    self.selecoes_opcoes[grupo_id] = {'var': [], 'tipo': 'multiplo'}
-                    
-                    for opcao in grupo_info['itens']:
-                        if opcao.get('tipo') == 'texto_livre':
-                            # Adiciona um campo de entrada de texto para opções de texto livre
-                            frame_opcao = ttk.Frame(grupo_frame)
-                            frame_opcao.pack(fill="x", pady=2)
-                            
-                            var = tk.BooleanVar()
-                            self.selecoes_opcoes[grupo_id]['var'].append((var, opcao))
-                            
-                            cb = ttk.Checkbutton(
-                                frame_opcao,
-                                text=f"{opcao['nome']}:",
-                                variable=var
-                            )
-                            cb.pack(side="left", anchor="w")
-                            
-                            # Campo de entrada de texto
-                            texto_entry = ttk.Entry(frame_opcao)
-                            texto_entry.pack(side="right", fill="x", expand=True, padx=5)
-                            
-                            # Armazenar referência ao campo de texto
-                            opcao['texto_entry'] = texto_entry
-                        else:
-                            # Opção normal (sem texto livre)
-                            var = tk.BooleanVar()
-                            self.selecoes_opcoes[grupo_id]['var'].append((var, opcao))
-                            
-                            cb = ttk.Checkbutton(
-                                grupo_frame,
-                                text=f"{opcao['nome']} (+R$ {opcao['preco_adicional']:.2f})",
-                                variable=var
-                            )
-                            cb.pack(anchor="w")
-            
-            # Botão para confirmar as opções
-            btn_confirmar = tk.Button(
-                frame_principal,
-                text="Confirmar Opções",
-                bg=self.cores["destaque"],
-                fg=self.cores["texto_claro"],
-                padx=10,
-                pady=5,
-                command=lambda: self._adicionar_ao_carrinho_com_opcoes(produto_id, valores)
-            )
-            btn_confirmar.pack(pady=10)
-            
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao carregar opções: {str(e)}")
-            self.janela_opcoes.destroy()
-    
-    def _adicionar_ao_carrinho_com_opcoes(self, produto_id, valores_produto):
-        """Adiciona o produto ao carrinho com as opções selecionadas"""
-        try:
-            # Obter as opções selecionadas
-            opcoes_selecionadas = []
-            
-            for grupo_id, selecao in self.selecoes_opcoes.items():
-                if selecao['tipo'] == 'unico' and selecao['var'].get():
-                    # Opção única selecionada
-                    opcao_id = int(selecao['var'].get())
-                    
-                    # Buscar o nome da opção selecionada
-                    nome_opcao = ""
-                    preco_adicional = 0.0
-                    texto_livre = ""
-                    
-                    # Buscar informações da opção no banco de dados
-                    try:
-                        from controllers.opcoes_controller import OpcoesController
-                        db_connection = getattr(self.controller, 'db_connection', None)
-                        if db_connection:
-                            opcoes_controller = OpcoesController(db_connection=db_connection)
-                            opcao = opcoes_controller.obter_item_opcao(opcao_id)
-                            if opcao:
-                                nome_opcao = opcao.get('nome', '')
-                                preco_adicional = opcao.get('preco_adicional', 0.0)
-                                
-                                # Se for uma opção de texto livre, obter o texto digitado
-                                if opcao.get('tipo') == 'texto_livre' and 'texto_entry' in opcao:
-                                    texto_livre = opcao['texto_entry'].get()
-                                    if texto_livre:
-                                        nome_opcao = f"{nome_opcao}: {texto_livre}"
-                    except Exception as e:
-                        print(f"Erro ao buscar informações da opção: {e}")
-                    
-                    opcoes_selecionadas.append({
-                        'grupo_id': grupo_id,
-                        'opcao_id': opcao_id,
-                        'nome': nome_opcao,
-                        'preco_adicional': preco_adicional,
-                        'texto_livre': texto_livre
-                    })
-                    
-                elif selecao['tipo'] == 'multiplo':
-                    # Para seleção múltipla, verificar cada opção
-                    for var, opcao in selecao['var']:
-                        if var.get():  # Se a opção estiver marcada
-                            texto_livre = ""
-                            nome_opcao = opcao.get('nome', '')
-                            
-                            # Se for uma opção de texto livre, obter o texto digitado
-                            if opcao.get('tipo') == 'texto_livre' and 'texto_entry' in opcao:
-                                texto_livre = opcao['texto_entry'].get()
-                                if texto_livre:
-                                    nome_opcao = f"{nome_opcao}: {texto_livre}"
-                            
-                            opcoes_selecionadas.append({
-                                'grupo_id': grupo_id,
-                                'opcao_id': opcao['id'],
-                                'nome': nome_opcao,
-                                'preco_adicional': opcao.get('preco_adicional', 0.0),
-                                'texto_livre': texto_livre
-                            })
-            
-            # Fechar a janela de opções
-            self.janela_opcoes.destroy()
-            
-            # Adicionar ao carrinho com as opções selecionadas
-            self._adicionar_ao_carrinho(produto_id, valores_produto, opcoes_selecionadas)
-            
-        except Exception as e:
+            print(f"ERRO em _adicionar_ao_carrinho_com_opcoes: {str(e)}")
+            import traceback
+            traceback.print_exc()
             messagebox.showerror("Erro", f"Erro ao adicionar opções: {str(e)}")
-            
+    
     def _adicionar_ao_carrinho(self, produto_id=None, valores=None, opcoes_selecionadas=None):
         """Adiciona o produto selecionado ao carrinho de compras"""
+        print("\n=== INÍCIO _adicionar_ao_carrinho ===")
         # Se não foram fornecidos valores, obter da seleção atual
         if valores is None:
             # Obter o item selecionado na tabela de produtos
@@ -733,9 +688,13 @@ class VendasModule:
         # Verificar se o produto já está no carrinho
         item_existente = None
         for item in self.carrinho:
-            if item['id'] == produto_id and item['opcoes'] == (opcoes_selecionadas or []):
-                item_existente = item
-                break
+            # Verifica se o ID do produto é o mesmo
+            if item['id'] == produto_id:
+                # Se não há opções ou as opções são iguais
+                if ('opcoes' not in item and not opcoes_selecionadas) or \
+                   (item.get('opcoes') == (opcoes_selecionadas or [])):
+                    item_existente = item
+                    break
                 
         if item_existente:
             # Se o produto já está no carrinho, apenas incrementa a quantidade
@@ -750,70 +709,100 @@ class VendasModule:
                 'quantidade': 1,
                 'total': preco,
                 'tipo': tipo_produto,  # Tipo do produto para impressão nas comandas
-                'opcoes': opcoes_selecionadas or []  # Lista para armazenar as opções do produto
             }
+            
+            # Adiciona as opções apenas se existirem
+            if opcoes_selecionadas:
+                novo_item['opcoes'] = opcoes_selecionadas
+            
             self.carrinho.append(novo_item)
             
         # Atualizar a exibição do carrinho
         self._atualizar_carrinho()
     
+ 
     def _atualizar_carrinho(self):
         """Atualiza a exibição do carrinho de compras"""
+        print("\n=== INÍCIO _atualizar_carrinho ===")
         # Limpar a tabela do carrinho
         for item in self.carrinho_tree.get_children():
             self.carrinho_tree.delete(item)
             
         # Configurar tags para estilização
-        self.carrinho_tree.tag_configure('com_opcoes', background='#f0f8ff')  # Azul claro para itens com opções
+        self.carrinho_tree.tag_configure('com_opcoes', background='#e6f3ff')  # Azul claro para itens com opções
         self.carrinho_tree.tag_configure('sem_opcoes', background='#ffffff')  # Branco para itens sem opções
-        self.carrinho_tree.tag_configure('opcao_item', background='#f9f9f9')   # Cinza claro para opções
-            
+        self.carrinho_tree.tag_configure('opcao_item', background='#f5f9ff')  # Azul muito claro para opções
+        print(f"Total de itens no carrinho: {len(self.carrinho)}")
         # Adicionar os itens do carrinho à tabela
-        for item in self.carrinho:
+        for i, item in enumerate(self.carrinho):
             # Verificar se o item tem opções
-            tem_opcoes = bool(item.get('opcoes'))
+            tem_opcoes = bool(item.get('opcoes', []))
+
+            print(f"\nItem {i}:")
+            print(f"Nome: {item['nome']}")
+            print(f"Tem opções: {tem_opcoes}")
+            if tem_opcoes:
+                  print(f"Opções: {item['opcoes']}")
             
+            # Formatar o nome do produto (remover o sinal de + se existir)
+            nome_produto = item['nome'].replace(' +', '')
+            
+            # Determinar a tag com base na existência de opções
+            tag = 'com_opcoes' if tem_opcoes else 'sem_opcoes'
+            print(f"Tag aplicada: {tag}")
             # Adicionar o item principal
             item_id = self.carrinho_tree.insert(
                 "", 
                 tk.END, 
                 values=(
-                    f"{item['nome']} {'+'  if tem_opcoes else ''}",
+                    nome_produto,
                     item['quantidade'],
                     f"R$ {item['preco']:.2f}".replace('.', ','),
                     f"R$ {item['total']:.2f}".replace('.', ',')
                 ),
-                tags=('com_opcoes' if tem_opcoes else 'sem_opcoes',)
+                tags=(tag,)
             )
             
             # Se o item tiver opções, adicionar como itens filhos
             if tem_opcoes:
                 for opcao in item['opcoes']:
+                    # Formatar o texto da opção
+                    texto_opcao = f"  → {opcao.get('nome', 'Opção')}"
+                    
+                    # Adicionar o preço adicional se for maior que zero
+                    preco_adicional = opcao.get('preco_adicional', 0)
+                    if preco_adicional and float(preco_adicional) > 0:
+                        texto_opcao += f" (+R$ {float(preco_adicional):.2f})".replace('.', ',')
+                    
+                    # Adicionar o texto livre se existir
+                    if 'texto_livre' in opcao and opcao['texto_livre']:
+                        texto_opcao += f": {opcao['texto_livre']}"
+                    
+                    # Adicionar a opção como filho do item principal
                     self.carrinho_tree.insert(
-                        item_id,
-                        tk.END,
+                        item_id, 
+                        tk.END, 
                         values=(
-                            f"  → {opcao.get('nome', 'Opção')}",
-                            "",
-                            f"+R$ {opcao.get('preco_adicional', 0):.2f}".replace('.', ','),
-                            ""
+                            texto_opcao,
+                            "",  # Quantidade vazia para opções
+                            "",  # Preço unitário vazio para opções
+                            ""   # Total vazio para opções
                         ),
                         tags=('opcao_item',)
                     )
-        
-        # Calcular o subtotal (soma de todos os itens)
-        self.subtotal = sum(item['total'] for item in self.carrinho)
-        
-        # Atualizar os valores no resumo da compra
-        if hasattr(self, 'subtotal_valor'):
-            self.subtotal_valor.config(text=f"R$ {self.subtotal:.2f}".replace('.', ','))
             
-        # Recalcular o total com desconto
-        self._calcular_total_com_desconto()
+            # Expandir o item para mostrar as opções
+            self.carrinho_tree.item(item_id, open=True)
+
+        # Atualizar totais
+        subtotal = sum(item['total'] for item in self.carrinho)
         
-        # Atualizar o total do carrinho (se houver um label para isso)
-        if hasattr(self, 'total_carrinho_label'):
-            self.total_carrinho_label.config(text=f"R$ {self.subtotal:.2f}".replace('.', ','))
+        # Atualizar o valor do subtotal na interface
+        if hasattr(self, 'subtotal_valor'):
+            self.subtotal_valor.config(text=f"R$ {subtotal:.2f}".replace('.', ','))
+        
+        # Calcular total com desconto
+        self._calcular_total_com_desconto()
 
     def _remover_do_carrinho(self):
         """Remove o item selecionado do carrinho"""
@@ -863,8 +852,13 @@ class VendasModule:
     
     def _calcular_total_com_desconto(self, *args):
         """Calcula o total da compra considerando o desconto"""
-        if not hasattr(self, 'subtotal'):
-            self.subtotal = 0
+        # Calcular o subtotal somando todos os itens do carrinho
+        subtotal = sum(item.get('total', 0) for item in self.carrinho)
+        self.subtotal = subtotal  # Atualiza o subtotal da classe
+        
+        # Atualiza o valor do subtotal na interface
+        if hasattr(self, 'subtotal_valor'):
+            self.subtotal_valor.config(text=f"R$ {subtotal:.2f}".replace('.', ','))
             
         # Obter o valor do desconto
         desconto = 0
@@ -878,12 +872,11 @@ class VendasModule:
                 desconto = 0
                 
         # Calcular o total (subtotal - desconto)
-        total = max(0, self.subtotal - desconto)  # Garante que o total não seja negativo
+        total = max(0, subtotal - desconto)  # Garante que o total não seja negativo
         
         # Atualizar o valor do total na interface
         if hasattr(self, 'total_valor'):
             self.total_valor.config(text=f"R$ {total:.2f}".replace('.', ','))
-            
     def _finalizar_venda(self):
         """Abre a tela de pagamento para finalizar a venda"""
         # Verificar se há itens no carrinho
@@ -912,7 +905,7 @@ class VendasModule:
         # Criar uma janela para o módulo de pagamentos
         pagamento_window = tk.Toplevel(self.parent)
         pagamento_window.title("Pagamento")
-        pagamento_window.geometry("800x600")
+        pagamento_window.geometry("1200x600")
         pagamento_window.transient(self.parent)
         
         # Centralizar na tela
@@ -1198,6 +1191,7 @@ class VendasModule:
             
             # Voltar para a tela inicial de vendas sem mostrar mensagem de sucesso
             self._show_venda_avulsa()
+            return True
             
         except Exception as e:
             if self.controller.db_connection:
@@ -1207,6 +1201,7 @@ class VendasModule:
                 "Erro", 
                 f"Ocorreu um erro ao processar a venda: {str(e)}"
             )
+            return False
         finally:
             if cursor:
                 cursor.close()

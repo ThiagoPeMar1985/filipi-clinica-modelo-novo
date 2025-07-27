@@ -42,9 +42,10 @@ class SistemaPDV:
         
         # Define a geometria da janela e desativa tela cheia
         self.root.state('normal')  # Garante que não está maximizado
-        self.root.attributes('-fullscreen', False)  # Desativa tela cheia
+        self.root.attributes('-fullscreen', True) # Desativa tela cheia
         self.root.geometry(f'{largura}x{altura}+{pos_x}+{pos_y}')
         self.root.resizable(True, True)  # Permite redimensionamento
+        self.root.bind('<Escape>', lambda e: self.root.attributes('-fullscreen', False))
         
         # Cores do tema
         self.cores = {

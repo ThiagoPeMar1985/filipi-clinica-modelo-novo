@@ -1,96 +1,3 @@
-"""
-Módulo para gerenciamento de pedidos de mesas.
-Permite visualizar, adicionar, editar e remover pedidos de uma mesa específica.
-
-tabelas em uso neste modulo
-Table: mesas
-Columns:
-id int AI PK 
-numero int 
-status varchar(20) 
-capacidade int 
-pedido_atual_id int
-
-Table: itens_pedido
-Columns:
-id int AI PK 
-pedido_id int 
-produto_id int 
-quantidade int 
-valor_unitario decimal(10,2) 
-subtotal decimal(10,2) 
-observacao text 
-usuario_id int 
-data_hora datetime 
-valor_total decimal(10,2) 
-observacoes text 
-status varchar(20) 
-data_hora_preparo datetime 
-data_hora_pronto datetime 
-data_hora_entregue datetime
-
-Table: pedidos
-Columns:
-id int AI PK 
-mesa_id int 
-data_abertura datetime 
-data_fechamento datetime 
-status varchar(20) 
-total decimal(10,2) 
-usuario_id int 
-tipo enum('MESA','AVULSO','DELIVERY') 
-cliente_id int 
-cliente_nome varchar(255) 
-cliente_telefone varchar(20) 
-cliente_endereco text 
-entregador_id int 
-tipo_cliente varchar(20) 
-regiao_id int 
-taxa_entrega decimal(10,2) 
-observacao text 
-previsao_entrega datetime 
-data_entrega datetime 
-status_entrega varchar(50) 
-processado_estoque tinyint(1) 
-data_atualizacao timestamp 
-data_inicio_preparo datetime 
-data_pronto_entrega datetime 
-data_saida_entrega datetime 
-data_cancelamento datetime 
-forma_pagamento varchar(50) 
-troco_para decimal(10,2)
-
-Table: opcoes_itens
-Columns:
-id int AI PK 
-grupo_id int 
-nome varchar(100) 
-descricao text 
-preco_adicional decimal(10,2) 
-ativo tinyint(1) 
-data_criacao timestamp 
-data_atualizacao timestamp
-
-Table: itens_pedido_opcoes
-Columns:
-id int AI PK 
-item_pedido_id int 
-opcao_id int 
-grupo_id int 
-nome varchar(255) 
-preco_adicional decimal(10,2) 
-data_criacao timestamp
-
-table: produtos
-Columns:
-id int AI PK 
-nome varchar(255) 
-descricao text 
-tipo varchar(50) 
-preco_venda decimal(10,2) 
-unidade_medida varchar(10) 
-quantidade_minima decimal(10,2)
-"""
 import tkinter as tk
 from tkinter import ttk, messagebox
 import datetime
@@ -105,6 +12,7 @@ from src.controllers.tipos_produtos_controller import TiposProdutosController
 from src.utils.impressao import GerenciadorImpressao
 from src.controllers.config_controller import ConfigController
 from .modoEdicaoMesas_module import ModoEdicaoMesas
+from views.modulos.mostrar_opcoes_module import MostrarOpcoesModule
 
 class PedidosMesasModule(BaseModule):
     def __init__(self, parent, controller, mesa=None, db_connection=None, modulo_anterior=None):
@@ -129,7 +37,12 @@ class PedidosMesasModule(BaseModule):
         self.controller_mesas = MesasController(db_connection=db_connection)
         self.opcoes_controller = OpcoesController(db_connection=db_connection)
         self.tipos_controller = TiposProdutosController(db_connection=db_connection)
-        
+        self.opcoes_module = MostrarOpcoesModule(
+        master=self.frame,  # ou self.root, dependendo da sua estrutura
+        root_window=self.parent,  # janela principal
+        callback_confirmar=self._processar_produto_com_opcoes
+        )
+
         # Inicializa as listas vazias
         self.pedidos = []
         self.produtos = []
@@ -170,6 +83,16 @@ class PedidosMesasModule(BaseModule):
         
         # Carregar dados em segundo plano após a interface estar pronta
         self.parent.after(100, self.carregar_dados)
+    def _processar_produto_com_opcoes(self, produto, opcoes):
+        """Processa o produto com as opções selecionadas"""
+        try:
+            # Adiciona as opções ao produto
+            produto['opcoes_selecionadas'] = opcoes
+            
+            # Chama o método existente para adicionar ao pedido
+            self._adicionar_ao_pedido(produto)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao processar produto: {str(e)}")
         
     def _filtrar_produtos_por_tipo(self, tipo):
         """
@@ -781,21 +704,7 @@ class PedidosMesasModule(BaseModule):
         
         # Focar no diálogo
         dialog.focus_set()
-    
-    def _processar_opcoes(self, produto, opcoes_selecionadas, dialog):
-        """Processa as opções selecionadas e adiciona o produto ao pedido"""
-        # Coletar as opções selecionadas
-        opcoes = {}
-        for nome, var in opcoes_selecionadas.items():
-            if isinstance(var, tk.StringVar):
-                opcoes[nome] = var.get()
         
-        # Fechar o diálogo
-        dialog.destroy()
-        
-        # Adicionar o produto ao pedido com as opções selecionadas
-        self._adicionar_ao_pedido(produto['id'], produto, opcoes)
-    
     def _carregar_produtos(self, tipo=None):
         """
         Carrega todos os produtos ou filtra por tipo.

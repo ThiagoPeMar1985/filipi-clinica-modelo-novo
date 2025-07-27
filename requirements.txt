@@ -5,7 +5,6 @@
 tkinter  # Já incluído na instalação padrão do Python
 
 # Banco de Dados
-# sqlite3  # Já incluído na instalação padrão do Python
 # Para outros bancos de dados, descomente as linhas abaixo conforme necessário
 # mysql-connector-python>=8.0.0
 # psycopg2-binary>=2.9.0

@@ -6,6 +6,7 @@ from tkinter import messagebox
 from pathlib import Path
 import sys
 import datetime
+from src.controllers.opcoes_controller import OpcoesController
 
 # Adiciona o diretório raiz ao path para importações
 ROOT_DIR = Path(__file__).parent.parent.parent
@@ -337,7 +338,6 @@ class DeliveryController:
             """, (pedido_id,))
             
             self.db.commit()
-            print(f"Pagamento registrado com sucesso para o pedido {pedido_id} como tipo 'delivery'")
             
         except Exception as e:
             self.db.rollback()
@@ -534,25 +534,9 @@ class DeliveryController:
     def registrar_pedido(self, dados_pedido):
         """
         Registra um novo pedido de delivery no banco de dados.
-        
-        Args:
-            dados_pedido (dict): Dicionário com os dados do pedido contendo:
-                - cliente_id (int): ID do cliente
-                - itens (list): Lista de itens do pedido
-                - endereco (str): Endereço de entrega
-                - bairro (str): Bairro de entrega
-                - cidade (str): Cidade de entrega
-                - referencia (str, optional): Ponto de referência
-                - observacoes (str, optional): Observações do pedido
-                - taxa_entrega (float): Valor da taxa de entrega
-                - subtotal (float): Valor subtotal dos itens
-                - valor_total (float): Valor total do pedido
-                - forma_pagamento (str): Forma de pagamento
-                - troco_para (float, optional): Valor para troco (se pagamento em dinheiro)
-                
-        Returns:
-            tuple: (bool, str, int) Sucesso, mensagem de retorno e ID do pedido
         """
+        opcoes_controller = OpcoesController(db_connection=self.db)
+        
         try:
             # Usar a conexão já existente em self.db
             # Inserir o pedido na tabela pedidos
@@ -611,9 +595,6 @@ class DeliveryController:
             # Obter o valor para troco, se fornecido
             troco_para = dados_pedido.get('troco_para')
             
-          
-            
-            # Definir status do pedido como PENDENTE por padrão
             # O status será atualizado posteriormente quando o pagamento for confirmado
             status_pedido = 'PENDENTE'
             
@@ -710,15 +691,83 @@ class DeliveryController:
                     venda_item_id = cursor.lastrowid
                     self.db.commit()
                     
-                    # Se o item tiver opções, preparar para inserir na tabela venda_item_opcoes
+                    # Se o item tiver opções, preparar para inserir na tabela itens_pedido_opcoes
                     if 'opcoes' in item and item['opcoes'] and venda_item_id:
                         for opcao in item['opcoes']:
-                            opcoes_params.append((
-                                venda_item_id,
-                                int(opcao.get('opcao_id', 0)),
-                                int(opcao.get('grupo_id', 0)),
-                                float(opcao.get('preco_adicional', 0.0))
-                            ))
+                            # Para opções normais (sem texto livre)
+                            if 'texto_livre' not in opcao or not opcao.get('texto_livre'):
+                                # Verificar se o opcao_id é válido
+                                opcao_id = int(opcao.get('id', 0) or 0)
+                                grupo_id = int(opcao.get('grupo_id', 0))
+                                
+                                # Se for uma opção com ID inválido, pular
+                                if opcao_id <= 0:
+                                    print(f"Aviso: ID de opção inválido: {opcao_id}. Opção não será salva.")
+                                    continue
+                                    
+                                opcoes_params.append((
+                                    venda_item_id,
+                                    opcao_id,  # Usar o ID da opção diretamente
+                                    grupo_id,
+                                    opcao.get('nome', 'Opção'),
+                                    float(opcao.get('preco_adicional', 0))
+                                ))
+                                
+                                print(f"Adicionando opção ao pedido - Item ID: {venda_item_id}, Opção ID: {opcao_id}, Grupo ID: {grupo_id}")
+                            # Para opções de texto livre
+                            else:
+                                grupo_id = int(opcao.get('grupo_id', 0))
+                                
+                                # Verificar se já existe uma opção de texto livre para este grupo
+                                # para evitar duplicação
+                                try:
+                                    cursor.execute(
+                                        """
+                                        SELECT id FROM opcoes_itens 
+                                        WHERE grupo_id = %s AND nome LIKE 'obs:%' 
+                                        LIMIT 1
+                                        """,
+                                        (grupo_id,)
+                                    )
+                                    resultado = cursor.fetchone()
+                                    
+                                    if resultado:
+                                        texto_livre_id = resultado[0]
+                                        print(f"Usando opção de texto livre existente com ID: {texto_livre_id}")
+                                    else:
+                                        # Criar uma nova opção de texto livre
+                                        cursor.execute(
+                                            """
+                                            INSERT INTO opcoes_itens 
+                                            (grupo_id, nome, descricao, preco_adicional, ativo, tipo)
+                                            VALUES (%s, %s, %s, %s, %s, %s)
+                                            """,
+                                            (
+                                                grupo_id,
+                                                "obs: Texto Livre",
+                                                "Opção para texto livre do cliente",
+                                                0.0,
+                                                1,
+                                                'texto_livre'
+                                            )
+                                        )
+                                        texto_livre_id = cursor.lastrowid
+                                        self.db.commit()
+                                        print(f"Criada nova opção de texto livre com ID: {texto_livre_id}")
+                                    
+                                    # Adicionar a opção de texto livre com o texto específico
+                                    opcoes_params.append((
+                                        venda_item_id,
+                                        texto_livre_id,
+                                        grupo_id,
+                                        f"obs: {opcao['texto_livre'].strip()}",
+                                        0.0
+                                    ))
+                                    
+                                except Exception as e:
+                                    self.db.rollback()
+                                    print(f"Erro ao processar opção de texto livre: {e}")
+                                    continue
                 except Exception as e:
                     self.db.rollback()
                     print(f"Erro ao inserir item do pedido: {e}")
@@ -734,37 +783,9 @@ class DeliveryController:
                 VALUES (%s, %s, %s, %s, %s)
                 """
                 
-                # Obter os nomes das opções e grupos para inserção
-                opcoes_com_nomes = []
-                for opcao in opcoes_params:
-                    item_id, opcao_id, grupo_id, preco_adicional = opcao
-                    
-                    # Obter o nome da opção
-                    try:
-                        cursor = self.db.cursor(dictionary=True)
-                        cursor.execute("SELECT nome FROM opcoes_itens WHERE id = %s", (opcao_id,))
-                        resultado = cursor.fetchone()
-                        opcao_nome = resultado['nome'] if resultado else "Opção Desconhecida"
-                    except Exception as e:
-                        print(f"Erro ao obter nome da opção {opcao_id}: {e}")
-                        opcao_nome = "Opção Desconhecida"
-                    finally:
-                        if cursor:
-                            cursor.close()
-                    
-                    # Adicionar a opção com o nome obtido
-                    opcoes_com_nomes.append((
-                        item_id,
-                        opcao_id,
-                        grupo_id,
-                        opcao_nome,
-                        preco_adicional
-                    ))
-                
-                # Executar a inserção em lote
                 cursor = self.db.cursor()
                 try:
-                    cursor.executemany(query_opcoes, opcoes_com_nomes)
+                    cursor.executemany(query_opcoes, opcoes_params)
                     self.db.commit()
                 except Exception as e:
                     self.db.rollback()
