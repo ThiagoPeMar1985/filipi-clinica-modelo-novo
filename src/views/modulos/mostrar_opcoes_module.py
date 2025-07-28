@@ -94,27 +94,22 @@ class MostrarOpcoesModule:
                 messagebox.showinfo("Informação", "Este produto não possui opções configuradas.")
                 return
                 
-            # Debug: Mostrar a estrutura das opções no console
-            print("Estrutura das opções:", opcoes)
-                
             # Adiciona as opções ao produto e exibe o diálogo
             produto['opcoes'] = opcoes
             self._mostrar_dialogo_opcoes(produto)
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar opções: {str(e)}")
-            import traceback
-            traceback.print_exc()
     
     def _mostrar_dialogo_opcoes(self, produto):
         # Criar janela de diálogo
         self.dialogo = tk.Toplevel(self.root)
         self.dialogo.title(f"Opções para {produto.get('nome', 'Produto')}")
-        self.dialogo.geometry("600x500")
+        self.dialogo.geometry("400x400")  # Tamanho reduzido
         self.dialogo.transient(self.root)
         self.dialogo.grab_set()
         
-        # Frame principal
+        # Frame principal - simplificado
         main_frame = ttk.Frame(self.dialogo, padding="10")
         main_frame.pack(fill="both", expand=True)
         
@@ -131,8 +126,9 @@ class MostrarOpcoesModule:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # Empacota o canvas e a barra de rolagem - altura limitada para deixar espaço para o botão
+        canvas.pack(side="left", fill="both", expand=True, pady=(0, 50))
+        scrollbar.pack(side="right", fill="y", pady=(0, 50))
         
         # Dicionário para armazenar as seleções
         self.selecoes_opcoes = {}
@@ -140,7 +136,7 @@ class MostrarOpcoesModule:
         # Para cada grupo de opções
         for grupo_id, grupo in produto.get('opcoes', {}).items():
             # Criar frame para o grupo
-            grupo_frame = ttk.LabelFrame(scrollable_frame, text=grupo.get('nome', 'Opções'), padding="10")
+            grupo_frame = ttk.LabelFrame(scrollable_frame, text=grupo.get('nome', 'Opções'), padding="8")
             grupo_frame.pack(fill="x", pady=5, padx=5, expand=True, anchor="nw")
             
             # Inicializar lista de seleções para este grupo
@@ -151,115 +147,125 @@ class MostrarOpcoesModule:
             }
             
             # Processar cada item do grupo
+            itens_normais = []
+            itens_texto_livre = []
+            
             for item in grupo.get('itens', []):
+                if item.get('tipo') == 'texto_livre':
+                    itens_texto_livre.append(item)
+                else:
+                    itens_normais.append(item)
+            
+            # Primeiro processa os itens normais
+            for item in itens_normais:
                 item_id = item.get('id')
                 
-                # Se for um item de texto livre
-                if item.get('tipo') == 'texto_livre':
-                    item_frame = ttk.Frame(grupo_frame)
-                    item_frame.pack(fill="x", pady=2, expand=True)
-                    
-                    # Criar variável para o checkbox
-                    check_var = tk.BooleanVar(value=False)  # Já vem marcado por padrão
-                    # Criar variável para o texto
-                    text_var = tk.StringVar()
-                    
-                    # Armazenar ambas as variáveis
-                    self.selecoes_opcoes[grupo_id]['itens'][item_id] = {
-                        'var': text_var,
-                        'check_var': check_var,
-                        'tipo': 'texto_livre'
-                    }
-                    
-                    # Criar checkbox
-                    cb = ttk.Checkbutton(
-                        item_frame, 
-                        text=item.get('nome', 'Observações:'),
-                        variable=check_var
-                    )
-                    cb.pack(side="left", padx=(0, 5))
-                    
-                    # Criar campo de entrada
-                    entry = ttk.Entry(item_frame, textvariable=text_var, width=30)
-                    entry.pack(side="left", fill="x", expand=True)
-                    
-                    # Se for obrigatório, adicionar asterisco e forçar seleção
-                    if grupo.get('obrigatorio', False):
-                        ttk.Label(item_frame, text="*", 
-                                foreground="red", font=('Arial', 10, 'bold')).pack(side="left", padx=2)
-                        check_var.set(True)  # Marca como selecionado
-                        entry.config(state=tk.NORMAL)
-                    else:
-                        # Estado inicial
-                        entry.config(state=tk.DISABLED)
-    
-                        # Função para alternar o estado - versão corrigida
-                        def criar_toggle_entry(entry_ref, check_var_ref, text_var_ref):
-                            def toggle_entry(*args):
-                                if check_var_ref.get():
-                                    entry_ref.config(state=tk.NORMAL)
-                                else:
-                                    entry_ref.config(state=tk.DISABLED)
-                                    text_var_ref.set("")
-                            return toggle_entry
-                        
-                        # Criar a função com as referências corretas
-                        toggle_func = criar_toggle_entry(entry, check_var, text_var)
-                        
-                        # Configurar o trace
-                        check_var.trace_add('write', toggle_func)
+                # Criar frame para o item
+                item_frame = ttk.Frame(grupo_frame)
+                item_frame.pack(fill="x", pady=4, expand=True)
                 
-                # Se for um item de seleção simples
-                else:
-                    # Criar frame para o item
-                    item_frame = ttk.Frame(grupo_frame)
-                    item_frame.pack(fill="x", pady=2, expand=True)
-                    
-                    # Criar variável para armazenar a seleção
-                    var = tk.BooleanVar()
-                    self.selecoes_opcoes[grupo_id]['itens'][item_id] = {
-                        'var': var,
-                        'tipo': 'opcao_simples'
-                    }
-                    
-                    # Criar checkbox
-                    cb = ttk.Checkbutton(
+                # Criar variável para armazenar a seleção
+                var = tk.BooleanVar()
+                self.selecoes_opcoes[grupo_id]['itens'][item_id] = {
+                    'var': var,
+                    'tipo': 'opcao_simples'
+                }
+                
+                # Criar checkbox
+                cb = ttk.Checkbutton(
+                    item_frame, 
+                    text=f"{item.get('nome')} (+R$ {float(item.get('preco_adicional', 0)):.2f})",
+                    variable=var
+                )
+                cb.pack(anchor="w", padx=5)
+                
+                # Adicionar descrição se existir
+                if item.get('descricao'):
+                    ttk.Label(
                         item_frame, 
-                        text=f"{item.get('nome')} (+R$ {float(item.get('preco_adicional', 0)):.2f})",
-                        variable=var
-                    )
-                    cb.pack(anchor="w")
-                    
-                    # Adicionar descrição se existir
-                    if item.get('descricao'):
-                        ttk.Label(
-                            item_frame, 
-                            text=f"  {item.get('descricao')}",
-                            style='Small.TLabel'
-                        ).pack(anchor="w", padx=20)
+                        text=f"  {item.get('descricao')}",
+                        style='Small.TLabel'
+                    ).pack(anchor="w", padx=25)
+            
+            # Depois processa os itens de texto livre (sempre por último)
+            for item in itens_texto_livre:
+                item_id = item.get('id')
+                
+                item_frame = ttk.Frame(grupo_frame)
+                item_frame.pack(fill="x", pady=4, expand=True)
+                
+                # Criar variável para o checkbox
+                check_var = tk.BooleanVar(value=False)
+                # Criar variável para o texto
+                text_var = tk.StringVar()
+                
+                # Armazenar ambas as variáveis
+                self.selecoes_opcoes[grupo_id]['itens'][item_id] = {
+                    'var': text_var,
+                    'check_var': check_var,
+                    'tipo': 'texto_livre'
+                }
+                
+                # Criar checkbox
+                cb = ttk.Checkbutton(
+                    item_frame, 
+                    text=item.get('nome', 'Observações:'),
+                    variable=check_var
+                )
+                cb.pack(side="left", padx=(0, 8))
+                
+                # Criar campo de entrada
+                entry = ttk.Entry(item_frame, textvariable=text_var, width=30)
+                entry.pack(side="left", fill="x", expand=True)
+                
+                # Se for obrigatório, adicionar asterisco e forçar seleção
+                if grupo.get('obrigatorio', False):
+                    ttk.Label(item_frame, text="*", 
+                            foreground="red", font=('Arial', 10, 'bold')).pack(side="left", padx=2)
+                    check_var.set(True)  # Marca como selecionado
+                    entry.config(state=tk.NORMAL)
+                else:
+                    # Estado inicial
+                    entry.config(state=tk.DISABLED)
 
-        # Frame para os botões
-        botoes_frame = ttk.Frame(main_frame)
-        botoes_frame.pack(fill="x", pady=10)
+                    # Função para alternar o estado - versão corrigida
+                    def criar_toggle_entry(entry_ref, check_var_ref, text_var_ref):
+                        def toggle_entry(*args):
+                            if check_var_ref.get():
+                                entry_ref.config(state=tk.NORMAL)
+                            else:
+                                entry_ref.config(state=tk.DISABLED)
+                                text_var_ref.set("")
+                        return toggle_entry
+                    
+                    # Criar a função com as referências corretas
+                    toggle_func = criar_toggle_entry(entry, check_var, text_var)
+                    
+                    # Configurar o trace
+                    check_var.trace_add('write', toggle_func)
         
-        # Botão de confirmar (mantendo o estilo original)
+        # Frame para os botões - posicionado na parte inferior
+        botoes_frame = ttk.Frame(self.dialogo)
+        botoes_frame.place(relx=1.0, rely=1.0, x=-10, y=-10, anchor="se")
+        
+        # Botão de confirmar
         Button(
             botoes_frame, 
-            text="  Confirmar  ",
+            text="Confirmar",
             command=lambda: self._processar_confirmacao(produto),
-            bg='#4CAF50',  # Verde
-            fg='white',     # Texto branco
+            bg='#4CAF50',
+            fg='white',
             font=('Arial', 10, 'bold'),
-            relief='flat',  # Remove o efeito 3D
-            bd=0,           # Remove a borda
-            padx=10,        # Espaçamento interno horizontal
-            pady=5          # Espaçamento interno vertical
-        ).pack(side="right", padx=10)
+            relief='flat',
+            bd=0,
+            padx=10,
+            pady=5
+        ).pack()
 
         # Ajustar o tamanho da janela
         self.dialogo.update_idletasks()
-        width = 600
-        height = min(600, self.dialogo.winfo_reqheight() + 100)  # Altura máxima de 600px
+        width = 400  # Largura reduzida
+        height = min(450, self.dialogo.winfo_reqheight())  # Altura reduzida
         x = (self.dialogo.winfo_screenwidth() // 2) - (width // 2)
         y = (self.dialogo.winfo_screenheight() // 2) - (height // 2)
         self.dialogo.geometry(f"{width}x{height}+{x}+{y}")
@@ -311,12 +317,6 @@ class MostrarOpcoesModule:
                                     })
                                     break
             
-            # Resto do código (fechar diálogo e retornar)
-            print(f"\n=== Opções selecionadas para confirmação ===")
-            print(f"Total de opções: {len(opcoes_selecionadas)}")
-            for i, opcao in enumerate(opcoes_selecionadas, 1):
-                print(f"Opção {i}: {opcao}")
-            
             if hasattr(self, 'dialogo') and self.dialogo.winfo_exists():
                 self.dialogo.destroy()
             
@@ -324,6 +324,4 @@ class MostrarOpcoesModule:
                 self.callback_confirmar(produto, opcoes_selecionadas)
                 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             messagebox.showerror("Erro", f"Erro ao processar opções: {str(e)}")

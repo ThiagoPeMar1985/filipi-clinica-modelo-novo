@@ -713,7 +713,6 @@ class DeliveryController:
                                     float(opcao.get('preco_adicional', 0))
                                 ))
                                 
-                                print(f"Adicionando opção ao pedido - Item ID: {venda_item_id}, Opção ID: {opcao_id}, Grupo ID: {grupo_id}")
                             # Para opções de texto livre
                             else:
                                 grupo_id = int(opcao.get('grupo_id', 0))

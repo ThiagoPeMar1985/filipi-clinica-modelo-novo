@@ -876,13 +876,12 @@ class PagamentoModule:
         """Finaliza a venda com os pagamentos realizados."""
         try:
             # Verificar se o valor pago é suficiente
-            # Usar round para evitar problemas de arredondamento com ponto flutuante
             valor_pago = sum(p['valor'] for p in self.pagamentos)
+            
             if round(valor_pago, 2) < round(self.valor_final, 2):
                 messagebox.showerror(
                     "Erro de Pagamento", 
-                    f"O valor pago (R$ {valor_pago:.2f}) é menor que o valor final " + 
-                    f"(R$ {self.valor_final:.2f}).",
+                    f"O valor pago (R$ {valor_pago:.2f}) é menor que o valor final (R$ {self.valor_final:.2f}).",
                     icon="error"
                 )
                 return 
@@ -890,73 +889,77 @@ class PagamentoModule:
             # Verificar se callback existe
             if not hasattr(self, 'callback_finalizar') or not callable(self.callback_finalizar):
                 messagebox.showerror("Erro", "Configuração incompleta - função de finalização não disponível")
-                return False    
+                return False
+                
             
             # Obter o nome do usuário logado, se disponível
             nome_usuario = 'Não identificado'
             if hasattr(self, 'controller') and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
                 nome_usuario = self.controller.usuario.nome
             
-            # Para mesas, o valor_total já inclui a taxa de serviço
+            # Processar dados da venda
             if self.venda_tipo == 'mesa' and self.taxa_servico:
-                # Calcular o valor dos itens (sem a taxa) para depois calcular os 10%
                 valor_itens = self.valor_total / 1.1
-                valor_taxa_servico = round(valor_itens * 0.1, 2)  # 10% do valor dos itens
-                valor_final = self.valor_total - self.desconto  # Já inclui a taxa
+                valor_taxa_servico = round(valor_itens * 0.1, 2)
+                valor_final = self.valor_total - self.desconto
             else:
-                # Para outros tipos de venda, calcular a taxa normalmente
                 valor_taxa_servico = getattr(self, 'valor_taxa_servico', 0.0)
                 valor_com_taxa = self.valor_total + valor_taxa_servico
                 valor_final = valor_com_taxa - self.desconto
-                
-            # Preparar dados da venda para o callback
+            
+            # Preparar dados da venda
             venda_dados = {
                 'valor_total': self.valor_total,
                 'desconto': self.desconto,
-                'valor_final': round(valor_final, 2),  # Arredondar para evitar problemas com decimais
+                'valor_final': round(valor_final, 2),
                 'data_hora': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
                 'tipo': self.venda_tipo.upper(),
                 'observacoes': '',
-                'taxa_servico': valor_taxa_servico,  # Agora envia o valor monetário
+                'taxa_servico': valor_taxa_servico,
                 'usuario_nome': nome_usuario  
             }
             
-            # Preparar os pagamentos no formato esperado
+            # Preparar pagamentos
             pagamentos_formatados = []
-            for pagamento in self.pagamentos:
+            for i, pagamento in enumerate(self.pagamentos, 1):
                 pagamento_formatado = {
                     'forma_id': pagamento['forma_id'],
                     'forma_nome': pagamento['forma_nome'],
                     'valor': pagamento['valor'],
                     'troco': pagamento.get('troco', 0)
                 }
-                
-                # Adicionar informações adicionais, se disponíveis
+
                 if 'cliente_id' in pagamento:
                     pagamento_formatado['cliente_id'] = pagamento['cliente_id']
                     if 'cliente_nome' in pagamento:
                         pagamento_formatado['cliente_nome'] = pagamento['cliente_nome']
-                    
-                    # Adicionar observação para pagamentos vinculados a cliente
                     pagamento_formatado['observacao'] = f"{pagamento['forma_nome']} - Cliente: {pagamento.get('cliente_nome', '')}"
                 else:
                     pagamento_formatado['observacao'] = pagamento['forma_nome']
                     
                 pagamentos_formatados.append(pagamento_formatado)
-            # Chamar o callback de finalização, se existir
+            
+            # Chamar o callback de finalização
             if self.callback_finalizar:
-                resultado = self.callback_finalizar(venda_dados, self.itens_venda, pagamentos_formatados)
-                if not resultado:  
+                try:
+                    resultado = self.callback_finalizar(venda_dados, self.itens_venda, pagamentos_formatados)
+                    if not resultado:  
+                        return False
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
                     return False
             
+            # Imprimir cupom se necessário
             if imprimir_cupom:
                 try:
                     self._imprimir_cupom_fiscal(venda_dados)
                 except Exception as e:
-                    print(f"Erro ao imprimir cupom: {e}")
+                    print(f"ERRO ao imprimir cupom: {str(e)}")
                     # Continua mesmo com erro de impressão
             
-            # Destruir a janela de pagamento
+            # Fechar a janela
+
             try:
                 if hasattr(self, 'master') and self.master:
                     if isinstance(self.master, tk.Toplevel):
@@ -964,19 +967,21 @@ class PagamentoModule:
                     elif hasattr(self, 'frame') and self.frame:
                         self.frame.destroy()
             except Exception as e:
-                print(f"Erro ao fechar janela: {e}")
+                import traceback
+                traceback.print_exc()
             
             return True  # Indica sucesso
-            
+                
         except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print("===================================\n")
+            
             messagebox.showerror(
                 "Erro ao Finalizar Venda", 
                 f"Ocorreu um erro ao finalizar a venda: {str(e)}",
                 icon="error"
             )
-            print(f"Erro em _finalizar_venda: {str(e)}")
-            import traceback
-            traceback.print_exc()
             return False
 
 

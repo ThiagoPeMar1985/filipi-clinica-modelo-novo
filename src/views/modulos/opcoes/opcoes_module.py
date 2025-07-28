@@ -218,21 +218,45 @@ class OpcoesModule(BaseModule):
         
         # Variável para armazenar a categoria selecionada
         self.categoria_selecionada = tk.StringVar()
+
+        # Busca os tipos de produtos do banco de dados
+        tipos_produtos = self.controller.listar_tipos_produtos()
+        
+        # Verifica se encontrou tipos no banco
+        if not tipos_produtos:
+            messagebox.showerror(
+                "Erro", 
+                "Não foram encontrados tipos de produtos no banco de dados.\n"
+                "Por favor, cadastre os tipos de produtos primeiro."
+            )
+            return
+            
+        # Extrai apenas os nomes dos tipos de produtos
+        categorias = [tipo['nome'] for tipo in tipos_produtos if tipo.get('nome')]
+        
+        if not categorias:
+            messagebox.showerror(
+                "Erro", 
+                "Nenhum tipo de produto válido encontrado.\n"
+                "Verifique se os tipos de produtos estão corretamente cadastrados."
+            )
+            return
         
         # Combobox para selecionar a categoria
-        categorias = ["Bar", "Cozinha", "Sobremesa", "Outros"]
         categoria_cb = ttk.Combobox(
             categoria_frame,
             textvariable=self.categoria_selecionada,
             values=categorias,
-            state="readonly",
-            width=15,
-            font=('Arial', 10)
+            state='readonly',
+            width=30
         )
         categoria_cb.pack(side='left', padx=5)
-        categoria_cb.set(categorias[0])  # Define um valor padrão
         
-        # Configura o evento de seleção
+        # Define o primeiro item como selecionado por padrão, se existir
+        if categorias:
+            categoria_cb.set(categorias[0])
+            
+        # Atualiza a lista de produtos quando a categoria for alterada
         categoria_cb.bind('<<ComboboxSelected>>', lambda e: self._carregar_produtos_por_categoria())
         
         # Frame para seleção de produto
@@ -910,7 +934,7 @@ class OpcoesModule(BaseModule):
         # Empacota o canvas e a barra de rolagem
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
-    
+        
         # Frame principal dentro do canvas
         main_frame = tk.Frame(scrollable_frame, bg='#f0f2f5', padx=20, pady=20)
         main_frame.pack(fill=tk.BOTH, expand=True)

@@ -40,7 +40,8 @@ class PedidosMesasModule(BaseModule):
         self.opcoes_module = MostrarOpcoesModule(
         master=self.frame,  # ou self.root, dependendo da sua estrutura
         root_window=self.parent,  # janela principal
-        callback_confirmar=self._processar_produto_com_opcoes
+        callback_confirmar=self._processar_produto_com_opcoes,
+        db_connection=db_connection
         )
 
         # Inicializa as listas vazias
@@ -83,17 +84,29 @@ class PedidosMesasModule(BaseModule):
         
         # Carregar dados em segundo plano após a interface estar pronta
         self.parent.after(100, self.carregar_dados)
-    def _processar_produto_com_opcoes(self, produto, opcoes):
+
+    def _processar_produto_com_opcoes(self, *args, **kwargs):
         """Processa o produto com as opções selecionadas"""
         try:
-            # Adiciona as opções ao produto
-            produto['opcoes_selecionadas'] = opcoes
+            # Extrai os parâmetros de args ou kwargs
+            if len(args) >= 2:
+                produto = args[0]
+                opcoes = args[1]
+            else:
+                produto = kwargs.get('produto', {})
+                opcoes = kwargs.get('opcoes_selecionadas', [])
             
-            # Chama o método existente para adicionar ao pedido
-            self._adicionar_ao_pedido(produto)
+            # Garante que opcoes seja uma lista
+            opcoes = opcoes if isinstance(opcoes, list) else []
+             
+            # Chama o método para adicionar ao carrinho
+            self._adicionar_item_com_opcoes(produto, 1, opcoes=opcoes)
+                
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             messagebox.showerror("Erro", f"Erro ao processar produto: {str(e)}")
-        
+            
     def _filtrar_produtos_por_tipo(self, tipo):
         """
         Filtra os produtos por tipo e atualiza a tabela de produtos.
@@ -594,116 +607,6 @@ class PedidosMesasModule(BaseModule):
         finally:
             # Garantir que o menu seja fechado
             self.menu_contexto_produto.grab_release()
-    
-    def _mostrar_opcoes_produto(self, event=None):
-        """Exibe as opções disponíveis para o produto selecionado"""
-        # Verificar se há algum item selecionado
-        selecionado = self.tabela_produtos.selection()
-        if not selecionado:
-            messagebox.showwarning("Aviso", "Nenhum produto selecionado.")
-            return
-        
-        # Obter os dados do produto selecionado
-        item = selecionado[0]
-        valores = self.tabela_produtos.item(item, 'values')
-        
-        # Obter o ID do produto (primeira coluna)
-        produto_id = int(valores[0])
-        
-        # Encontrar o produto na lista de produtos
-        produto = next((p for p in self.produtos if p['id'] == produto_id), None)
-        if not produto:
-            messagebox.showerror("Erro", "Produto não encontrado.")
-            return
-        
-        # Verificar se o produto tem opções
-        if produto.get('opcoes'):
-            # Se tiver opções, exibir um diálogo para selecionar as opções
-            self._mostrar_dialogo_opcoes(produto)
-        else:
-            # Se não tiver opções, adicionar diretamente ao pedido
-            self._adicionar_ao_pedido(produto_id, produto)
-    
-    def _mostrar_dialogo_opcoes(self, produto):
-        """Exibe um diálogo para selecionar as opções do produto"""
-        # Criar uma janela de diálogo
-        dialog = tk.Toplevel(self.root)
-        dialog.title(f"Opções - {produto['nome']}")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        
-        # Centralizar o diálogo na tela
-        largura = 400
-        altura = 300
-        x = (dialog.winfo_screenwidth() // 2) - (largura // 2)
-        y = (dialog.winfo_screenheight() // 2) - (altura // 2)
-        dialog.geometry(f"{largura}x{altura}+{x}+{y}")
-        
-        # Frame para as opções
-        frame_opcoes = ttk.LabelFrame(dialog, text="Selecione as opções desejadas")
-        frame_opcoes.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Variáveis para armazenar as seleções
-        opcoes_selecionadas = {}
-        
-        # Adicionar opções ao diálogo
-        for opcao in produto['opcoes']:
-            # Frame para cada opção
-            frame_opcao = ttk.Frame(frame_opcoes)
-            frame_opcao.pack(fill="x", padx=5, pady=5)
-            
-            # Label com o nome da opção
-            ttk.Label(frame_opcao, text=opcao['nome']).pack(side="left")
-            
-            # Se for uma opção de múltipla escolha (select)
-            if opcao['tipo'] == 'select':
-                var = tk.StringVar(value=opcao['valores'][0]['valor'] if opcao['valores'] else "")
-                opcoes_selecionadas[opcao['nome']] = var
-                
-                # Criar o menu suspenso
-                valores = [v['valor'] for v in opcao['valores']]
-                if valores:
-                    menu = ttk.OptionMenu(frame_opcao, var, *valores)
-                    menu.pack(side="right", padx=5)
-            
-            # Se for uma opção de texto
-            elif opcao['tipo'] == 'text':
-                var = tk.StringVar()
-                opcoes_selecionadas[opcao['nome']] = var
-                
-                # Campo de entrada de texto
-                entry = ttk.Entry(frame_opcao, textvariable=var)
-                entry.pack(side="right", fill="x", expand=True, padx=5)
-                
-                # Definir texto de exemplo se fornecido
-                if 'placeholder' in opcao:
-                    entry.insert(0, opcao['placeholder'])
-        
-        # Frame para os botões
-        frame_botoes = ttk.Frame(dialog)
-        frame_botoes.pack(fill="x", padx=10, pady=(0, 10))
-        
-        # Botão de cancelar
-        btn_cancelar = ttk.Button(
-            frame_botoes, 
-            text="Cancelar", 
-            command=dialog.destroy
-        )
-        btn_cancelar.pack(side="right", padx=5)
-        
-        # Botão de confirmar
-        btn_confirmar = ttk.Button(
-            frame_botoes, 
-            text="Adicionar ao Pedido", 
-            command=lambda: self._processar_opcoes(produto, opcoes_selecionadas, dialog)
-        )
-        btn_confirmar.pack(side="right", padx=5)
-        
-        # Configurar tecla Enter para confirmar
-        dialog.bind("<Return>", lambda e: btn_confirmar.invoke())
-        
-        # Focar no diálogo
-        dialog.focus_set()
         
     def _carregar_produtos(self, tipo=None):
         """
@@ -829,36 +732,6 @@ class PedidosMesasModule(BaseModule):
                 )
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao buscar produtos: {str(e)}")
-    
-    def _adicionar_ao_pedido(self, produto_id, produto, opcoes=None):
-        """Adiciona o produto ao pedido atual"""
-        # Verificar se há uma mesa selecionada
-        if not hasattr(self, 'mesa_selecionada') or not self.mesa_selecionada:
-            messagebox.showwarning("Aviso", "Selecione uma mesa primeiro.")
-            return
-        
-        # Verificar se há um pedido em andamento para a mesa
-        if self.mesa_selecionada not in self.pedidos_em_andamento:
-            self.pedidos_em_andamento[self.mesa_selecionada] = []
-        
-        # Criar o item do pedido
-        item_pedido = {
-            'produto_id': produto_id,
-            'nome': produto['nome'],
-            'quantidade': 1,  # Quantidade padrão
-            'preco': produto.get('preco_venda', 0),
-            'opcoes': opcoes or {}
-        }
-        
-        # Adicionar ao pedido
-        self.pedidos_em_andamento[self.mesa_selecionada].append(item_pedido)
-        
-        # Atualizar a exibição do pedido
-        self.atualizar_pedido()
-        
-        # Mostrar mensagem de confirmação
-        messagebox.showinfo("Sucesso", f"{produto['nome']} adicionado ao pedido.")
-    
 
     def mostrar_sem_pedidos(self, parent):
         """Exibe uma mensagem quando não há pedidos para a mesa"""
@@ -1631,6 +1504,7 @@ class PedidosMesasModule(BaseModule):
         """
         Finaliza o pedido atual, mantendo o histórico de itens e opções
         """
+        
         if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
             messagebox.showinfo("Aviso", "Não há pedido aberto para finalizar!")
             return
@@ -1641,13 +1515,14 @@ class PedidosMesasModule(BaseModule):
             return
         
         # Finalização direta sem confirmação
-        
         try:
             # Definir como True para sempre liberar a mesa após finalizar o pedido
             liberar_mesa = hasattr(self, 'mesa') and bool(self.mesa)
+
             
             # Calcular o total do pedido
             total = self.atualizar_total_pedido()
+
             
             # Importar o módulo de pagamento
             from views.modulos.pagamento.pagamento_module import PagamentoModule
@@ -1659,12 +1534,11 @@ class PedidosMesasModule(BaseModule):
                 item_pagamento = item.copy()
                 itens_para_pagamento.append(item_pagamento)
             
-            # Itens preparados para pagamento
-            
             # Criar uma janela para o módulo de pagamento
+
             pagamento_window = tk.Toplevel(self.parent)
             pagamento_window.title("Pagamento - Mesa " + str(self.mesa.get('numero', '')))
-            pagamento_window.geometry("800x600")
+            pagamento_window.geometry("1200x600")
             pagamento_window.transient(self.parent)
             pagamento_window.focus_set()
             pagamento_window.grab_set()
@@ -1691,37 +1565,25 @@ class PedidosMesasModule(BaseModule):
             )
             
             # Configurar evento para quando a janela for fechada
-            pagamento_window.protocol("WM_DELETE_WINDOW", pagamento_window.destroy)
+            def on_close():
+                if messagebox.askokcancel("Fechar", "Deseja realmente cancelar o pagamento?"):
+                    pagamento_window.destroy()
+            
+            pagamento_window.protocol("WM_DELETE_WINDOW", on_close)
             
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao finalizar pedido: {str(e)}")
             import traceback
             traceback.print_exc()
+            messagebox.showerror("Erro", f"Erro ao finalizar pedido: {str(e)}")
     
-    def _processar_venda_finalizada(self, venda_dados, itens_venda, pagamentos, liberar_mesa):
-        """
-        Processa a venda finalizada com os pagamentos realizados
-        
-        Args:
-            venda_dados: Dicionário com os dados da venda
-            itens_venda: Lista de itens da venda
-            pagamentos: Lista de dicionários com os dados dos pagamentos
-            liberar_mesa: Se True, libera a mesa após finalizar o pedido
-        """
+    def _processar_venda_finalizada(self, venda_dados, itens_venda, pagamentos, liberar_mesa=True):
         try:
-            # Verificar estrutura e valores dos itens
-            for i, item in enumerate(itens_venda):
-                pass  # Processamento silencioso dos itens
-            
-            # Verificar pagamentos
-
-            # Processar pagamentos (código removido para limpeza)
             # Verificar se há pagamentos
             if not pagamentos:
-                messagebox.showinfo("Aviso", "Nenhum pagamento registrado!")
-                return
-            
-            # Obter a forma de pagamento principal (a primeira da lista)
+                messagebox.showwarning("Aviso", "Nenhum pagamento registrado.")
+                return False
+                
+            # Obter a forma de pagamento (usar a primeira se houver mais de uma)
             forma_pagamento = pagamentos[0].get('forma_nome', '')
             
             # Calcular o valor total dos pagamentos
@@ -1730,69 +1592,27 @@ class PedidosMesasModule(BaseModule):
             # Obter o desconto (se houver)
             desconto = float(venda_dados.get('desconto', 0))
             
-            # Chamar o método do controller para finalizar o pedido com os parâmetros corretos
-            # Encontrar o pagamento em dinheiro e seu troco
-            pagamento_dinheiro = None
-            for pagamento in pagamentos:
-                if pagamento.get('forma_nome', '').lower() == 'dinheiro':
-                    pagamento_dinheiro = pagamento
-                    break
-            
-            # Obter o ID do usuário do pedido atual
-            usuario_id = None
-            if hasattr(self, 'pedido_atual') and self.pedido_atual:
-                usuario_id = self.pedido_atual.get('usuario_id')
-            
-            # Se não encontrou no pedido, tenta obter do controller principal
-            if not usuario_id and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
-                usuario_id = self.controller.usuario.id
-            
-            # Buscar o nome do usuário na tabela usuarios
-            usuario_nome = 'OPERADOR'  # Valor padrão
-            if usuario_id:
-                try:
-                    cursor = self.db_connection.cursor()
-                    cursor.execute("SELECT nome FROM usuarios WHERE id = %s", (usuario_id,))
-                    resultado = cursor.fetchone()
-                    if resultado:
-                        usuario_nome = resultado[0]
-                    cursor.close()
-                except Exception as e:
-                    pass  # Mantém o valor padrão em caso de erro
-            
-            # Se não encontrou no banco, tenta obter do controller
-            if usuario_nome == 'OPERADOR' and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
-                usuario_nome = self.controller.usuario.nome
-            
-            # Incluir o nome do usuário no dicionário de venda
-            if 'venda_dados' not in locals():
-                venda_dados = {}
-            venda_dados['usuario_nome'] = usuario_nome
-            venda_dados['usuario_id'] = usuario_id
-            
+            # Chamar o método do controller para finalizar o pedido
             sucesso, mensagem = self.controller_mesas.finalizar_pedido(
                 forma_pagamento=forma_pagamento,
                 valor_total=valor_total,
                 desconto=desconto,
-                pagamento=pagamento_dinheiro,  # Passar o pagamento completo incluindo o troco
-                usuario_id=usuario_id,
-                venda_dados=venda_dados  # Passar o dicionário de venda com o nome do usuário
+                pagamento=pagamentos[0],  # Passar o primeiro pagamento
+                usuario_id=getattr(self.controller.usuario, 'id', None) if hasattr(self, 'controller') and hasattr(self.controller, 'usuario') else None,
+                venda_dados=venda_dados
             )
+            
             
             if not sucesso:
                 messagebox.showinfo("Aviso", mensagem)
-                return
+                return False
             
-            # Não registrar na tabela pagamentos, apenas manter os dados do pagamento
-            # Os dados do pagamento já são registrados nas tabelas pedidos e itens_pedido
-            
-            # Limpar o pedido atual conforme feito no controller
+            # Limpar o pedido atual
             self.pedido_atual = None
             self.itens_pedido = []
             
             # Se a mesa foi liberada, voltar para a tela de mesas
             if liberar_mesa:
-                # Usar o método _voltar_para_mesas em vez de voltar()
                 self._voltar_para_mesas()
             else:
                 # Recarregar pedidos para garantir que os dados estejam atualizados
@@ -1801,11 +1621,13 @@ class PedidosMesasModule(BaseModule):
                 # Atualizar interface
                 self.atualizar_interface()
             
-
+            return True  # Importante: retornar True para indicar sucesso
+                
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao processar venda finalizada: {str(e)}")
             import traceback
             traceback.print_exc()
+            messagebox.showerror("Erro", f"Erro ao processar venda finalizada: {str(e)}")
+            return False
     
     def editar_item_selecionado(self, event):
         """Seleciona o item na tabela e exibe as opções para edição"""
@@ -2006,13 +1828,11 @@ class PedidosMesasModule(BaseModule):
             self.parent.update_idletasks()
             
         except Exception as e:
-            print(f"[ERRO] Erro ao voltar para tela de mesas: {e}")
             # Em caso de erro, tentar uma abordagem alternativa
             try:
                 if hasattr(self, 'modulo_anterior') and self.modulo_anterior:
                     self.modulo_anterior.frame.pack(fill="both", expand=True)
             except Exception as e2:
-                print(f"[ERRO] Falha ao retornar ao módulo anterior: {e2}")
                 # Se nada mais funcionar, pelo menos tente atualizar a interface
                 self.parent.update()
 
@@ -2037,17 +1857,7 @@ class PedidosMesasModule(BaseModule):
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao buscar produtos: {str(e)}")
-    
 
-    def _mostrar_menu_contexto_produto(self, event):
-        """Exibe o menu de contexto para o produto selecionado"""
-        # Identificar o item clicado
-        item = self.tabela_produtos.identify_row(event.y)
-        if item:
-            # Selecionar o item clicado
-            self.tabela_produtos.selection_set(item)
-            # Exibir o menu de contexto
-            self.menu_contexto_produto.post(event.x_root, event.y_root)
     
     def _mostrar_opcoes_item(self, item_pedido):
         """Exibe as opções de um item do pedido
@@ -2194,7 +2004,7 @@ class PedidosMesasModule(BaseModule):
     
     def _mostrar_opcoes_produto(self, produto=None, quantidade=1, usuario_id=None):
         """
-        Exibe as opções disponíveis para o produto selecionado
+        Exibe as opções disponíveis para o produto selecionado usando o MostrarOpcoesModule
         
         Args:
             produto: Dicionário com os dados do produto
@@ -2220,300 +2030,231 @@ class PedidosMesasModule(BaseModule):
                     produto = p
                     break
         
+        # Verifica novamente se o produto foi encontrado
+        if produto is None or not isinstance(produto, dict):
+            messagebox.showerror("Erro", "Produto não encontrado ou inválido.")
+            return
+        
         if not produto:
             messagebox.showerror("Erro", "Produto não encontrado.")
             return
+
+        # Obter a conexão com o banco de dados do controlador principal
+        db_connection = getattr(self.controller, 'db_connection', None)
+        if not db_connection:
+            messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados.")
+            return
+
+        # Função de callback que será chamada quando o usuário confirmar as opções
+        def callback_confirmar(produto_selecionado, selecoes):
+            # Adicionar o item com as opções selecionadas
+            self._processar_produto_com_opcoes(produto, selecoes)
             
-        produto_id = produto['id']
+            # Fechar a janela de opções se ainda existir
+            if hasattr(self, 'janela_opcoes') and hasattr(self.janela_opcoes, 'winfo_exists') and self.janela_opcoes.winfo_exists():
+                self.janela_opcoes.destroy()
+
+        # Criar e configurar o módulo de opções
+        from views.modulos.mostrar_opcoes_module import MostrarOpcoesModule
         
-        # Verificar se o produto tem opções antes de criar a janela
+        # Criar uma janela temporária para ser dona do diálogo
+        temp_window = tk.Toplevel(self.parent)
+        temp_window.withdraw()  # Esconder a janela temporária
+        
+        # Inicializar o módulo de opções
+        opcoes_module = MostrarOpcoesModule(
+            master=temp_window,
+            root_window=self.parent,
+            callback_confirmar=callback_confirmar,
+            db_connection=db_connection
+        )
+        
+        # Mostrar as opções do produto
+        opcoes_module.mostrar_opcoes(produto)
+        # Configurar a janela para ser fechada quando o diálogo for fechado
+        temp_window.protocol("WM_DELETE_WINDOW", lambda: temp_window.destroy())
+        
+    
+    def _adicionar_item_com_opcoes(self, produto, quantidade, usuario_id=None, opcoes=None):
+        """
+        Adiciona o produto ao pedido com as opções selecionadas
+        """
         try:
-            from controllers.opcoes_controller import OpcoesController
             
-            # Obter a conexão com o banco de dados do controlador principal
-            db_connection = getattr(self.controller, 'db_connection', None)
-            if not db_connection:
-                messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados.")
-                return
+            # Fazer uma cópia do dicionário do produto
+            produto = produto.copy()
+            
+            # Se já tivermos as opções, adiciona ao pedido
+            if opcoes is not None:
+                # Processar as opções selecionadas
+                opcoes_processadas = []
+                preco_adicional = 0.0
+                texto_livre = []
                 
-            # Criar o controlador de opções com a conexão
-            opcoes_controller = OpcoesController(db_connection=db_connection)
-            
-            # Verificar se o controlador foi criado corretamente
-            if not hasattr(opcoes_controller, 'db') or opcoes_controller.db is None:
-                messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados de opções.")
-                return
-                
-            # Verificar se o produto tem opções antes de criar a janela
-            grupos_opcoes = opcoes_controller.listar_grupos_por_produto(produto_id)
-            
-            if not grupos_opcoes:
-                messagebox.showinfo("Informação", "Este produto não possui opções configuradas.")
-                return
-                
-            # Para cada grupo, buscar os itens de opção
-            for grupo in grupos_opcoes:
-                grupo['itens'] = opcoes_controller.listar_itens_por_grupo(grupo['id'], ativo=True)
-            
-            # Criar janela de opções
-            self.janela_opcoes = tk.Toplevel(self.parent)
-            self.janela_opcoes.title(f"Opções para {produto['nome']}")
-            self.janela_opcoes.geometry("500x600")
-            
-            # Frame principal com barra de rolagem
-            main_frame = ttk.Frame(self.janela_opcoes)
-            main_frame.pack(fill="both", expand=True)
-            
-            # Canvas e barra de rolagem
-            canvas = tk.Canvas(main_frame)
-            scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-            scrollable_frame = ttk.Frame(canvas)
-            
-            scrollable_frame.bind(
-                "<Configure>",
-                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-            )
-            
-            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-            canvas.configure(yscrollcommand=scrollbar.set)
-            
-            canvas.pack(side="left", fill="both", expand=True)
-            scrollbar.pack(side="right", fill="y")
-            
-            # Frame para o conteúdo
-            frame_principal = ttk.Frame(scrollable_frame, padding="10")
-            frame_principal.pack(fill="both", expand=True)
-                
-            # Dicionário para armazenar as seleções do usuário
-            self.selecoes_opcoes = {}
-            
-            # Para cada grupo de opções
-            for grupo in grupos_opcoes:
-                grupo_frame = ttk.LabelFrame(frame_principal, text=grupo['nome'], padding="5")
-                grupo_frame.pack(fill="x", pady=5, padx=5)
-                
-                # Verificar se é seleção única ou múltipla
-                if grupo['selecao_maxima'] == 1:
-                    # Seleção única (Radiobuttons)
-                    var = tk.StringVar()
-                    self.selecoes_opcoes[grupo['id']] = {
-                        'var': var, 
-                        'tipo': 'unico', 
-                        'itens': grupo['itens'],
-                        'entry_widgets': {}  # Para armazenar os campos de texto
-                    }
+                for opcao in opcoes:
+                    if not isinstance(opcao, dict):
+                        continue
                     
-                    # Se houver apenas uma opção, pré-selecionar automaticamente
-                    if len(grupo['itens']) == 1 and not grupo.get('obrigatorio', False):
-                        var.set(str(grupo['itens'][0]['id']))
+                    # Se for texto livre
+                    if opcao.get('tipo') == 'texto_livre':
+                        # Adiciona o texto livre como uma opção processada
+                        if 'valor' in opcao and opcao['valor'].strip():
+                            texto_livre.append(opcao['valor'].strip())
+                            opcoes_processadas.append({
+                                'id': opcao.get('id'),
+                                'tipo': 'texto_livre',
+                                'nome': opcao.get('nome', 'Observação'),
+                                'valor': opcao['valor'].strip(),
+                                'preco_adicional': 0.0,
+                                'grupo_id': opcao.get('grupo_id')
+                            })
                     
-                    for opcao in grupo['itens']:
-                        # Verificar se é uma opção de texto livre
-                        if opcao.get('tipo') == 'texto_livre':
-                            # Criar um frame para a opção
-                            opcao_frame = ttk.Frame(grupo_frame)
-                            opcao_frame.pack(fill="x", pady=2, anchor="w")
-                            
-                            # Variável para controlar o estado do checkbox
-                            check_var = tk.BooleanVar()
-                            
-                            # Criar o Checkbutton
-                            cb = ttk.Checkbutton(
-                                opcao_frame,
-                                text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f}): ",
-                                variable=check_var
-                            )
-                            cb.pack(side="left")
-                            
-                            # Criar o campo de entrada de texto
-                            texto_var = tk.StringVar()
-                            entry = ttk.Entry(opcao_frame, textvariable=texto_var, width=25)
-                            entry.pack(side="left", padx=5)
-                            
-                            # Função para marcar o checkbox quando o usuário começar a digitar
-                            def on_text_change(*args):
-                                if texto_var.get().strip():  # Se houver texto no campo
-                                    var.set(True)  # Marca o checkbox
-                                    entry.config(state='normal')  # Garante que o campo está habilitado
-                            
-                            
-                            # Adicionar evento para detectar quando o usuário começa a digitar
-                            texto_var.trace_add('write', on_text_change)
-                            
-                            # Armazenar a referência ao campo de texto e ao checkbox
-                            self.selecoes_opcoes[grupo['id']]['entry_widgets'][opcao['id']] = {
-                                'entry': entry,
-                                'text_var': texto_var,
-                                'check_var': check_var,
-                                'check_btn': cb,
-                                'opcao': opcao  # Armazenar os dados completos da opção
-                            }
-                            
+                    # Se for opção normal
+                    elif 'id' in opcao:
+                        opcao_dict = {
+                            'id': opcao['id'],
+                            'tipo': opcao.get('tipo', 'opcao_simples'),
+                            'nome': opcao.get('nome', ''),
+                            'preco_adicional': float(opcao.get('preco_adicional', 0)),
+                            'grupo_id': opcao.get('grupo_id')
+                        }
+                        # Se for uma opção do tipo 'opcao_simples', adiciona ao preço adicional
+                        if opcao_dict['tipo'] == 'opcao_simples':
+                            preco_adicional += opcao_dict['preco_adicional']
+                        opcoes_processadas.append(opcao_dict)
                 
-                        
-                        else:
-                            # Opção normal (sem texto livre)
-                            rb = ttk.Radiobutton(
-                                grupo_frame,
-                                text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f})",
-                                variable=var,
-                                value=str(opcao['id'])
-                            )
-                            rb.pack(anchor="w")
-                        
-                        # Adicionar evento para seleção
-                        def on_select(event=None, opcao_id=opcao['id'], grupo_id=grupo['id']):
-                            pass
-                        
-                        rb.bind("<Button-1>", on_select)
+                # Processar textos livres para adicionar ao nome do produto
+                if texto_livre:
+                    texto_obs = " - ".join(texto_livre)
+                    produto['nome'] = f"{produto.get('nome', '')} ({texto_obs})"
+
+                # Verificar se há um pedido atual, se não, criar um
+                if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
+                    sucesso = self.criar_novo_pedido(usuario_id=usuario_id)
+                    if not sucesso:
+                        messagebox.showerror("Erro", "Não foi possível criar um novo pedido")
+                        return False
+
+                # Obter o ID do usuário logado, se disponível
+                if usuario_id is None and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
+                    usuario_id = self.controller.usuario.id
+
+                
+
+                sucesso, mensagem, pedido = self.controller_mesas.adicionar_item_mesa(
+                    mesa_id=self.mesa['id'],
+                    produto=produto,
+                    quantidade=quantidade,
+                    opcoes_selecionadas=opcoes_processadas,  # Inclui tanto opções normais quanto textos livres
+                    preco_adicional=preco_adicional,
+                    usuario_id=usuario_id
+                )
+
+                if sucesso:
+                    # Atualizar a tabela de itens mantendo os itens da sessão
+                    self.carregar_pedidos(manter_itens_sessao=True)
                     
+                    # Ativar o modo de edição
+                    if hasattr(self, 'modo_edicao'):
+                        self.modo_edicao.entrar_modo_edicao()
+                    return True
                 else:
-                    # Seleção múltipla (Checkbuttons)
-                    self.selecoes_opcoes[grupo['id']] = {
-                        'var': [], 
-                        'tipo': 'multiplo', 
-                        'itens': grupo['itens'],
-                        'entry_widgets': {}  # Para armazenar os campos de texto
-                    }
-                    
-                    for opcao in grupo['itens']:
-                        var = tk.BooleanVar()
-                        self.selecoes_opcoes[grupo['id']]['var'].append((var, opcao))
-                        
-                        # Verificar se é uma opção de texto livre
-                        if opcao.get('tipo') == 'texto_livre':
-                            # Criar um frame para a opção
-                            opcao_frame = ttk.Frame(grupo_frame)
-                            opcao_frame.pack(fill="x", pady=2, anchor="w")
-                            
-                            # Criar o checkbox
-                            cb = ttk.Checkbutton(
-                                opcao_frame,
-                                text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f}): ",
-                                variable=var
-                            )
-                            cb.pack(side="left")
-                            
-                            # Criar o campo de entrada de texto
-                            texto_var = tk.StringVar()
-                            entry = ttk.Entry(opcao_frame, textvariable=texto_var, width=25, state='disabled')
-                            entry.pack(side="left", padx=5)
-                            
-                            # Função para atualizar o estado do campo de texto
-                            def update_entry_state():
-                                if var.get():
-                                    entry.config(state='normal')
-                                    # Não forçar o foco para evitar comportamentos indesejados
-                                else:
-                                    entry.config(state='disabled')
-                            
-                            # Função para marcar o checkbox quando o usuário começar a digitar
-                            def on_text_change(*args):
-                                if texto_var.get().strip():  # Se houver texto no campo
-                                    var.set(True)  # Marca o checkbox
-                                    entry.config(state='normal')  # Garante que o campo está habilitado
-                            
-                            # Configurar o comando do checkbox
-                            cb.config(command=update_entry_state)
-                            
-                            # Adicionar evento para detectar quando o usuário começa a digitar
-                            texto_var.trace_add('write', on_text_change)
-                            
-                            # Armazenar a referência ao campo de texto e ao checkbox
-                            self.selecoes_opcoes[grupo['id']]['entry_widgets'][opcao['id']] = {
-                                'entry': entry,
-                                'text_var': texto_var,
-                                'check_var': var,  # Adicionar referência à variável do checkbox
-                                'opcao': opcao  # Armazenar os dados completos da opção
-                            }
-                            
-                            
-                            
-                            # Remover o evento de clique que estava causando o problema
-                        else:
-                            # Opção normal (sem texto livre)
-                            cb = ttk.Checkbutton(
-                                grupo_frame,
-                                text=f"{opcao['nome']} (+R$ {float(opcao['preco_adicional']):.2f})",
-                                variable=var
-                            )
-                            cb.pack(anchor="w")
-            
-            # Frame para o botão de confirmação
-            btn_frame = ttk.Frame(self.janela_opcoes)
-            btn_frame.pack(fill="x", padx=10, pady=10)
-            
-            # Função para confirmar as opções e fechar a janela
-            def confirmar_e_fechar():
-                # Fechar a janela de opções
-                if hasattr(self, 'janela_opcoes') and self.janela_opcoes.winfo_exists():
-                    self.janela_opcoes.destroy()
-                    del self.janela_opcoes
-                # Adicionar o item com as opções
-                self._adicionar_item_com_opcoes(produto, quantidade, usuario_id)
-            
-            # Botão para confirmar as opções
-            btn_confirmar = tk.Button(
-                btn_frame,
-                text="Confirmar Opções",
-                bg="#4CAF50",  # Verde
-                fg="white",
-                padx=10,
-                pady=5,
-                command=confirmar_e_fechar
-            )
-            btn_confirmar.pack(side="right")
-            
-            # Ajustar o tamanho da janela
-            self.janela_opcoes.update_idletasks()
-            width = min(500, self.janela_opcoes.winfo_screenwidth() - 100)
-            height = min(600, self.janela_opcoes.winfo_screenheight() - 100)
-            self.janela_opcoes.geometry(f"{width}x{height}+{int((self.janela_opcoes.winfo_screenwidth() - width)/2)}+{int((self.janela_opcoes.winfo_screenheight() - height)/2)}")
-            
+                    messagebox.showerror("Erro", mensagem or "Não foi possível adicionar o item ao pedido.")
+                    return False
+
+            # Se não tiver opções, exibir o diálogo de opções
+            self._mostrar_opcoes_produto(produto, quantidade, usuario_id)
+            return False
+
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao carregar opções: {str(e)}")
+            error_msg = f"Erro ao adicionar item com opções: {str(e)}"
+            print(error_msg)
             import traceback
             traceback.print_exc()
-            if hasattr(self, 'janela_opcoes'):
-                self.janela_opcoes.destroy()
-    
-    def _adicionar_item_sem_opcoes(self, produto, quantidade, usuario_id=None):
+            messagebox.showerror("Erro", error_msg)
+            return False
+        
+    def adicionar_item(self, produto=None, quantidade=None, usuario_id=None, opcoes=None):
         """
-        Adiciona um produto sem opções ao pedido
+        Adiciona um item ao pedido atual ou cria um novo pedido se necessário.
+        
+        Pode ser chamado com ou sem parâmetros:
+        - Sem parâmetros: obtém os dados da interface
+        - Com parâmetros: usa os valores fornecidos
         
         Args:
-            produto: Dicionário com os dados do produto
-            quantidade: Quantidade do item
+            produto: Dicionário com os dados do produto (opcional)
+            quantidade: Quantidade do item (opcional)
             usuario_id: ID do usuário logado (opcional)
-        
+            opcoes: Lista de opções do produto (opcional)
+            
         Returns:
             bool: True se o item foi adicionado com sucesso, False caso contrário
         """
         try:
-
-            # Obter o ID do usuário logado, se disponível
-            if usuario_id is None and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
-                usuario_id = self.controller.usuario.id
-
-            
-
+            # Se não receber parâmetros, obtém da interface
+            if produto is None:
+                # Verificar se há um produto selecionado
+                selecionado = self.tabela_produtos.selection()
+                if not selecionado:
+                    messagebox.showwarning("Aviso", "Selecione um produto para adicionar")
+                    return False
+                    
+                # Obter o produto selecionado
+                valores = self.tabela_produtos.item(selecionado[0])['values']
+                if not valores or len(valores) < 2:
+                    messagebox.showerror("Erro", "Dados do produto inválidos!")
+                    return False
+                    
+                # Encontrar o produto na lista de produtos
+                produto_id = int(valores[0])
+                produto = next((p for p in self.produtos if p['id'] == produto_id), None)
+                
+                if not produto:
+                    messagebox.showerror("Erro", "Produto não encontrado!")
+                    return False
+                    
+                # Obter a quantidade
+                try:
+                    quantidade = int(self.quantidade_var.get())
+                    if quantidade <= 0:
+                        raise ValueError("Quantidade deve ser maior que zero")
+                except ValueError:
+                    messagebox.showerror("Erro", "Quantidade inválida!")
+                    return False
+                    
+                # Obter o ID do usuário logado, se disponível
+                if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
+                    usuario_id = self.controller.usuario.id
+                    
+                # Se não tiver opções, verificar se o produto tem opções obrigatórias
+                if opcoes is None:
+                    grupos_opcoes = self.controller_mesas.obter_grupos_opcoes(produto['id'])
+                    tem_opcoes_obrigatorias = any(
+                        grupo.get('obrigatorio', False) 
+                        for grupo in grupos_opcoes
+                    )
+                    
+                    if grupos_opcoes and tem_opcoes_obrigatorias:
+                        # Se tiver opções obrigatórias, mostrar a janela de opções
+                        self._mostrar_opcoes_produto(produto, quantidade, usuario_id)
+                        return True
+                    opcoes = []  # Se não tiver opções obrigatórias, usa lista vazia
             
             # Verificar se há um pedido atual, se não, criar um
             if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
-
-                sucesso = self.criar_novo_pedido(usuario_id=usuario_id)
-                if not sucesso:
+                if not self.criar_novo_pedido(usuario_id=usuario_id):
                     messagebox.showerror("Erro", "Não foi possível criar um novo pedido")
                     return False
-                
+            
             # Chamar o método do controller para adicionar o item
             sucesso, mensagem, pedido = self.controller_mesas.adicionar_item_mesa(
                 mesa_id=self.mesa['id'],
                 produto=produto,
                 quantidade=quantidade,
-                opcoes_selecionadas=None,  # Sem opções
-                preco_adicional=0.0,  # Sem preço adicional
-                usuario_id=usuario_id  # Garante que o usuario_id seja sempre passado
+                opcoes_selecionadas=opcoes,  # Pode ser None ou lista vazia
+                preco_adicional=0.0,  # O preço adicional é calculado nas opções
+                usuario_id=usuario_id
             )
             
             if sucesso and pedido:
@@ -2522,321 +2263,23 @@ class PedidosMesasModule(BaseModule):
                 
                 # Ativar o modo de edição
                 if hasattr(self, 'modo_edicao'):
-                    self.modo_edicao.entrar_modo_edicao()
-                
-                return True
-            else:
-                messagebox.showerror("Erro", mensagem or "Não foi possível adicionar o item ao pedido.")
-                return False
-                
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao adicionar item: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return False
-    
-    def _adicionar_item_com_opcoes(self, produto, quantidade, usuario_id=None):
-        """
-        Adiciona o produto ao pedido com as opções selecionadas
-        
-        Args:
-            produto: Dicionário com os dados do produto
-            quantidade: Quantidade do item
-            usuario_id: ID do usuário logado (opcional)
-        """
-        opcoes_selecionadas = []
-        preco_adicional = 0
-        
-        # Processando opções para o produto
-        
-        try:
-            # Verificar se existem seleções feitas
-            if not hasattr(self, 'selecoes_opcoes') or not self.selecoes_opcoes:
-                messagebox.showwarning("Aviso", "Nenhuma opção foi selecionada.")
-                return False
-                
-            # Processar cada grupo de opções
-            for grupo_id, dados in self.selecoes_opcoes.items():
-                if dados['tipo'] == 'unico':
-                    # Opção única (radiobutton)
-                    opcao_id = dados['var'].get()
-                    
-                    # Verificar se há opções de texto livre no grupo
-                    tem_texto_livre = any(opcao.get('tipo') == 'texto_livre' for opcao in dados.get('itens', []))
-                    
-                    # Se não houver seleção e o grupo tiver apenas uma opção, selecionar automaticamente
-                    if not opcao_id and 'itens' in dados and len(dados['itens']) == 1 and not tem_texto_livre:
-                        opcao_id = str(dados['itens'][0]['id'])
-                        # Selecionando automaticamente a única opção disponível
-                    
-                    # Buscar a opção nos itens do grupo
-                    encontrou = False
-                    
-                    # Primeiro, verificar se há opções de texto livre preenchidas
-                    if 'entry_widgets' in dados:
-                        for opcao_id_widget, entry_data in dados['entry_widgets'].items():
-                            # Verificar se o checkbox está marcado e se há texto
-                            check_var = entry_data.get('check_var')
-                            text_var = entry_data.get('text_var')
-                            if (check_var and hasattr(check_var, 'get') and check_var.get() and 
-                                text_var and hasattr(text_var, 'get') and text_var.get().strip()):
-                                # Adicionar a opção com o texto informado
-                                texto = text_var.get().strip()
-                                opcao = entry_data.get('opcao', {})
-                                if opcao:
-                                    opcoes_selecionadas.append({
-                                        'id': opcao.get('id'),
-                                        'nome': f"{opcao.get('nome', 'Opção')}: {texto}",
-                                        'preco_adicional': float(opcao.get('preco_adicional', 0)),
-                                        'grupo_id': grupo_id
-                                    })
-                                    preco_adicional += float(opcao.get('preco_adicional', 0))
-                                    encontrou = True
-                                    break
-                    
-                    # Se não encontrou opção de texto livre, verificar opções normais
-                    if not encontrou and opcao_id:
-                        for opcao in dados.get('itens', []):
-                            # Opção normal (não é texto livre)
-                            if str(opcao.get('id')) == str(opcao_id):
-                                # Opção encontrada
-                                opcoes_selecionadas.append({
-                                    'id': opcao['id'],
-                                    'nome': opcao.get('nome', 'Opção'),
-                                    'preco_adicional': float(opcao.get('preco_adicional', 0)),
-                                    'grupo_id': grupo_id
-                                })
-                                preco_adicional += float(opcao.get('preco_adicional', 0))
-                                encontrou = True
-                                break
-                    
-                    # Se não encontrou nenhuma opção e o grupo é obrigatório, mostrar aviso
-                    if not encontrou and dados.get('obrigatorio', False):
-                        messagebox.showwarning("Aviso", f"Por favor, selecione uma opção para o grupo {dados.get('nome', '')} ou preencha o campo de texto.")
-                        return False
-                            
-                elif dados['tipo'] == 'multiplo':
-                    # Primeiro, verificar se há opções de texto livre preenchidas
-                    if 'entry_widgets' in dados and dados['entry_widgets']:
-                        for opcao_id_widget, entry_data in dados['entry_widgets'].items():
-                            # Verificar se o checkbox está marcado
-                            check_var = entry_data.get('check_var')
-                            if check_var and hasattr(check_var, 'get') and check_var.get():
-                                # Obter o texto digitado, mesmo que vazio
-                                text_var = entry_data.get('text_var')
-                                texto = text_var.get() if text_var and hasattr(text_var, 'get') else ''
-                                # Adicionar a opção com o texto informado, mesmo que vazio
-                                opcao = entry_data.get('opcao', {})
-                                if opcao:
-                                    opcoes_selecionadas.append({
-                                        'id': opcao.get('id'),
-                                        'nome': f"{opcao.get('nome', 'Opção')}: {texto.strip()}" if texto.strip() else opcao.get('nome', 'Opção'),
-                                        'preco_adicional': float(opcao.get('preco_adicional', 0)),
-                                        'grupo_id': grupo_id
-                                    })
-                                    preco_adicional += float(opcao.get('preco_adicional', 0))
-                    
-                    # Depois, verificar as opções normais (checkboxes)
-                    if 'var' in dados and dados['var']:
-                        if isinstance(dados['var'], list):
-                            for var, opcao in dados['var']:
-                                if hasattr(var, 'get') and var.get() and opcao.get('tipo') != 'texto_livre':
-                                    opcoes_selecionadas.append({
-                                        'id': opcao['id'],
-                                        'nome': opcao.get('nome', 'Opção'),
-                                        'preco_adicional': float(opcao.get('preco_adicional', 0)),
-                                        'grupo_id': grupo_id
-                                    })
-                                    preco_adicional += float(opcao.get('preco_adicional', 0))
-                    else:
-                        # Tratar como um dicionário de opções
-                        for opcao_id, var in dados['var'].items():
-                            if var.get():
-                                opcao = next((op for op in dados.get('itens', []) 
-                                            if str(op['id']) == str(opcao_id) and op.get('tipo') != 'texto_livre'), None)
-                                if opcao:
-                                    opcoes_selecionadas.append({
-                                        'id': opcao['id'],
-                                        'nome': opcao.get('nome', 'Opção'),
-                                        'preco_adicional': float(opcao.get('preco_adicional', 0)),
-                                        'grupo_id': grupo_id
-                                    })
-                                    preco_adicional += float(opcao.get('preco_adicional', 0))
-            
-            # Verificar se há um pedido atual, se não, criar um
-            if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
-        
-                sucesso = self.criar_novo_pedido(usuario_id=usuario_id)
-                if not sucesso:
-                    messagebox.showerror("Erro", "Não foi possível criar um novo pedido")
-                    return False
-                
-            
-        
-            
-            sucesso, mensagem, pedido = self.controller_mesas.adicionar_item_mesa(
-                mesa_id=self.mesa['id'],
-                produto=produto,
-                quantidade=quantidade,
-                opcoes_selecionadas=opcoes_selecionadas,
-                preco_adicional=preco_adicional,
-                usuario_id=usuario_id  # Garantir que o usuario_id seja sempre passado
-            )
-            
-            if sucesso and pedido:
-                # Fechar a janela de opções
-                if hasattr(self, 'janela_opcoes'):
-                    self.janela_opcoes.destroy()
-                
-                # Atualizar a tabela de itens e o pedido atual
-                self.pedido_atual = pedido
-                self.carregar_pedidos(manter_itens_sessao=True)
-                
-                # Atualizar a interface
-                self.atualizar_interface()
-                
-                return True
-            else:
-                messagebox.showerror("Erro", mensagem or "Não foi possível adicionar o item ao pedido.")
-                return False
-                
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao adicionar item: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return False
-            
-        finally:
-            # Garantir que a janela de opções seja fechada mesmo em caso de erro
-            if hasattr(self, 'janela_opcoes') and self.janela_opcoes and self.janela_opcoes.winfo_exists():
-                try:
-                    self.janela_opcoes.destroy()
-                    del self.janela_opcoes
-                except Exception as e:
-                    print(f"Erro ao fechar janela de opções: {e}")
-            
-            # Ativar o modo de edição após adicionar um item com opções
-            if hasattr(self, 'modo_edicao'):
-                try:
-                    self.modo_edicao.entrar_modo_edicao()
-                except Exception as e:
-                    print(f"Erro ao ativar modo de edição: {e}")
-            
-            # Limpar campos do formulário
-            try:
-                if hasattr(self, 'quantidade_var'):
-                    self.quantidade_var.set("1")
-                if hasattr(self, 'observacoes_var'):
-                    self.observacoes_var.set("")
-            except Exception as e:
-                print(f"Erro ao limpar campos do formulário: {e}")
-                
-    
-    def _obter_todas_opcoes(self):
-        """Obtém todas as opções disponíveis"""
-        try:
-            from controllers.opcoes_controller import OpcoesController
-            
-            # Obter a conexão com o banco de dados do controlador principal
-            db_connection = getattr(self.controller, 'db_connection', None)
-            if not db_connection:
-                return []
-                
-            # Criar o controlador de opções com a conexão
-            opcoes_controller = OpcoesController(db_connection=db_connection)
-            
-            # Obter todos os grupos de opções
-            grupos = opcoes_controller.listar_grupos()
-            
-            # Coletar todas as opções
-            todas_opcoes = []
-            for grupo in grupos:
-                opcoes = opcoes_controller.listar_itens_por_grupo(grupo['id'])
-                todas_opcoes.extend(opcoes)
-                
-            return todas_opcoes
-            
-        except Exception:
-            # Silently handle errors when fetching options
-            return []
-    
-    def adicionar_item(self):
-        """
-        Adiciona um item ao pedido atual ou cria um novo pedido se necessário.
-        
-        Este método é chamado quando o usuário clica no botão de adicionar item.
-        """
-        try:
-            # Verificar se há um produto selecionado
-            selecionado = self.tabela_produtos.selection()
-            if not selecionado:
-                messagebox.showwarning("Aviso", "Selecione um produto para adicionar")
-                return
-                
-            # Obter o produto selecionado
-            valores = self.tabela_produtos.item(selecionado[0])['values']
-            if not valores or len(valores) < 2:  # Verifica se há valores suficientes
-                messagebox.showerror("Erro", "Dados do produto inválidos!")
-                return
-                
-            # Encontrar o produto na lista de produtos
-            produto_id = int(valores[0])
-            produto = None
-            
-            for p in self.produtos:
-                if p['id'] == produto_id:
-                    produto = p
-                    break
-                    
-            if not produto:
-                messagebox.showerror("Erro", "Produto não encontrado!")
-                return
-            
-            # Obter a quantidade
-            try:
-                quantidade = int(self.quantidade_var.get())
-                if quantidade <= 0:
-                    raise ValueError("Quantidade deve ser maior que zero")
-            except ValueError:
-                messagebox.showerror("Erro", "Quantidade inválida!")
-                return
-            
-            # Obter o ID do usuário logado, se disponível
-            usuario_id = None
-            if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
-                usuario_id = self.controller.usuario.id
-                
-            # Verificar se o produto tem opções
-            grupos_opcoes = self.controller_mesas.obter_grupos_opcoes(produto['id'])
-            
-            # Verificar se há grupos de opções obrigatórios
-            tem_opcoes_obrigatorias = False
-            for grupo in grupos_opcoes:
-                if grupo.get('obrigatorio', False):
-                    tem_opcoes_obrigatorias = True
-                    break
-            
-            if grupos_opcoes and len(grupos_opcoes) > 0 and tem_opcoes_obrigatorias:
-                # Se o produto tiver opções obrigatórias, mostrar a janela de opções
-                self._mostrar_opcoes_produto(produto, quantidade, usuario_id)
-                return True
-            else:
-                # Se não tiver opções ou não tiver opções obrigatórias, adicionar diretamente
-                sucesso = self._adicionar_item_sem_opcoes(produto, quantidade, usuario_id)
-                if sucesso and hasattr(self, 'modo_edicao'):
                     try:
-                        # Ativar o modo de edição após adicionar um item
                         self.modo_edicao.entrar_modo_edicao()
                     except Exception as e:
                         print(f"Erro ao ativar modo de edição: {e}")
-                return sucesso
+                
+                return True
+            
+            messagebox.showerror("Erro", mensagem or "Não foi possível adicionar o item ao pedido.")
+            return False
                 
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao adicionar item: {str(e)}")
+            error_msg = f"Erro ao adicionar item: {str(e)}"
+            print(error_msg)
             import traceback
             traceback.print_exc()
+            messagebox.showerror("Erro", error_msg)
             return False
-
 
     
     def remover_item_selecionado(self):

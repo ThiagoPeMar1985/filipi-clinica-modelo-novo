@@ -1121,7 +1121,7 @@ class GerenciadorImpressao:
                         texto_bytes = texto_formatado.encode('cp850', errors='replace')
                         win32print.WritePrinter(hprinter, texto_bytes)
                     except Exception as e:
-                        print(f"DEBUG - _imprimir_texto - Erro ao enviar texto: {str(e)}")
+                        print(f"_imprimir_texto - Erro ao enviar texto: {str(e)}")
                         # Tenta enviar o texto em partes menores
                         for linha in texto_formatado.split('\n'):
                             if linha.strip():  # Ignora linhas vazias

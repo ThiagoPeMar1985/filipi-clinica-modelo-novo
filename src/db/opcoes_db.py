@@ -475,3 +475,26 @@ class OpcoesDB:
             return []
         finally:
             cursor.close()
+
+    def listar_tipos_produtos(self) -> List[Dict[str, Any]]:
+        """
+        Lista todos os tipos de produtos distintos da tabela produtos.
+        
+        Returns:
+            Lista de dicionários contendo os tipos de produtos
+        """
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT DISTINCT tipo as nome 
+                FROM produtos 
+                WHERE tipo IS NOT NULL AND tipo != ''
+                ORDER BY tipo
+            """)
+            
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"Erro ao listar tipos de produtos: {e}")
+            return []
+        finally:
+            cursor.close()

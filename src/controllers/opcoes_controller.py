@@ -169,7 +169,7 @@ class OpcoesController:
         Lista os produtos de uma categoria específica.
         
         Args:
-            categoria: Nome da categoria (bar, cozinha, sobremesa, outros)
+            categoria: Nome da categoria a ser filtrada
             
         Returns:
             Lista de dicionários com os produtos da categoria
@@ -180,28 +180,20 @@ class OpcoesController:
         try:
             cursor = self.db.db.cursor(dictionary=True)
             
-            # Mapeia o nome da categoria para o valor no banco de dados
-            categoria_map = {
-                'bar': 'Bar',
-                'cozinha': 'Cozinha',
-                'sobremesa': 'Sobremesas',
-                'outros': 'Outros'
-            }
-            
-            tipo_produto = categoria_map.get(categoria.lower(), 'Outros')
-            
+            # Busca os produtos da categoria selecionada diretamente
             cursor.execute("""
                 SELECT id, nome, preco_venda as preco 
                 FROM produtos 
                 WHERE tipo = %s
                 ORDER BY nome
-            """, (tipo_produto,))
+            """, (categoria,))
             
             return cursor.fetchall()
-            
         except Exception as e:
             print(f"Erro ao listar produtos por categoria {categoria}: {e}")
             return []
+        finally:
+            cursor.close()
             
     def listar_grupos_para_vinculo(self):
         """Lista todos os grupos de opções disponíveis para vínculo."""
@@ -405,3 +397,15 @@ class OpcoesController:
             print(f"Erro ao salvar vínculo: {e}")
             self.db.db.rollback()
             return False
+            
+    def listar_tipos_produtos(self):
+        """
+        Lista todos os tipos de produtos distintos da tabela produtos.
+        
+        Returns:
+            Lista de dicionários contendo os tipos de produtos
+        """
+        if not self.db:
+            return []
+            
+        return self.db.listar_tipos_produtos()
