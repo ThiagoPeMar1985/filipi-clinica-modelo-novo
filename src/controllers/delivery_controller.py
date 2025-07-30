@@ -214,12 +214,13 @@ class DeliveryController:
         finally:
             cursor.close()
     
-    def atualizar_status_pedido(self, pedido_id, novo_status):
+    def atualizar_status_pedido(self, pedido_id, novo_status, motivo_cancelamento=None):
         """Atualiza o status de um pedido de entrega.
         
         Args:
             pedido_id (int): ID do pedido a ser atualizado
             novo_status (str): Novo status do pedido (ex: 'EM_PREPARO', 'EM_ROTA', 'ENTREGUE', 'CANCELADO')
+            motivo_cancelamento (str, optional): Motivo do cancelamento, se aplicável
             
         Returns:
             tuple: (sucesso: bool, mensagem: str)
@@ -227,7 +228,11 @@ class DeliveryController:
         cursor = self.db.cursor()
         try:
             # Verificar se o pedido existe
-            cursor.execute("SELECT id, status, status_entrega FROM pedidos WHERE id = %s AND tipo = 'DELIVERY'", (pedido_id,))
+            cursor.execute("""
+                SELECT id, status, status_entrega 
+                FROM pedidos 
+                WHERE id = %s AND tipo = 'DELIVERY'
+            """, (pedido_id,))
             pedido = cursor.fetchone()
             
             if not pedido:
@@ -248,7 +253,13 @@ class DeliveryController:
             status_entrega_para_salvar = novo_status  # Manter o status_entrega como ENTREGUE para histórico
             
             # Registrar eventos específicos baseados no novo status
-            campos_atualizar = ["data_atualizacao = NOW()"]
+            campos_atualizar = [
+                f"status = %s",
+                f"status_entrega = %s",
+                "data_atualizacao = NOW()"
+            ]
+            
+            params = [status_para_salvar, status_entrega_para_salvar]
             
             if novo_status == 'EM_PREPARO':
                 campos_atualizar.append("data_inicio_preparo = NOW()")
@@ -261,21 +272,43 @@ class DeliveryController:
                 self._registrar_pagamento_entrega(pedido_id)
             elif novo_status == 'CANCELADO':
                 campos_atualizar.append("data_cancelamento = NOW()")
+                # Adicionar a observação do cancelamento se fornecida
+                if motivo_cancelamento:
+                    campos_atualizar.append("obs_cancelamento = %s")
+                    params.append(motivo_cancelamento)
+                
+                # Atualizar itens do pedido para CANCELADO
+                cursor.execute("""
+                    UPDATE itens_pedido 
+                    SET status = 'CANCELADO',
+                        data_hora = NOW()
+                    WHERE pedido_id = %s
+                """, (pedido_id,))
             
-            # Atualizar o status na tabela de pedidos
-            campos_atualizar.extend(["status = %s", "status_entrega = %s"])
-            params = [status_para_salvar, status_entrega_para_salvar, pedido_id]
+            # Adicionar o ID do pedido como último parâmetro
+            params.append(pedido_id)
             
+            # Montar a query com os campos de atualização
             query = f"UPDATE pedidos SET {', '.join(campos_atualizar)} WHERE id = %s"
+            
             cursor.execute(query, params)
             
+            # Mensagem para o histórico
+            mensagem_historico = f"Status alterado de {status_atual} para {status_para_salvar} (status_entrega: {status_entrega_para_salvar})"
+            if novo_status == 'CANCELADO' and motivo_cancelamento:
+                mensagem_historico += f" - Motivo: {motivo_cancelamento}"
+            
             # Registrar o histórico de alteração de status
-            self._registrar_historico_status(pedido_id, status_para_salvar, 
-                                          observacao=f"Status alterado de {status_atual} para {status_para_salvar} (status_entrega: {status_entrega_para_salvar})",
-                                          usuario_id=1)  # TODO: Substituir pelo ID do usuário logado
+            self._registrar_historico_status(
+                pedido_id, 
+                status_para_salvar, 
+                observacao=mensagem_historico,
+                usuario_id=1  # TODO: Substituir pelo ID do usuário logado
+            )
             
             self.db.commit()
-            return True, f"Status do pedido {pedido_id} atualizado para {novo_status} com sucesso!"
+            return True ,"Status do pedido atualizado com sucesso, pagamento registrado!"
+           
             
         except Exception as e:
             self.db.rollback()
@@ -335,6 +368,14 @@ class DeliveryController:
                 SET status = 'FINALIZADO', 
                     data_fechamento = NOW()
                 WHERE id = %s
+            """, (pedido_id,))
+
+            # Atualizar o status do pedido para FINALIZADO
+            cursor.execute("""
+                UPDATE itens_pedido 
+                SET status = 'FINALIZADO', 
+                    data_hora_entregue = NOW()
+                WHERE pedido_id = %s
             """, (pedido_id,))
             
             self.db.commit()

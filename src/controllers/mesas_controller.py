@@ -229,13 +229,14 @@ class MesasController:
                 
             cursor = self.db_connection.cursor(dictionary=True)
             
-            # Carregar itens do pedido
+            # Carregar itens do pedido com status PENDENTE
             cursor.execute(
                 """
                 SELECT ip.*, p.nome as nome_produto 
                 FROM itens_pedido ip
                 JOIN produtos p ON ip.produto_id = p.id
-                WHERE ip.pedido_id = %s
+                WHERE ip.pedido_id = %s 
+                AND ip.status = 'PENDENTE'
                 ORDER BY ip.id
                 """,
                 (pedido_id,)
@@ -258,6 +259,7 @@ class MesasController:
             
             return True
         except Exception as e:
+            print(f"Erro ao carregar itens do pedido: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
@@ -495,8 +497,6 @@ class MesasController:
         except Exception as e:
             import traceback
             traceback.print_exc()
-            
-
             return False, f"Erro ao adicionar item: {str(e)}", None
     
     def limpar_itens_sessao(self) -> None:
@@ -512,12 +512,13 @@ class MesasController:
             import traceback
             traceback.print_exc()
     
-    def remover_item_pedido(self, item_id: int) -> Tuple[bool, str]:
+    def remover_item_pedido(self, item_id: int, motivo_remocao: str = None) -> Tuple[bool, str]:
         """
-        Remove um item do pedido atual.
+        Remove um item do pedido atual, marcando-o como cancelado.
         
         Args:
-            item_id: ID do item a ser removido
+            item_id: ID do item a ser cancelado
+            motivo_remocao: Texto opcional com o motivo da remoção
             
         Returns:
             Tuple[bool, str]: (sucesso, mensagem)
@@ -529,49 +530,69 @@ class MesasController:
             
             cursor = self.db_connection.cursor()
             
-            # Verificar se o item existe antes de tentar remover
-            cursor.execute("SELECT id, pedido_id FROM itens_pedido WHERE id = %s", (item_id,))
+            # Verificar se o item existe antes de tentar cancelar
+            cursor.execute("""
+                SELECT id, pedido_id, quantidade, valor_unitario 
+                FROM itens_pedido 
+                WHERE id = %s AND removido_hora IS NULL
+            """, (item_id,))
             item = cursor.fetchone()
             
             if not item:
-                error_msg = f"Item com ID {item_id} não encontrado"
+                error_msg = f"Item com ID {item_id} não encontrado ou já cancelado"
                 return False, error_msg
                 
             pedido_id = item[1]
             
-            # Remover as opções do item primeiro
-            cursor.execute("DELETE FROM itens_pedido_opcoes WHERE item_pedido_id = %s", (item_id,))
+            # Marcar o item como cancelado, registrar a hora e o motivo
+            data_hora_atual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            # Remover o item
-            cursor.execute("DELETE FROM itens_pedido WHERE id = %s", (item_id,))
+            # Se não foi fornecido um motivo, usar um valor padrão
+            if motivo_remocao is None:
+                motivo_remocao = "Item removido pelo usuário"
+            
+            cursor.execute("""
+                UPDATE itens_pedido 
+                SET status = 'CANCELADO', 
+                    removido_hora = %s,
+                    motivo_remocao = %s
+                WHERE id = %s
+            """, (data_hora_atual, motivo_remocao, item_id))
             
             if cursor.rowcount == 0:
-                error_msg = f"Nenhum item removido (ID: {item_id})"
+                error_msg = f"Falha ao cancelar o item (ID: {item_id})"
                 self.db_connection.rollback()
                 return False, error_msg
-                
-            # Atualizar o total do pedido
-            cursor.execute(
-                """
-                UPDATE pedidos SET total = COALESCE((
-                    SELECT SUM(subtotal) FROM itens_pedido WHERE pedido_id = %s
-                ), 0) WHERE id = %s
-                """,
-                (pedido_id, pedido_id)
-            )
+            
+            # O restante da função permanece o mesmo
+            cursor.execute("""
+                UPDATE pedidos 
+                SET total = COALESCE((
+                    SELECT SUM(subtotal) 
+                    FROM itens_pedido 
+                    WHERE pedido_id = %s 
+                    AND removido_hora IS NULL
+                ), 0) 
+                WHERE id = %s
+            """, (pedido_id, pedido_id))
             
             self.db_connection.commit()
             
             # Recarregar os itens do pedido
             self.carregar_itens_pedido(pedido_id)
             
-            # Verificar se ainda há itens no pedido
-            cursor.execute("SELECT COUNT(*) FROM itens_pedido WHERE pedido_id = %s", (pedido_id,))
+            # Verificar se ainda há itens ativos no pedido
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM itens_pedido 
+                WHERE pedido_id = %s 
+                AND removido_hora IS NULL
+            """, (pedido_id,))
+            
             count = cursor.fetchone()[0]
             
-            # Se não houver mais itens, cancelar o pedido e liberar a mesa
+            # Se não houver mais itens ativos, cancelar o pedido e liberar a mesa
             if count == 0 and self.pedido_atual and 'id' in self.pedido_atual:
-                # Atualizar o status do pedido para CANCELADO
                 data_atual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 cursor.execute(
                     """
@@ -599,7 +620,7 @@ class MesasController:
             
             cursor.close()
             
-            success_msg = f"Item {item_id} removido com sucesso"
+            success_msg = f"Item {item_id} cancelado com sucesso"
             return True, success_msg
             
         except Exception as e:
@@ -608,7 +629,7 @@ class MesasController:
             if self.db_connection:
                 self.db_connection.rollback()
             import traceback
-            error_msg = f"Erro ao remover item: {str(e)}"
+            error_msg = f"Erro ao cancelar item: {str(e)}"
             print(f"[ERRO CRÍTICO] {error_msg}")
             traceback.print_exc()
             return False, error_msg
@@ -673,6 +694,17 @@ class MesasController:
                 (data_atual, forma_pagamento, valor_total - desconto, troco, desconto, self.pedido_atual['id'])
             )
             
+             # Atualizar os itens do pedido para FINALIZADO
+            cursor.execute(
+                """
+                UPDATE itens_pedido 
+                SET status = 'FINALIZADO',
+                    data_hora_entregue = %s
+                WHERE pedido_id = %s
+                """,
+                (data_atual, self.pedido_atual['id'])
+            )
+
             # Liberar a mesa
             cursor.execute(
                 "UPDATE mesas SET status = 'LIVRE', pedido_atual_id = NULL WHERE id = %s",
@@ -693,68 +725,76 @@ class MesasController:
             traceback.print_exc()
             return False, f"Erro ao finalizar pedido: {str(e)}"
     
-    def cancelar_pedido(self) -> Tuple[bool, str]:
+    def cancelar_pedido(self, motivo=None) -> Tuple[bool, str]:
         """
-        Cancela o pedido atual da mesa.
-        
+        Cancela o pedido atual, marcando-o como CANCELADO no banco de dados.
+        Mantém os itens do pedido, apenas alterando seu status.
+
+        Args:
+            motivo: Motivo do cancelamento (opcional)
+
         Returns:
             Tuple[bool, str]: (sucesso, mensagem)
         """
+        if not hasattr(self, 'pedido_atual') or not self.pedido_atual:
+            return False, "Nenhum pedido em andamento"
+
         try:
-            if not self.db_connection:
-                raise ValueError("Conexão com o banco de dados não disponível")
-            
-            if not self.pedido_atual:
-                return False, "Não há pedido em andamento"
-            
-            cursor = self.db_connection.cursor()
-            
-            # Remover todas as opções dos itens do pedido
-            cursor.execute(
-                """
-                DELETE FROM itens_pedido_opcoes 
-                WHERE item_pedido_id IN (SELECT id FROM itens_pedido WHERE pedido_id = %s)
-                """,
-                (self.pedido_atual['id'],)
-            )
-            
-            # Remover todos os itens do pedido
-            cursor.execute("DELETE FROM itens_pedido WHERE pedido_id = %s", (self.pedido_atual['id'],))
-            
-            # Atualizar o pedido
+            if not hasattr(self, 'db_connection') or not self.db_connection:
+                return False, "Conexão com o banco de dados não disponível"
+                
+            cursor = self.db_connection.cursor(dictionary=True)
             data_atual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            cursor.execute(
-                """
+            # 1. Atualizar o pedido
+            cursor.execute("""
                 UPDATE pedidos 
-                SET status = 'CANCELADO', 
-                    data_fechamento = %s,
+                SET status = 'CANCELADO',
+                    total = 0,
                     data_cancelamento = %s,
-                    total = 0
+                    obs_cancelamento = %s
                 WHERE id = %s
-                """,
-                (data_atual, data_atual, self.pedido_atual['id'])
-            )
+            """, (data_atual, motivo, self.pedido_atual['id']))
             
-            # Liberar a mesa
-            cursor.execute(
-                "UPDATE mesas SET status = 'LIVRE', pedido_atual_id = NULL WHERE id = %s",
-                (self.pedido_atual['mesa_id'],)
-            )
+            # 2. Atualizar itens do pedido
+            cursor.execute("""
+                UPDATE itens_pedido 
+                SET status = 'CANCELADO',
+                    data_hora = %s
+                WHERE pedido_id = %s
+            """, (data_atual, self.pedido_atual['id']))
             
+            # 3. Liberar a mesa
+            try:
+                cursor.execute("""
+                    UPDATE mesas 
+                    SET status = 'LIVRE',
+                        pedido_atual_id = NULL
+                    WHERE id = %s
+                """, (self.pedido_atual.get('mesa_id'),))
+            except Exception as e:
+                print(f"Aviso: Erro ao atualizar a mesa - {str(e)}")
+            
+            # Commit das alterações
             self.db_connection.commit()
             
-            # Limpar o pedido atual
-            self.pedido_atual = None
-            self.itens_pedido = []
-            
-            cursor.close()
+            # Atualizar o estado local
+            self.pedido_atual['status'] = 'CANCELADO'
+            self.pedido_atual['total'] = 0
+            self.pedido_atual['data_cancelamento'] = data_atual
+            self.pedido_atual['obs_cancelamento'] = motivo
             
             return True, "Pedido cancelado com sucesso"
+            
         except Exception as e:
+            if hasattr(self, 'db_connection') and self.db_connection:
+                self.db_connection.rollback()
             import traceback
             traceback.print_exc()
             return False, f"Erro ao cancelar pedido: {str(e)}"
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
     
     def atualizar_total_pedido(self, pedido_id: int) -> float:
         """

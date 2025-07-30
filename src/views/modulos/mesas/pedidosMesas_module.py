@@ -1385,50 +1385,6 @@ class PedidosMesasModule(BaseModule):
             self.quantidade_var.set("1")
             return
                 
-        # Obter os dados do produto selecionado
-            valores = self.tabela_produtos.item(item_selecionado[0], 'values')
-            if not valores or len(valores) < 2:  # Verifica se há valores suficientes
-                messagebox.showerror("Erro", "Dados do produto inválidos!")
-                return
-                
-            # Encontrar o produto completo na lista de produtos
-            produto_id = int(valores[0])  # Assumindo que o ID está na primeira coluna
-            produto = None
-            
-            for p in self.produtos:
-                if p['id'] == produto_id:
-                    produto = p
-                    break
-                    
-            if not produto:
-                messagebox.showerror("Erro", "Produto não encontrado!")
-                return
-            
-            # Obter a quantidade
-            try:
-                if not hasattr(self, 'quantidade_var'):
-                    self.quantidade_var = tk.StringVar(value="1")
-                    
-                quantidade = int(self.quantidade_var.get())
-                if quantidade <= 0:
-                    raise ValueError("Quantidade deve ser maior que zero")
-            except ValueError:
-                messagebox.showerror("Erro", "Quantidade inválida!")
-                return
-            
-            # Obter o ID do usuário logado, se disponível
-            usuario_id = None
-            if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
-                usuario_id = self.controller.usuario.id
-            
-            # Verificar se o produto tem opções
-            if hasattr(produto, 'opcoes') and produto.opcoes:
-                # Se o produto tiver opções, mostrar a janela de opções
-                self._mostrar_opcoes_produto(produto, quantidade, usuario_id)
-            else:
-                # Se não tiver opções, adicionar diretamente
-                self._adicionar_item_sem_opcoes(produto, quantidade, usuario_id)
-            
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao adicionar item: {str(e)}")
             import traceback
@@ -1528,12 +1484,30 @@ class PedidosMesasModule(BaseModule):
             from views.modulos.pagamento.pagamento_module import PagamentoModule
             
             # Preparar os itens para pagamento, garantindo que todos tenham o campo 'tipo'
+            # Preparar os itens para pagamento, garantindo que todos tenham o campo 'tipo'
             itens_para_pagamento = []
             for item in self.itens_pedido:
                 # Criar uma cópia do item para não modificar o original
                 item_pagamento = item.copy()
+                
+                # Garantir que o item tenha um nome de produto
+                if 'nome' not in item_pagamento and 'nome_produto' in item_pagamento:
+                    item_pagamento['nome'] = item_pagamento['nome_produto']
+                elif 'nome' not in item_pagamento:
+                    item_pagamento['nome'] = 'Produto'
+                
+                # Garantir que o preço esteja no formato correto
+                if 'preco' not in item_pagamento and 'valor_unitario' in item_pagamento:
+                    item_pagamento['preco'] = float(item_pagamento['valor_unitario'])
+                elif 'preco' not in item_pagamento:
+                    item_pagamento['preco'] = 0.0
+                
+                # Adicionar opções ao item, se houver
+                if 'opcoes' in item_pagamento and item_pagamento['opcoes']:
+                    item_pagamento['opcoes'] = item_pagamento['opcoes']
+                
                 itens_para_pagamento.append(item_pagamento)
-            
+                        
             # Criar uma janela para o módulo de pagamento
 
             pagamento_window = tk.Toplevel(self.parent)
@@ -1701,49 +1675,183 @@ class PedidosMesasModule(BaseModule):
             
         if not messagebox.askyesno("Confirmar Cancelamento", mensagem):
             return
+
+        # Janela para inserir o motivo do cancelamento
+        janela = tk.Toplevel(self.parent)
+        janela.title("Motivo do Cancelamento")
+        janela.transient(self.parent)
+        janela.grab_set()
         
-        # Segunda mensagem de confirmação
-        if not messagebox.askyesno("Confirmação Final", 
-                                 "ATENÇÃO: Esta ação irá apagar TODOS os itens do pedido e liberar a mesa.\n\n"
-                                 "Deseja realmente prosseguir com o cancelamento?"):
-            return
-            
-        try:
-            # Chamar o método do controller para cancelar o pedido
-            # O controller já tem acesso ao pedido atual e à mesa
-            sucesso, mensagem = self.controller_mesas.cancelar_pedido()
-            
-            if sucesso:
-                # Atualizar estado local
-                self.pedido_atual = None
-                if hasattr(self, 'itens_pedido'):
-                    self.itens_pedido = []
+        # Centralizar a janela
+        largura_janela = 500
+        altura_janela = 250
+        x = (janela.winfo_screenwidth() // 2) - (largura_janela // 2)
+        y = (janela.winfo_screenheight() // 2) - (altura_janela // 2)
+        janela.geometry(f'{largura_janela}x{altura_janela}+{x}+{y}')
+        
+        # Configuração do grid para expansão
+        janela.columnconfigure(0, weight=1)
+        janela.rowconfigure(1, weight=1)
+        
+        # Função para confirmar
+        def confirmar():
+            motivo = motivo_entry.get("1.0", tk.END).strip()
+            if not motivo:
+                messagebox.showwarning("Atenção", "Por favor, informe o motivo do cancelamento.")
+                return
+            if len(motivo) > 255:
+                messagebox.showwarning("Atenção", "O motivo não pode ter mais de 255 caracteres.")
+                return
                 
-                # Atualizar a interface após um pequeno atraso
-                self.parent.after(1000, self.atualizar_apos_cancelamento)
-            else:
-                # Mostrar mensagem de erro
-                messagebox.showerror("Erro", mensagem)
+            janela.destroy()
+            
+            try:
+                # Chamar o método do controller para cancelar o pedido
+                sucesso, mensagem = self.controller_mesas.cancelar_pedido(motivo)
                 
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao cancelar o pedido: {str(e)}")
-            import traceback
-            traceback.print_exc()
-    
+                if sucesso:
+                    # Atualizar estado local
+                    self.pedido_atual = None
+                    if hasattr(self, 'itens_pedido'):
+                        self.itens_pedido = []
+                    
+                    # Atualizar a interface após um pequeno atraso
+                    self.atualizar_apos_cancelamento()
+                else:
+                    # Mostrar mensagem de erro
+                    messagebox.showerror("Erro", mensagem)
+                    
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao cancelar o pedido: {str(e)}")
+                import traceback
+                traceback.print_exc()
+        
+        # Frame principal
+        main_frame = ttk.Frame(janela, padding="10")
+        main_frame.grid(row=0, column=0, sticky="nsew")
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)
+        
+        # Label de instrução
+        ttk.Label(main_frame, text="Informe o motivo do cancelamento:", 
+                 font=('Arial', 10, 'bold')).grid(row=0, column=0, sticky="w", pady=(0, 5))
+        
+        # Frame para o campo de texto com barra de rolagem
+        text_frame = ttk.Frame(main_frame)
+        text_frame.grid(row=1, column=0, sticky="nsew", pady=5)
+        
+        # Barra de rolagem
+        scrollbar = ttk.Scrollbar(text_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Campo de texto para o motivo
+        motivo_entry = tk.Text(text_frame, height=8, width=50, wrap=tk.WORD, 
+                             yscrollcommand=scrollbar.set, 
+                             font=('Arial', 10))
+        motivo_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=motivo_entry.yview)
+        
+        # Frame para os botões
+        botoes_frame = ttk.Frame(main_frame)
+        botoes_frame.grid(row=2, column=0, pady=(10, 0), sticky="e")
+        
+        # Botão Confirmar
+        btn_confirmar = tk.Button(
+            botoes_frame, 
+            text="Confirmar", 
+            command=confirmar,
+            bg=CORES['primaria'],  
+            fg='white',  # Texto branco
+            font=('Arial', 10, 'bold'),
+            relief='flat',  # Sem borda 3D
+            bd=0,  # Sem borda
+            padx=15,  # Espaçamento horizontal interno
+            pady=5,   # Espaçamento vertical interno
+        )
+        btn_confirmar.pack(side=tk.LEFT, padx=5)
+        
+        # Botão Cancelar
+        btn_cancelar = tk.Button(
+            botoes_frame, 
+            text="Cancelar", 
+            command=janela.destroy,
+            bg=CORES['alerta'],  # Vermelho para ações de cancelamento
+            fg='white',  # Texto branco
+            font=('Arial', 10, 'bold'),
+            relief='flat',  # Sem borda 3D
+            bd=0,  # Sem borda
+            padx=15,  # Espaçamento horizontal interno
+            pady=5,   # Espaçamento vertical interno
+            )
+        btn_cancelar.pack(side=tk.LEFT, padx=5)
+        
+        # Focar no campo de texto
+        motivo_entry.focus_set()
+        
+        # Configurar o redimensionamento
+        janela.resizable(True, True)
+        janela.minsize(500, 250)
+        
+        # Centralizar a janela novamente após configurar o tamanho mínimo
+        janela.update_idletasks()
+        x = (janela.winfo_screenwidth() // 2) - (janela.winfo_width() // 2)
+        y = (janela.winfo_screenheight() // 2) - (janela.winfo_height() // 2)
+        janela.geometry(f"+{x}+{y}")
+        
+        # Trazer para frente
+        janela.lift()
+        janela.focus_force()
+        
+        # Vincular tecla Enter ao botão Confirmar e ESC ao botão Cancelar
+        motivo_entry.bind("<Return>", lambda e: confirmar())
+        janela.bind("<Escape>", lambda e: janela.destroy())
+        
+        # Esperar o fechamento da janela
+        self.parent.wait_window(janela)
+
     def atualizar_apos_cancelamento(self):
-        """Atualiza a interface após o cancelamento do pedido e retorna para a tela de mesas"""
+        """
+        Atualiza a interface após o cancelamento de um pedido.
+        """
         try:
-            # Recarregar os dados
-            self.carregar_pedidos()
-            self.atualizar_interface()
+            # Limpa os dados do pedido atual
+            self.pedido_atual = None
+            self.itens_pedido = []
             
-            # Voltar para a tela de mesas
-            self._voltar_para_mesas()
+            # Mostra a mensagem de sucesso
+            messagebox.showinfo("Sucesso", "Pedido cancelado e mesa liberada com sucesso!")
             
+            # Usa a mesma lógica do _voltar_para_mesas para garantir consistência
+            try:
+                # Ocultar este módulo
+                self.frame.pack_forget()
+                
+                # Destruir este frame para liberar memória
+                self.frame.destroy()
+                
+                # Importar o módulo de visualização de mesas
+                from src.views.modulos.mesas.visualizar_module import VisualizarMesasModule
+                
+                # Criar uma nova instância do módulo de visualização de mesas
+                visualizar_module = VisualizarMesasModule(self.parent, self.controller, self.db_connection)
+                
+                # Mostrar o módulo de visualização de mesas
+                visualizar_module.frame.pack(fill="both", expand=True)
+                
+                # Forçar atualização da interface
+                self.parent.update_idletasks()
+                
+            except Exception as e:
+                # Em caso de erro, tentar uma abordagem alternativa
+                try:
+                    if hasattr(self, 'modulo_anterior') and self.modulo_anterior:
+                        self.modulo_anterior.frame.pack(fill="both", expand=True)
+                except Exception as e2:
+                    # Se nada mais funcionar, pelo menos tente atualizar a interface
+                    self.parent.update()
+        
         except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao atualizar a interface: {str(e)}")
-            # Mesmo em caso de erro, tente voltar para a tela de mesas
-            self.parent.after(500, self._voltar_para_mesas)
+            messagebox.showerror("Erro", f"Erro ao atualizar após cancelamento: {str(e)}")
     
     def remover_item(self, item_id):
         """
@@ -1765,8 +1873,11 @@ class PedidosMesasModule(BaseModule):
                     break
             
         try:
-            # Chamar o método do controller para remover o item
-            sucesso, mensagem = self.controller_mesas.remover_item_pedido(item_id=item_id)
+            # Chamar o método do controller para remover o item com motivo padrão
+            sucesso, mensagem = self.controller_mesas.remover_item_pedido(
+                item_id=item_id,
+                motivo_remocao="Item removido pelo usuário"
+            )
             
             if sucesso:
                 # Se o item estava na sessão e foi removido, atualizar a lista de itens originais
@@ -1836,8 +1947,6 @@ class PedidosMesasModule(BaseModule):
                 # Se nada mais funcionar, pelo menos tente atualizar a interface
                 self.parent.update()
 
-    
-    
     def show(self):
         """Mostra o módulo"""
         self.frame.pack(fill="both", expand=True)
@@ -2138,9 +2247,8 @@ class PedidosMesasModule(BaseModule):
                 # Obter o ID do usuário logado, se disponível
                 if usuario_id is None and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
                     usuario_id = self.controller.usuario.id
-
                 
-
+                # Chamar o método do controller para adicionar o item
                 sucesso, mensagem, pedido = self.controller_mesas.adicionar_item_mesa(
                     mesa_id=self.mesa['id'],
                     produto=produto,

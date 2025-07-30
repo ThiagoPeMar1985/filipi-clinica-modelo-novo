@@ -429,9 +429,9 @@ class GerenciadorImpressao:
             bool: True se a impressão foi bem-sucedida, False caso contrário
         """
         try:
-            impressora = self.impressoras.get('cupom', '')
+            impressora = self.impressoras.get('impressora 1', '')
             if not impressora:
-                # Se não houver impressora de cupom configurada, tentar usar a impressora padrão
+                # Se não houver impressora de impresora 1 configurada, tentar usar a impressora padrão
                 try:
                     impressora = win32print.GetDefaultPrinter()
                     # Usando impressora padrão para demonstrativo de delivery: {impressora}

@@ -113,7 +113,7 @@ class DeliveryModule:
                 
                 if not opcoes_selecionadas:
                     messagebox.showerror("Erro", "Selecione pelo menos uma opção para continuar.")
-                    return False
+                    return
                 
                 return self._adicionar_ao_carrinho_com_opcoes(produto['id'], produto, opcoes_selecionadas)
             
@@ -1343,6 +1343,7 @@ class DeliveryModule:
         nome = ""
         preco = 0.0
         tipo_produto = "Outros"
+        quantidade_minima = 0.0
         
         # Se o método foi chamado por um evento de clique na tabela
         if event:
@@ -1361,12 +1362,15 @@ class DeliveryModule:
                 nome = valores.get('nome', '')
                 preco = float(valores.get('preco_venda', 0))
                 tipo_produto = valores.get('tipo', 'Outros')
+                quantidade_minima = float(valores.get('quantidade_minima', 0))
             else:
                 # Se valores for uma lista (comportamento antigo)
                 try:
                     nome = valores[1]
                     preco_str = valores[2].replace('R$', '').replace(',', '.').strip()
                     preco = float(preco_str)
+                    if len(valores) > 3:
+                        quantidade_minima = float(valores[3])
                 except (IndexError, ValueError) as e:
                     print(f"Erro ao processar valores do produto: {e}")
                     messagebox.showerror("Erro", "Não foi possível processar as informações do produto.")
@@ -1385,6 +1389,8 @@ class DeliveryModule:
                 nome = valores[1]
                 preco_str = valores[2].replace('R$', '').replace(',', '.').strip()
                 preco = float(preco_str)
+                if len(valores) > 3:
+                    quantidade_minima = float(valores[3])
             except (IndexError, ValueError) as e:
                 print(f"Erro ao obter dados do produto: {e}")
                 messagebox.showerror("Erro", "Não foi possível obter as informações do produto selecionado.")
@@ -1397,10 +1403,15 @@ class DeliveryModule:
                 if produtos:
                     produto_id = produtos[0]['id']
                     tipo_produto = produtos[0].get('tipo', 'Outros')
+                    quantidade_minima = float(produtos[0].get('quantidade_minima', 0))
             except Exception as e:
-                print(f"Erro ao buscar produto por nome: {e}")
+                print(f"Erro ao buscar produto no banco de dados: {e}")
         
-        # Verificar se o produto tem opções obrigatórias não preenchidas
+        # Se já tivermos opções selecionadas, adicionar direto ao carrinho
+        if opcoes_selecionadas:
+            return self._adicionar_ao_carrinho_com_opcoes(produto_id, valores, opcoes_selecionadas)
+        
+        # Verificar se o produto tem opções obrigatórias
         try:
             from controllers.opcoes_controller import OpcoesController
             db_connection = getattr(self.controller, 'db_connection', None)
@@ -1410,57 +1421,27 @@ class DeliveryModule:
             opcoes_controller = OpcoesController(db_connection=db_connection)
             grupos_opcoes = opcoes_controller.listar_grupos_por_produto(produto_id)
             
-            # Verificar se existem opções obrigatórias não preenchidas
-            if grupos_opcoes and not opcoes_selecionadas:
-                for grupo in grupos_opcoes:
-                    if grupo.get('obrigatorio'):
-                        # Se o grupo for obrigatório e não tiver opções selecionadas, exibir o diálogo de opções
-                        produto = {
-                            'id': produto_id,
-                            'nome': nome,
-                            'preco': preco,
-                            'opcoes': grupos_opcoes
-                        }
-                        self.opcoes_module.mostrar_opcoes(produto)
-                        return
+            if grupos_opcoes and any(grupo.get('obrigatorio', False) for grupo in grupos_opcoes):
+                # Se o produto tiver opções obrigatórias, exibir o diálogo de opções
+                produto = {
+                    'id': produto_id,
+                    'nome': nome,
+                    'preco': preco,
+                    'preco_venda': preco,  # Garantir que preco_venda está definido
+                    'tipo': tipo_produto,
+                    'quantidade_minima': quantidade_minima,
+                    'opcoes': grupos_opcoes
+                }
+                self.opcoes_module.mostrar_opcoes(produto)
+                return
+                
         except Exception as e:
             print(f"Erro ao verificar opções do produto: {e}")
-            messagebox.showerror("Erro", "Não foi possível verificar as opções do produto.")
-            return
+            # Em caso de erro, adiciona o produto sem opções
         
-        # Verificar se o produto já está no carrinho
-        item_existente = None
-        for item in self.itens_pedido:
-            # Verificar se é o mesmo produto
-            if item['id'] == produto_id:
-                # Se for o mesmo produto e tiver as mesmas opções
-                item_opcoes = item.get('opcoes', [])
-                if (not opcoes_selecionadas and not item_opcoes) or \
-                (opcoes_selecionadas and item_opcoes == opcoes_selecionadas):
-                    item_existente = item
-                    break
-                    
-        if item_existente:
-            # Se o produto já está no carrinho, apenas incrementa a quantidade
-            item_existente['quantidade'] += 1
-            item_existente['total'] = item_existente['quantidade'] * preco
-        else:
-            # Se não está no carrinho, adiciona como novo item
-            novo_item = {
-                'id': produto_id,
-                'nome': nome,
-                'preco': preco,
-                'quantidade': 1,
-                'total': preco,
-                'tipo': tipo_produto,
-                'opcoes': opcoes_selecionadas if opcoes_selecionadas is not None else []
-            }
-            self.itens_pedido.append(novo_item)
-        
-        # Atualizar a exibição do carrinho
-        self._atualizar_carrinho()
-        self._atualizar_total_pedido()
-
+        # Se chegou até aqui, adiciona o produto sem opções
+        self._adicionar_ao_carrinho_com_opcoes(produto_id, valores, [])
+    
     def _abrir_opcoes_item_carrinho(self, event=None):
         """Abre as opções do item do carrinho quando o usuário dá um duplo clique"""
         selecionado = self.carrinho_tree.selection()
@@ -1709,48 +1690,94 @@ class DeliveryModule:
         
         # Criar janela de pagamento
         pagamento_window = tk.Toplevel(self.frame)
-        pagamento_window.title("Forma de Pagamento")
-        pagamento_window.geometry("400x650")
+        pagamento_window.title("Finalizar Pedido - Pagamento")
+        pagamento_window.geometry("850x600") 
         pagamento_window.transient(self.frame)
-        pagamento_window.resizable(False, False)
+        pagamento_window.resizable(True, True)
         
         # Centralizar na tela
         pagamento_window.update_idletasks()
-        width = 400
-        height = 650
+        width = 850
+        height = 600
         x = (pagamento_window.winfo_screenwidth() // 2) - (width // 2)
         y = (pagamento_window.winfo_screenheight() // 2) - (height // 2)
         pagamento_window.geometry(f"{width}x{height}+{x}+{y}")
         
-        # Frame principal com scroll
+        # Frame principal com duas colunas
         main_frame = ttk.Frame(pagamento_window)
-        main_frame.pack(fill='both', expand=True)
+        main_frame.pack(fill='both', expand=True, padx=5, pady=5)
+
+        # Configuração do grid para as colunas
+        main_frame.columnconfigure(0, weight=1)  # Coluna do formulário (2/3 do espaço)
+        main_frame.columnconfigure(1, weight=1)  # Coluna do cupom (1/3 do espaço)
+        main_frame.rowconfigure(0, weight=1)
+
+        # Frame para o formulário de pagamento (lado esquerdo)
+        form_frame = ttk.LabelFrame(main_frame, text="Forma de Pagamento", padding=10)
+        form_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+        form_frame.columnconfigure(0, weight=1)
+        form_frame.rowconfigure(0, weight=1)
+
+        # Frame para o cupom fiscal (lado direito)
+        cupom_frame = ttk.LabelFrame(main_frame, text="Cupom", padding=5)
+        cupom_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        cupom_frame.columnconfigure(0, weight=1)    
+        cupom_frame.rowconfigure(0, weight=1)
+
+        # Configurar o cupom_frame para expandir
+        cupom_frame.columnconfigure(0, weight=1)
+        cupom_frame.rowconfigure(0, weight=1)
+
+        # Widget Text para exibir o cupom
+        cupom_text = tk.Text(
+        cupom_frame,
+        wrap=tk.WORD,
+        font=('Courier New', 8),
+        bg='white',
+        padx=5,
+        pady=5,
+        width=52,
+        height=50,
+        state='disabled'
+        )
+        cupom_text.grid(row=0, column=0, sticky='nsew')
+        # Adicionar barra de rolagem ao cupom
+        scrollbar = ttk.Scrollbar(cupom_frame, orient="vertical", command=cupom_text.yview)
+        cupom_text.configure(yscrollcommand=scrollbar.set)
+
+        # Posicionar os widgets no frame do cupom
+        cupom_text.grid(row=0, column=0, sticky='nsew')
+        scrollbar.grid(row=0, column=1, sticky='ns')
         
         # Canvas para rolagem
-        canvas = tk.Canvas(main_frame)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        canvas = tk.Canvas(form_frame)  # Alterado de main_frame para form_frame
+        scrollbar_form = ttk.Scrollbar(form_frame, orient="vertical", command=canvas.yview) 
         scrollable_frame = ttk.Frame(canvas)
+
+        # Cria a janela no canvas para o frame rolável
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         
         scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(
-                scrollregion=canvas.bbox("all")
-            )
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
+    
+        canvas.configure(yscrollcommand=scrollbar_form.set)
         canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Adicionar padding ao frame rolável
-        content_frame = ttk.Frame(scrollable_frame, padding=20)
-        content_frame.pack(fill='both', expand=True)
+        scrollbar_form.pack(side="right", fill="y")
+
+        # Frame para o conteúdo rolável
+        form_content = ttk.Frame(scrollable_frame, padding=10)
+        form_content.pack(fill='both', expand=True)
+
+        # Configurar o form_content para expandir
+        form_content.columnconfigure(0, weight=1)
+        form_content.rowconfigure(0, weight=1)
+    
         
         # Título
         ttk.Label(
-            content_frame, 
+            form_content, 
             text="Pagamento",
             font=('Arial', 16, 'bold'),
             foreground='black'
@@ -1758,6 +1785,17 @@ class DeliveryModule:
         
         # Variável para armazenar a forma de pagamento selecionada
         forma_pagamento = tk.StringVar()
+        valor_dinheiro = tk.StringVar()  
+
+        forma_pagamento.trace_add('write', lambda *args: self.atualizar_cupom(
+            itens=itens_pedido,
+            taxa_entrega=taxa_entrega,
+            forma_pagamento_var=forma_pagamento,
+            valor_dinheiro_var=valor_dinheiro,
+            cupom_text_widget=cupom_text
+        ))
+
+        valor_dinheiro = tk.StringVar()
         
         # Função utilitária para formatar valores monetários
         self.util = {
@@ -1767,6 +1805,15 @@ class DeliveryModule:
         def calcular_troco(*args):
             if forma_pagamento.get() != 'dinheiro' or not valor_dinheiro.get() or not valor_dinheiro.get().strip():
                 troco_label.config(text=self.util['formatar_moeda'](0), foreground='#2e7d32')
+                # Atualiza o cupom quando não for dinheiro
+                if 'cupom_text' in locals() and 'itens_pedido' in locals() and 'taxa_entrega' in locals():
+                    self.atualizar_cupom(
+                        itens=itens_pedido,
+                        taxa_entrega=taxa_entrega,
+                        forma_pagamento_var=forma_pagamento,
+                        valor_dinheiro_var=valor_dinheiro,
+                        cupom_text_widget=cupom_text
+                    )
                 return
                 
             try:
@@ -1790,18 +1837,24 @@ class DeliveryModule:
                         foreground='#d32f2f'  # Vermelho
                     )
                 
-                # Mostrar os campos de dinheiro e troco
-                valor_dinheiro_frame.pack(fill='x', pady=10)
-                troco_frame.pack(fill='x', pady=5)
-                
+                # Atualiza o cupom quando o valor do dinheiro mudar
+                if 'cupom_text' in locals() and 'itens_pedido' in locals() and 'taxa_entrega' in locals():
+                    self.atualizar_cupom(
+                        itens=itens_pedido,
+                        taxa_entrega=taxa_entrega,
+                        forma_pagamento_var=forma_pagamento,
+                        valor_dinheiro_var=valor_dinheiro,
+                        cupom_text_widget=cupom_text
+                    )
+                    
             except (ValueError, AttributeError) as e:
                 troco_label.config(
                     text="Valor inválido!",
                     foreground='#d32f2f'  # Vermelho
                 )
-                valor_dinheiro_frame.pack(fill='x', pady=10)
-                troco_frame.pack(fill='x', pady=5)
-    
+        
+        valor_dinheiro.trace_add('write', calcular_troco)
+
         def atualizar_visibilidade_campo_dinheiro(*args):
             """Atualiza a visibilidade do campo de valor em dinheiro com base na forma de pagamento"""
             if forma_pagamento.get() == 'dinheiro':
@@ -1814,8 +1867,18 @@ class DeliveryModule:
                 troco_frame.pack_forget()
                 troco_label.config(text=self.util['formatar_moeda'](0), foreground='#2e7d32')
         
+        # Atualiza o cupom quando a forma de pagamento mudar
+        if 'cupom_text' in locals() and 'itens_pedido' in locals() and 'taxa_entrega' in locals():
+            self.atualizar_cupom(
+                itens=itens_pedido,
+                taxa_entrega=taxa_entrega,
+                forma_pagamento_var=forma_pagamento,
+                valor_dinheiro_var=valor_dinheiro,
+                cupom_text_widget=cupom_text
+            )
+        
         # Frame para o resumo da venda
-        resumo_frame = ttk.LabelFrame(content_frame, text="Resumo da Venda", padding=(10, 5))
+        resumo_frame = ttk.LabelFrame(form_content, text="Resumo da Venda", padding=(10, 5))
         resumo_frame.pack(fill='x', pady=(0, 15))
         total_frame = ttk.Frame(resumo_frame)
         total_frame.pack(fill='x', pady=2)
@@ -1823,14 +1886,10 @@ class DeliveryModule:
         total_label = ttk.Label(total_frame, text=self.util['formatar_moeda'](valor_total), font=('Arial', 10, 'bold'), foreground=CORES['primaria'])
         total_label.pack(side=tk.RIGHT)
         
-        # Restante
-        restante_frame = ttk.Frame(resumo_frame)
-        restante_frame.pack(fill='x', pady=2)
-        ttk.Label(restante_frame, text="Restante:", font=('Arial', 10)).pack(side=tk.LEFT)
-        ttk.Label(restante_frame, text=self.util['formatar_moeda'](valor_total), font=('Arial', 10)).pack(side=tk.RIGHT)
+       
         
         # Frame para os botões de pagamento
-        pagamento_frame = ttk.LabelFrame(content_frame, text="Formas de Pagamento", padding=(10, 5))
+        pagamento_frame = ttk.LabelFrame(form_content, text="Formas de Pagamento", padding=(10, 5))
         pagamento_frame.pack(fill='x', pady=(0, 15))
             
         # Frame para os botões de pagamento - usando grid para melhor organização
@@ -1905,7 +1964,7 @@ class DeliveryModule:
                 forma_pagamento.set(forma)
         
         # Frame para o campo de valor em dinheiro (oculto inicialmente)
-        valor_dinheiro_frame = ttk.Frame(content_frame, padding=(5, 15))
+        valor_dinheiro_frame = ttk.Frame(form_content, padding=(5, 15))
         
         # Frame para a entrada de valor
         entrada_frame = ttk.Frame(valor_dinheiro_frame)
@@ -1978,7 +2037,7 @@ class DeliveryModule:
         valor_dinheiro.trace('w', calcular_troco)
         
         # Frame para os botões de confirmação
-        botoes_frame = ttk.Frame(content_frame, padding=(0, 20, 0, 0))
+        botoes_frame = ttk.Frame(form_content, padding=(0, 20, 0, 0))
         botoes_frame.pack(fill='x', pady=(10, 0))
         
         # Configurar peso das colunas
@@ -2141,6 +2200,220 @@ class DeliveryModule:
         except:
             # Em caso de erro, retorna a cor original
             return color
+    
+    def _gerar_conteudo_cupom(self, itens, taxa_entrega=0.0, forma_pagamento="", valor_recebido=0.0):
+        """
+        Gera o conteúdo formatado do cupom fiscal seguindo o mesmo formato da impressão.
+        
+        Args:
+            itens: Lista de dicionários com os itens do pedido
+            taxa_entrega: Valor da taxa de entrega (opcional)
+            forma_pagamento: String com a forma de pagamento (opcional)
+            valor_recebido: Valor recebido em dinheiro (opcional)
+            
+        Returns:
+            String formatada com o conteúdo do cupom
+        """
+        import datetime
+        from decimal import Decimal, ROUND_HALF_UP
+        
+        # Largura para papel de 80mm (48 caracteres)
+        largura = 48
+        
+        # Formata um valor para 2 casas decimais
+        def formatar_valor(valor):
+            return f"{float(valor):.2f}".replace('.', ',')
+        
+        # Cabeçalho do cupom
+        conteudo = []
+        conteudo.append("=" * largura)
+        conteudo.append("CUPOM FISCAL".center(largura))
+        conteudo.append("AQUARIUS BAR E RESTAURANTE".center(largura))
+        conteudo.append("CNPJ: 12.345.678/0001-90".center(largura))
+        conteudo.append("-" * largura)
+        
+        # Data/hora e usuário
+        data_hora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        conteudo.append(f"D/H: {data_hora}")
+        conteudo.append("TIPO: DELIVERY" if hasattr(self, 'cliente_atual') and self.cliente_atual else "TIPO: BALCÃO")
+        conteudo.append("-" * largura)
+        
+        # Dados do cliente, se for delivery
+        if hasattr(self, 'cliente_atual') and self.cliente_atual:
+            cliente = self.cliente_atual
+            conteudo.append("DADOS DO CLIENTE".center(largura))
+            conteudo.append("-" * largura)
+            
+            # Nome do cliente
+            if cliente.get('nome'):
+                nome = cliente['nome'][:40]  # Limita o tamanho do nome
+                conteudo.append(f"Nome: {nome}")
+            
+            # Telefone
+            if cliente.get('telefone'):
+                telefone = cliente['telefone']
+                conteudo.append(f"Telefone: {telefone}")
+            
+            # Endereço
+            endereco_parts = []
+            if cliente.get('endereco'):
+                endereco_parts.append(cliente['endereco'])
+            if cliente.get('numero'):
+                endereco_parts.append(f"Nº {cliente['numero']}")
+            if cliente.get('bairro'):
+                endereco_parts.append(cliente['bairro'])
+            
+            if endereco_parts:
+                conteudo.append(", ".join(endereco_parts))
+            
+            # Cidade e referência
+            endereco_extra = []
+            if cliente.get('cidade'):
+                endereco_extra.append(f"Cidade: {cliente['cidade']}")
+            if cliente.get('ponto_referencia'):
+                endereco_extra.append(f"Ref: {cliente['ponto_referencia']}")
+            
+            if endereco_extra:
+                conteudo.append(", ".join(endereco_extra))
+            
+            conteudo.append("-" * largura)
+        
+        # Cabeçalho da tabela de itens
+        cabecalho = f"{'DESCRIÇÃO':<25} {'QTD':>2} {'VALOR':>8} {'SUBTOTAL':>8}"
+        conteudo.append(cabecalho)
+        conteudo.append("-" * largura)
+        
+       # Processa os itens do pedido
+        subtotal = Decimal('0.00')
+        itens_agrupados = {}
+
+        # Filtra a taxa de entrega
+        itens = [item for item in itens if item.get('produto_id') != 'TAXA_ENTREGA']
+
+        # Primeiro, agrupa os itens iguais
+        for item in itens:
+            produto_id = item.get('produto_id', '').strip()
+            if not produto_id:
+                continue
+                
+            # Usa o ID do produto como chave
+            if produto_id not in itens_agrupados:
+                itens_agrupados[produto_id] = {
+                    'nome': item.get('nome', produto_id),  # Usa o ID como fallback para o nome
+                    'preco': Decimal(str(item.get('preco_unitario', 0))).quantize(Decimal('0.01')),
+                    'quantidade': 0
+                }
+            
+            # Soma as quantidades
+            itens_agrupados[produto_id]['quantidade'] += int(item.get('quantidade', 1))
+
+        # Agora adiciona os itens ao conteúdo
+        for produto_id, item in itens_agrupados.items():
+            qtd = item['quantidade']
+            preco = item['preco']
+            subtotal_item = (preco * qtd).quantize(Decimal('0.01'))
+            subtotal += subtotal_item
+            
+            # Formata a linha do item
+            nome_exibicao = (item['nome'][:22] + '..') if len(item['nome']) > 24 else item['nome'].ljust(24)
+            linha = f"{nome_exibicao} {qtd:>4.0f} {preco:>7.2f} {subtotal_item:>8.2f}"
+            conteudo.append(linha)
+
+        # Adiciona o subtotal
+        conteudo.append("-" * largura)
+        conteudo.append(f"{'TOTAL:':<36} {subtotal:>8.2f}")
+
+        # Adiciona a taxa de entrega separadamente
+        taxa_entrega = Decimal(str(taxa_entrega)).quantize(Decimal('0.01'))
+        if taxa_entrega > 0:
+            conteudo.append(f"{'TAXA DE ENTREGA:':<36} {taxa_entrega:>8.2f}")
+            total_geral = (subtotal + taxa_entrega).quantize(Decimal('0.01'))
+            conteudo.append(f"{'TOTAL + ENTREGA:':<36} {total_geral:>8.2f}")
+        else:
+            total_geral = subtotal
+        # Forma de pagamento
+        conteudo.append("-" * largura)
+        conteudo.append("FORMA DE PAGAMENTO".center(largura))
+        conteudo.append("-" * largura)
+        
+        # Mapeamento das formas de pagamento
+        formas = {
+            'credito': 'CARTÃO CRÉDITO',
+            'cartao_credito': 'CARTÃO CRÉDITO',
+            'debito': 'CARTÃO DÉBITO',
+            'cartao_debito': 'CARTÃO DÉBITO',
+            'pix': 'PIX',
+            'dinheiro': 'DINHEIRO',
+            'vale_alimentacao': 'VALE ALIMENTAÇÃO',
+            'vale_refeicao': 'VALE REFEIÇÃO',
+            'outro': 'OUTRA FORMA',
+        }
+        
+        # Se for dinheiro, mostra o valor recebido e o troco
+        if forma_pagamento:
+            forma_pagamento_display = formas.get(forma_pagamento.lower(), forma_pagamento.upper())
+            
+            # Se for dinheiro, mostra o valor recebido e o troco
+            if forma_pagamento.lower() == 'dinheiro' and float(valor_recebido or 0) > 0:
+                valor_recebido_dec = Decimal(str(valor_recebido)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                troco = valor_recebido_dec - total_geral
+                
+                conteudo.append(f"{'DINHEIRO':<20} {'R$':>15} {valor_recebido_dec:>11.2f}")
+                if troco > 0:
+                    conteudo.append(f"{'TROCO:':<20} {'R$':>15} {troco:>11.2f}")
+            else:
+                # Para outras formas de pagamento
+                conteudo.append(f"{forma_pagamento_display:<20} {'R$':>15} {total_geral:>11.2f}")
+        
+        # Rodapé
+        conteudo.append("-" * largura)
+        conteudo.append("OBRIGADO PELA PREFERÊNCIA".center(largura))
+        conteudo.append("VOLTE SEMPRE".center(largura))
+        conteudo.append(datetime.datetime.now().strftime("IMPRESSO EM %d/%m/%Y %H:%M").center(largura))
+        
+        # Adiciona linhas em branco para garantir espaço antes do corte
+        conteudo.append("")
+        conteudo.append("")
+        
+        return "\n".join(str(linha) for linha in conteudo)
+    
+    def atualizar_cupom(self, itens, taxa_entrega, forma_pagamento_var, valor_dinheiro_var, cupom_text_widget):
+        """
+        Atualiza o conteúdo do cupom fiscal com base nos parâmetros fornecidos
+        
+        Args:
+            itens: Lista de itens do pedido
+            taxa_entrega: Valor da taxa de entrega
+            forma_pagamento_var: Variável Tkinter com a forma de pagamento selecionada
+            valor_dinheiro_var: Variável Tkinter com o valor em dinheiro informado
+            cupom_text_widget: Widget Text onde o cupom será exibido
+        """
+        try:
+            # Obter o valor em dinheiro, se aplicável
+            valor_recebido = 0.0
+            if forma_pagamento_var.get() == 'dinheiro' and valor_dinheiro_var.get():
+                try:
+                    # Converte o valor para float, tratando a formatação brasileira
+                    valor_recebido = float(valor_dinheiro_var.get().replace('.', '').replace(',', '.'))
+                except ValueError:
+                    pass
+            
+            # Gerar o conteúdo do cupom
+            conteudo = self._gerar_conteudo_cupom(
+                itens=itens,
+                taxa_entrega=taxa_entrega,
+                forma_pagamento=forma_pagamento_var.get(),
+                valor_recebido=valor_recebido
+            )
+            
+            # Atualizar o widget Text
+            cupom_text_widget.config(state='normal')
+            cupom_text_widget.delete(1.0, tk.END)
+            cupom_text_widget.insert(tk.END, conteudo)
+            cupom_text_widget.config(state='disabled')
+            
+        except Exception as e:
+            print(f"Erro ao atualizar cupom: {e}")
             
     def _processar_pagamento(self, forma_pagamento, valor_recebido, valor_total, janela):
         """
@@ -2223,17 +2496,18 @@ class DeliveryModule:
                 'cliente_id': self.cliente_atual['id'],
                 'cliente_nome': self.cliente_atual.get('nome', ''),
                 'cliente_telefone': self.cliente_atual.get('telefone', ''),
-                'endereco': self.cliente_atual.get('endereco', ''),
-                'bairro': self.cliente_atual.get('bairro', ''),
-                'cidade': self.cliente_atual.get('cidade', ''),
-                'referencia': self.cliente_atual.get('referencia', ''),
+                'endereco': self.cliente_atual.get('endereco', ''),  # Adiciona o endereço
+                'bairro': self.cliente_atual.get('bairro', ''),      # Adiciona o bairro
+                'cidade': self.cliente_atual.get('cidade', ''),      # Adiciona a cidade
+                'referencia': self.cliente_atual.get('referencia', ''),  # Adiciona a referência
                 'itens': itens_pedido,
                 'valor_total': valor_total,
                 'forma_pagamento': forma_pagamento,
                 'status': 'pendente',
                 'observacoes': observacoes,
                 'data_hora': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'taxa_entrega': float(self.taxa_entrega_label.cget('text').replace('R$ ', '').replace(',', '.')) if hasattr(self, 'taxa_entrega_label') else 0.0
+                'taxa_entrega': float(getattr(self, 'taxa_entrega', 0)) if hasattr(self, 'taxa_entrega') else 0.0,
+                'usuario_id': self.controller.usuario.id if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id') else 1
             }
             
             # Se for pagamento em dinheiro, adicionar o valor recebido e o troco
@@ -2241,13 +2515,6 @@ class DeliveryModule:
                 dados_pedido['valor_recebido'] = valor_recebido_float
                 dados_pedido['troco_para'] = valor_recebido_float - valor_total
             
-            # Adicionar o ID do usuário logado aos dados do pedido
-            if hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'id'):
-                dados_pedido['usuario_id'] = self.controller.usuario.id
-            else:
-                # Se não houver usuário logado, usar um valor padrão (1 = admin)
-                dados_pedido['usuario_id'] = 1
-                
             # Registrar o pedido no banco de dados
             try:
                 sucesso, mensagem, pedido_id = self.delivery_controller.registrar_pedido(dados_pedido)

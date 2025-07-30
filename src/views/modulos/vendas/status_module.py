@@ -611,9 +611,7 @@ class StatusPedidosModule:
             data_pedido = data_pedido.date()
         
         return data_pedido == data_hoje
-    
-   
-    
+     
     def _mostrar_menu_contexto(self, event, tree):
         """Exibe o menu de contexto ao clicar com o botão direito em um pedido"""
         # Identificar o item clicado
@@ -671,18 +669,21 @@ class StatusPedidosModule:
         if not hasattr(self, 'pedido_selecionado_id') or not self.pedido_selecionado_id:
             messagebox.showwarning("Aviso", "Nenhum pedido selecionado.")
             return
-            
+        
+        # Inicializar o dicionário para mapear IDs dos itens
+        self._item_id_map = {}
+        
         pedido_id = self.pedido_selecionado_id
         
         try:
-            # Criar janela
-            janela_produtos = tk.Toplevel(self.frame.master)
+            # Criar janela modal
+            janela_produtos = tk.Toplevel(self.frame)
             janela_produtos.title(f"Produtos do Pedido #{pedido_id}")
-            janela_produtos.transient(self.frame.master)
+            janela_produtos.transient(self.frame)
             janela_produtos.grab_set()
             
-            # Tamanho e posicionamento
-            largura = 500
+            # Definir tamanho e centralizar
+            largura = 600
             altura = 500
             x = (self.frame.master.winfo_screenwidth() // 2) - (largura // 2)
             y = (self.frame.master.winfo_screenheight() // 2) - (altura // 2)
@@ -692,13 +693,22 @@ class StatusPedidosModule:
             frame_principal = ttk.Frame(janela_produtos)
             frame_principal.pack(fill='both', expand=True, padx=10, pady=10)
             
+            # Frame para a Treeview
+            frame_tree = ttk.Frame(frame_principal)
+            frame_tree.pack(fill='both', expand=True)
+            
             # Criar Treeview com 2 colunas
             tree = ttk.Treeview(
-                frame_principal,
+                frame_tree,
                 columns=('item', 'quantidade'),
                 show='headings',
                 selectmode='browse'
             )
+
+            # Configurar tags de estilo
+            tree.tag_configure('com_opcoes', background='#e6f3ff', foreground='#000000')  # Azul claro
+            tree.tag_configure('sem_opcoes', background='#ffffff', foreground='#000000')  # Branco
+            tree.tag_configure('opcao_item', background='#f5f5f5', foreground='#555555')  # Cinza claro
             
             # Configurar colunas
             tree.heading('item', text='Item')
@@ -709,19 +719,16 @@ class StatusPedidosModule:
             tree.column('quantidade', width=50, anchor='center')
             
             # Adicionar scrollbar
-            scrollbar = ttk.Scrollbar(frame_principal, orient='vertical', command=tree.yview)
+            scrollbar = ttk.Scrollbar(frame_tree, orient='vertical', command=tree.yview)
             tree.configure(yscrollcommand=scrollbar.set)
             
             # Posicionar widgets
             tree.pack(side='left', fill='both', expand=True)
             scrollbar.pack(side='right', fill='y')
-            
-            # Conectar ao banco de dados
-            delivery_controller = DeliveryController()
-            cursor = delivery_controller.db.cursor(dictionary=True)
-            
+
+            # Buscar itens do pedido
+            cursor = self.delivery_controller.db.cursor(dictionary=True)
             try:
-                # Buscar itens do pedido
                 cursor.execute("""
                     SELECT 
                         ip.id,
@@ -737,14 +744,30 @@ class StatusPedidosModule:
                 
                 # Adicionar itens à árvore
                 for item in itens:
+                    # Verificar se o item tem opções
+                    cursor.execute("""
+                        SELECT COUNT(*) as total 
+                        FROM itens_pedido_opcoes 
+                        WHERE item_pedido_id = %s
+                    """, (item['id'],))
+                    tem_opcoes = cursor.fetchone()['total'] > 0
+                        
+                    # Determinar a tag com base na existência de opções
+                    tag = 'com_opcoes' if tem_opcoes else 'sem_opcoes'
+                        
                     # Adicionar o item principal
-                    item_id = tree.insert(
+                    item_id = f"item_{item['id']}"
+                    tree_item = tree.insert(
                         "", 
                         'end',
+                        iid=item_id,
                         values=(item['produto_nome'], item['quantidade']),
-                        tags=('item_principal',)
+                        tags=(tag, 'item_principal')
                     )
-                    
+                        
+                    # Armazenar o ID do item no dicionário
+                    self._item_id_map[item_id] = item['id']
+                        
                     # Buscar opções do item atual
                     cursor.execute("""
                         SELECT nome 
@@ -752,34 +775,75 @@ class StatusPedidosModule:
                         WHERE item_pedido_id = %s
                         ORDER BY id
                     """, (item['id'],))
-                        
+                            
                     opcoes = cursor.fetchall()
-                    
+                        
                     # Adicionar opções como filhos
                     for opcao in opcoes:
                         # Mostrar o nome da opção, tratando texto livre
                         nome_opcao = opcao['nome']
                         if nome_opcao.startswith('Texto: '):
                             nome_opcao = nome_opcao[7:].strip()
-                        
+                            
                         tree.insert(
                             item_id,
                             'end',
                             values=(f"  • {nome_opcao}", ""),
                             tags=('opcao_item',)
                         )
-                
-                # Configurar tags para estilização
-                tree.tag_configure('item_principal', font=('Arial', 10, 'bold'))
-                tree.tag_configure('opcao_item', font=('Arial', 9))
-                
+                    
+                    # Configurar tags para estilização
+                    tree.tag_configure('item_principal', font=('Arial', 10, 'bold'))
+                    tree.tag_configure('opcao_item', font=('Arial', 9))
+                    
+                    # Configurar seleção única
+                    tree.configure(selectmode='browse')
+
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao buscar itens do pedido: {str(e)}")
+                import traceback
+                traceback.print_exc()
             finally:
                 cursor.close()
                 
+            # Frame para os botões
+            frame_botoes = ttk.Frame(frame_principal)
+            frame_botoes.pack(fill='x', pady=10)
+            
+            # Botão Imprimir Comanda
+            tk.Button(
+                frame_botoes,
+                text="Imprimir Comanda do Item",
+                command=lambda: self._reimprimir_comanda(pedido_id, tree),
+                bg=self.cores["primaria"],
+                fg=self.cores["texto_claro"],
+                bd=0,
+                padx=15,
+                pady=5,
+                relief='flat',
+                cursor='hand2',
+                font=('Arial', 10, 'bold')
+            ).pack(side='left', padx=5)
+
+            # Botão Fechar
+            tk.Button(
+                frame_botoes,
+                text="Fechar",
+                command=janela_produtos.destroy,
+                bg=self.cores["alerta"],
+                fg=self.cores["texto_claro"],
+                bd=0,
+                padx=15,
+                pady=5,
+                relief='flat',
+                cursor='hand2',
+                font=('Arial', 10, 'bold')
+            ).pack(side='right', padx=5)
+                        
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao exibir produtos: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def _imprimir_cupom(self):
         """Imprime o cupom fiscal do pedido selecionado"""
@@ -913,6 +977,7 @@ class StatusPedidosModule:
                 'cliente_nome': pedido.get('cliente_nome', ''),
                 'cliente_telefone': pedido.get('cliente_telefone', ''),
                 'endereco_entrega': f"{pedido.get('cliente_endereco', '')}, {pedido.get('cliente_numero', '')}, {pedido.get('cliente_bairro', '')}",
+                'cidade': pedido.get('cliente_cidade', ''),'ponto_referencia': pedido.get('cliente_referencia', ''),
                 'usuario_nome': pedido.get('atendente_nome', 'Não identificado'),
                 'itens': itens,
                 'pagamentos': pagamentos,
@@ -923,13 +988,10 @@ class StatusPedidosModule:
             }
             
             # Determinar se é um pedido de delivery ou não
-            tipo_pedido = pedido.get('tipo', '').upper()
+            tipo_pedido = 'DELIVERY'
             
-            # Imprimir o cupom fiscal ou demonstrativo de entrega
-            if tipo_pedido == 'DELIVERY':
-                sucesso = gerenciador_impressao.imprimir_demonstrativo_delivery(dados_impressao, itens, pagamentos)
-            else:
-                sucesso = gerenciador_impressao.imprimir_cupom_fiscal(dados_impressao, itens, pagamentos)
+            # Imprimir demonstrativo de entrega
+            sucesso = gerenciador_impressao.imprimir_demonstrativo_delivery(dados_impressao, itens, pagamentos)
             
             if not sucesso:
                 messagebox.showerror("Erro", "Não foi possível enviar o cupom para impressão.")
@@ -940,22 +1002,301 @@ class StatusPedidosModule:
             traceback.print_exc()
     
     def _alterar_status_pedido(self, novo_status):
-        """Altera o status do pedido selecionado sem exibir alertas"""
+        """Altera o status do pedido selecionado, solicitando motivo se for cancelamento"""
         if not hasattr(self, 'pedido_selecionado_id') or not self.pedido_selecionado_id:
             return
-        
+            
         # Obter o ID do pedido selecionado
         pedido_id = self.pedido_selecionado_id
         
+        # Verificar se é um cancelamento para solicitar o motivo
+        if novo_status == 'CANCELADO':
+            # Primeira confirmação
+            if not messagebox.askyesno(
+                "Confirmar Cancelamento",
+                "Deseja realmente cancelar este pedido?"
+            ):
+                return
+                
+            # Criar janela para inserir o motivo
+            janela = tk.Toplevel(self.parent)
+            janela.title("Motivo do Cancelamento")
+            janela.transient(self.parent)
+            janela.grab_set()
+            
+            # Centralizar a janela
+            largura_janela = 500
+            altura_janela = 250
+            x = (janela.winfo_screenwidth() // 2) - (largura_janela // 2)
+            y = (janela.winfo_screenheight() // 2) - (altura_janela // 2)
+            janela.geometry(f'{largura_janela}x{altura_janela}+{x}+{y}')
+            
+            # Configuração do grid para expansão
+            janela.columnconfigure(0, weight=1)
+            janela.rowconfigure(1, weight=1)
+            
+            # Função para confirmar
+            def confirmar():
+                motivo = motivo_entry.get("1.0", tk.END).strip()
+                if not motivo:
+                    messagebox.showwarning("Atenção", "Por favor, informe o motivo do cancelamento.", parent=janela)
+                    return
+                if len(motivo) > 255:
+                    messagebox.showwarning("Atenção", "O motivo não pode ter mais de 255 caracteres.", parent=janela)
+                    return
+                    
+                janela.destroy()
+                # Chamar o controlador para atualizar o status
+                self._atualizar_status_no_banco(pedido_id, novo_status, motivo)
+            
+            # Frame principal
+            main_frame = ttk.Frame(janela, padding="10")
+            main_frame.grid(row=0, column=0, sticky="nsew")
+            main_frame.columnconfigure(0, weight=1)
+            main_frame.rowconfigure(1, weight=1)
+            
+            # Label de instrução
+            ttk.Label(main_frame, text="Informe o motivo do cancelamento:", 
+                     font=('Arial', 10, 'bold')).grid(row=0, column=0, sticky="w", pady=(0, 5))
+            
+            # Frame para o campo de texto com barra de rolagem
+            text_frame = ttk.Frame(main_frame)
+            text_frame.grid(row=1, column=0, sticky="nsew", pady=5)
+            
+            # Barra de rolagem
+            scrollbar = ttk.Scrollbar(text_frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Campo de texto para o motivo
+            motivo_entry = tk.Text(text_frame, height=8, width=50, wrap=tk.WORD, 
+                                 yscrollcommand=scrollbar.set, 
+                                 font=('Arial', 10))
+            motivo_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=motivo_entry.yview)
+            
+            # Frame para os botões
+            botoes_frame = ttk.Frame(main_frame)
+            botoes_frame.grid(row=2, column=0, pady=(10, 0), sticky="e")
+            
+            # Botão Confirmar
+            btn_confirmar = tk.Button(
+                botoes_frame, 
+                text="Confirmar", 
+                command=confirmar,
+                bg='#4a6fa5',  # Cor primária do tema
+                fg='white',
+                font=('Arial', 10, 'bold'),
+                relief='flat',
+                bd=0,
+                padx=15,
+                pady=5,
+            )
+            btn_confirmar.pack(side=tk.LEFT, padx=5)
+            
+            # Botão Cancelar
+            btn_cancelar = tk.Button(
+                botoes_frame, 
+                text="Cancelar", 
+                command=janela.destroy,
+                bg=self.cores['alerta'],  # Vermelho para ações de cancelamento
+                fg='white',
+                font=('Arial', 10, 'bold'),
+                relief='flat',
+                bd=0,
+                padx=15,
+                pady=5,
+            )
+            btn_cancelar.pack(side=tk.LEFT, padx=5)
+            
+            # Focar no campo de texto
+            motivo_entry.focus_set()
+            
+            # Configurar o redimensionamento
+            janela.resizable(True, True)
+            janela.minsize(500, 250)
+            
+            # Centralizar a janela novamente após configurar o tamanho mínimo
+            janela.update_idletasks()
+            x = (janela.winfo_screenwidth() // 2) - (janela.winfo_width() // 2)
+            y = (janela.winfo_screenheight() // 2) - (janela.winfo_height() // 2)
+            janela.geometry(f"+{x}+{y}")
+            
+            # Trazer para frente
+            janela.lift()
+            janela.focus_force()
+            
+            # Vincular tecla Enter ao botão Confirmar e ESC ao botão Cancelar
+            motivo_entry.bind("<Return>", lambda e: confirmar())
+            janela.bind("<Escape>", lambda e: janela.destroy())
+            
+        else:
+            # Para outros status, atualizar diretamente
+            self._atualizar_status_no_banco(pedido_id, novo_status)
+    
+    def _atualizar_status_no_banco(self, pedido_id, novo_status, motivo_cancelamento=None):
+        """Atualiza o status do pedido no banco de dados"""
         # Criar instância do controlador de delivery
         delivery_controller = DeliveryController()
         
-        # Se o novo status for 'ENTREGUE', o controlador irá converter para 'FINALIZADO'
         # Chamar o método para atualizar o status
-        sucesso, _ = delivery_controller.atualizar_status_pedido(pedido_id, novo_status)
+        sucesso, mensagem = delivery_controller.atualizar_status_pedido(
+            pedido_id, 
+            novo_status,
+            motivo_cancelamento=motivo_cancelamento
+        )
+        
+        # Exibir mensagem de sucesso ou erro
+        if sucesso:
+            messagebox.showinfo("Sucesso", mensagem, parent=self.frame)
+        else:
+            messagebox.showerror("Erro", mensagem, parent=self.frame)
         
         # Atualizar a lista de pedidos para refletir a mudança
-        if sucesso:
-            # Forçar uma nova busca no banco para garantir que o status esteja atualizado
-            self._atualizar_lista_pedidos()
+        self._atualizar_lista_pedidos()
     
+    def _reimprimir_comanda(self, pedido_id, tree):
+        """
+        Reimprime a comanda do item selecionado no formato de delivery.
+        
+        Args:
+            pedido_id: ID do pedido
+            tree: Widget Treeview contendo os itens do pedido
+        """
+        # Obter o item selecionado na árvore
+        selecionado = tree.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um item para reimprimir a comanda.")
+            return
+            
+        # Obter o ID do item na árvore
+        item_id = selecionado[0]
+        
+        # Verificar se é um item pai (produto) ou filho (opção)
+        item_pai_id = tree.parent(item_id)
+        if item_pai_id:  # Se tem pai, é uma opção
+            # Usar o ID do item pai (produto principal)
+            produto_id = self._item_id_map.get(item_pai_id)
+            if not produto_id:
+                messagebox.showwarning("Aviso", "Item principal não encontrado.")
+                return
+        else:  # É um item principal
+            produto_id = self._item_id_map.get(item_id)
+            if not produto_id:
+                messagebox.showwarning("Aviso", "Item não encontrado.")
+                return
+        
+        try:
+            # Importar o GerenciadorImpressao
+            from src.utils.impressao import GerenciadorImpressao
+            from src.controllers.config_controller import ConfigController
+            from datetime import datetime
+            
+            # Criar instâncias dos controladores necessários
+            delivery_controller = DeliveryController()
+            
+            # Obter o config_controller do controlador principal
+            config_controller = None
+            if hasattr(self.controller, 'config_controller'):
+                config_controller = self.controller.config_controller
+            else:
+                config_controller = ConfigController()
+                
+            # Carregar configurações de impressão
+            if hasattr(config_controller, 'carregar_config_impressoras'):
+                config_controller.carregar_config_impressoras()
+                
+            gerenciador_impressao = GerenciadorImpressao(config_controller=config_controller)
+            
+            # Buscar o pedido no banco de dados
+            cursor = delivery_controller.db.cursor(dictionary=True)
+            
+            try:
+                # Buscar dados básicos do pedido
+                cursor.execute("""
+                    SELECT 
+                        p.*, 
+                        c.nome as cliente_nome, 
+                        u.nome as atendente_nome
+                    FROM pedidos p
+                    LEFT JOIN clientes_delivery c ON p.cliente_id = c.id
+                    LEFT JOIN usuarios u ON p.usuario_id = u.id
+                    WHERE p.id = %s
+                """, (pedido_id,))
+                
+                pedido = cursor.fetchone()
+                
+                if not pedido:
+                    messagebox.showerror("Erro", f"Pedido #{pedido_id} não encontrado.")
+                    return
+                
+                # Buscar o item específico do pedido
+                cursor.execute("""
+                    SELECT 
+                        ip.id,
+                        p.nome as produto_nome,
+                        p.tipo,
+                        ip.quantidade,
+                        ip.observacoes,
+                        ip.valor_unitario as preco
+                    FROM itens_pedido ip
+                    JOIN produtos p ON ip.produto_id = p.id
+                    WHERE ip.pedido_id = %s AND ip.id = %s
+                """, (pedido_id, produto_id))
+                
+                item = cursor.fetchone()
+                
+                if not item:
+                    messagebox.showwarning("Aviso", "Item não encontrado no pedido.")
+                    return
+                
+                # Buscar opções do item
+                cursor.execute("""
+                    SELECT nome 
+                    FROM itens_pedido_opcoes 
+                    WHERE item_pedido_id = %s
+                    ORDER BY id
+                """, (item['id'],))
+                
+                opcoes = cursor.fetchall()
+                
+                # Formatar os dados para a função de impressão
+                venda = {
+                    'id': pedido['id'],
+                    'data_hora': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                    'cliente_nome': pedido.get('cliente_nome', ''),
+                    'atendente_nome': pedido.get('atendente_nome', 'Não identificado'),
+                    'observacoes': pedido.get('observacoes', ''),
+                    'tipo': 'delivery'  # Forçando o tipo para delivery
+                }
+                
+                # Formatar o item para o formato esperado
+                item_formatado = {
+                    'id': item['id'],
+                    'nome': item['produto_nome'],
+                    'quantidade': item['quantidade'],
+                    'preco': item['preco'],
+                    'tipo': item.get('tipo', 'Outros'),
+                    'observacoes': item.get('observacoes', ''),
+                    'opcoes': [{'nome': opcao['nome']} for opcao in opcoes]
+                }
+                
+                # Chamar a função de impressão
+                sucesso = gerenciador_impressao.imprimir_comandas_por_tipo(
+                    venda=venda,
+                    itens=[item_formatado]
+                )
+                
+                if not sucesso:
+                    messagebox.showerror("Erro", "Falha ao enviar para impressão")
+                    
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao buscar dados: {str(e)}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                cursor.close()
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao processar reimpressão: {str(e)}")
+            import traceback
+            traceback.print_exc()
