@@ -281,9 +281,9 @@ class SistemaPDV:
         return [
             {"nome": "👁 Visualizar Mesas", "metodo": "visualizar"},
             {"nome": "✏️ Editar Mesas", "metodo": "editar"},
-            {"nome": "🔄 Transferir Mesa", "metodo": "transferir"}
+            {"nome": "🔄 Transferir Mesa", "metodo": "transferir"},
+            {"nome": "🔗 Unir Mesas", "metodo": "unir"}
         ]
-
     def configurar_modulos(self):
         """Configura os módulos do sistema"""
         # Obtém as opções dos módulos

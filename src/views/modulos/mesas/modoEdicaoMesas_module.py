@@ -205,9 +205,34 @@ class ModoEdicaoMesas:
     def entrar_modo_edicao(self):
         """
         Método público para ativar o modo de edição
-        Mantido para compatibilidade com código existente
+        Verifica o status da mesa antes de permitir a edição
         """
-        self._entrar_modo_edicao()
+        # Verificar se o parent (PedidosMesasModule) tem uma mesa e o controlador de mesas
+        if hasattr(self.parent, 'mesa') and self.parent.mesa and hasattr(self.parent, 'controller_mesas'):
+            # Verificar se a mesa está com status 'em pagamento'
+            if 'status' in self.parent.mesa and self.parent.mesa['status'].lower() == 'em pagamento':
+                # Perguntar se deseja liberar a mesa para fazer novos pedidos
+                resposta = messagebox.askyesno(
+                    "Mesa em Pagamento", 
+                    "Esta mesa está com status 'Em Pagamento'.\n\n" +
+                    "Deseja liberar a mesa para fazer novos pedidos?"
+                )
+                
+                if resposta:
+                    # Se o usuário confirmar, atualiza o status da mesa para 'ocupada'
+                    if self.parent.controller_mesas.atualizar_status_mesa(self.parent.mesa['id'], 'ocupada'):
+                        # Atualiza o status local
+                        self.parent.mesa['status'] = 'ocupada'
+                        messagebox.showinfo("Sucesso", "Mesa liberada para novos pedidos.")
+                    else:
+                        messagebox.showerror("Erro", "Não foi possível liberar a mesa.")
+                        return False
+                else:
+                    # Se o usuário não quiser liberar a mesa, não permite a edição
+                    return False
+        
+        # Se chegou até aqui, pode ativar o modo de edição
+        return self._entrar_modo_edicao()
     
     def _entrar_modo_edicao(self):
         """Ativa o modo de edição"""

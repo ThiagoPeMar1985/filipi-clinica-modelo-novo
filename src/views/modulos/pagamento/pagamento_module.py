@@ -7,6 +7,7 @@ from tkinter import ttk, messagebox
 import sys
 from datetime import datetime
 from pathlib import Path
+from decimal import Decimal, ROUND_HALF_UP
 
 
 # Adiciona o diretório raiz do projeto ao path para importar módulos
@@ -15,10 +16,11 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from controllers.pagamento_controller import PagamentoController
 from controllers.cadastro_controller import CadastroController
 from utils.impressao import GerenciadorImpressao
+from src.controllers.mesas_controller import MesasController
 
 class PagamentoModule:
     def __init__(self, master, db_connection, valor_total=0.0, desconto=0.0, 
-                 callback_finalizar=None, venda_tipo='avulsa', referencia=None, itens_venda=None, controller=None, taxa_servico=False, config_controller=None):
+                 callback_finalizar=None, venda_tipo='avulsa', referencia=None, itens_venda=None, controller=None, taxa_servico=False, config_controller=None,parent=None):
         """
         Inicializa o módulo de pagamentos.
         
@@ -41,17 +43,17 @@ class PagamentoModule:
         self.controller = controller  # Armazena a referência ao controlador principal
         self.pagamento_controller = PagamentoController(db_connection)
         self.cadastro_controller = CadastroController(db_connection)
-        
         self.valor_total = float(valor_total)
         self.desconto = float(desconto)
         self.valor_final = self.valor_total - self.desconto
-        
         self.callback_finalizar = callback_finalizar
         self.venda_tipo = venda_tipo
         self.referencia = referencia
+        self.parent = parent
         
         # Lista para armazenar os pagamentos realizados
         self.pagamentos = []
+
         
         # Itens da venda (produtos)
         self.itens_venda = itens_venda or []
@@ -141,7 +143,6 @@ class PagamentoModule:
         linhas = []
         
         # Cabeçalho
-        
         linhas.append(centralizar("CUPOM FISCAL"))
         linhas.append("=" * largura)
         
@@ -161,7 +162,7 @@ class PagamentoModule:
         linhas.append("-" * largura)
         
         # Itens
-        for item in venda_dados['itens']:
+        for item in venda_dados.get('itens', []):
             # Obtém o nome do item
             nome = item.get('nome') or item.get('produto_nome', 'Produto')
             quantidade = item.get('quantidade', 1)
@@ -173,18 +174,39 @@ class PagamentoModule:
             linha = f"{nome_linha.ljust(25)} {quantidade:>2} {formatar_valor(total)}"
             linhas.append(linha)
         
+        # Calcular o subtotal somando os itens
+        subtotal = Decimal('0')
+        for item in venda_dados.get('itens', []):
+            quantidade = Decimal(str(item.get('quantidade', 1)))
+            preco = Decimal(str(item.get('preco', 0) or item.get('valor_unitario', 0)))
+            subtotal += quantidade * preco
+        
+        # Arredondar para 2 casas decimais
+        subtotal = subtotal.quantize(Decimal('0.01'))
+        
+        # Calcular o valor da taxa de serviço (10% do subtotal se taxa_servico for True)
+        valor_taxa_servico = Decimal('0')
+        if venda_dados.get('taxa_servico'):
+            valor_taxa_servico = (subtotal * Decimal('0.1')).quantize(Decimal('0.01'))
+        
+        # Obter desconto
+        desconto = Decimal(str(venda_dados.get('desconto', 0)))
+        
+        # Calcular o valor final
+        valor_final = (subtotal + valor_taxa_servico - desconto).quantize(Decimal('0.01'))
+        
         # Totais
         linhas.append("-" * largura)
-        linhas.append(f"{'Subtotal:':<25}{formatar_valor(self.valor_total)}")
+        linhas.append(f"{'Subtotal:':<25}{formatar_valor(subtotal)}")
         
-        if venda_dados.get('desconto', 0) > 0:
-            linhas.append(f"{'Desconto:':<25}{formatar_valor(venda_dados['desconto'])}")
+        if desconto > 0:
+            linhas.append(f"{'Desconto:':<25}{formatar_valor(desconto)}")
         
-        if venda_dados.get('taxa_servico', 0) > 0:
-            linhas.append(f"{'Taxa Serviço:':<25}{formatar_valor(venda_dados['taxa_servico'])}")
+        if valor_taxa_servico > 0:
+            linhas.append(f"{'Taxa Serviço:':<25}{formatar_valor(valor_taxa_servico)}")
         
         linhas.append("-" * largura)
-        linhas.append(f"{'TOTAL:':<25}{formatar_valor(venda_dados['total'])}")
+        linhas.append(f"{'TOTAL:':<25}{formatar_valor(valor_final)}")
         
         # Pagamentos
         if 'pagamentos' in venda_dados and venda_dados['pagamentos']:
@@ -250,25 +272,28 @@ class PagamentoModule:
         container.pack(fill="both", expand=True)
         
         # Coluna da esquerda - Resumo e formas de pagamento
-        coluna_esquerda = ttk.Frame(container)
+        coluna_esquerda = ttk.Frame(container,height= 700)
         coluna_esquerda.pack(side="left", fill="both", expand=True, padx=5)
 
         # Coluna do meio - Pagamentos realizados
-        coluna_meio = ttk.Frame(container)
+        coluna_meio = ttk.Frame(container,height= 700)
         coluna_meio.pack(side="left", fill="both", expand=True, padx=5)
     
         # Coluna da direita - Visualização do cupom fiscal
-        coluna_direita = ttk.Frame(container)  # Largura fixa para o cupom
-        coluna_direita.pack(side="right", fill="both", padx=5)
+        coluna_direita = ttk.Frame(container,height= 700)  # Largura fixa para o cupom
+        coluna_direita.pack(side="right", fill="both", expand=True, padx=5)
         
 
        # Frame do cupom fiscal
         cupom_frame = ttk.LabelFrame(
            coluna_direita,
            text="Pré-visualização do Cupom",
-           style="Resumo.TLabelframe"
+           style="Resumo.TLabelframe",
+           width= 400,
+           
         )
         cupom_frame.pack(fill="both", expand=True, pady=(0, 10), padx=5)
+        cupom_frame.pack_propagate(False) 
 
         # Área de visualização do cupom (com rolagem)
         cupom_container = ttk.Frame(cupom_frame)
@@ -293,6 +318,48 @@ class PagamentoModule:
         )
         self.cupom_texto.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=self.cupom_texto.yview)
+        
+        # Adicionar botão FECHAR MESA E IMPRIMIR CUPOM na coluna da direita, abaixo do cupom
+        if self.venda_tipo == 'mesa':
+            botoes_acao_frame = ttk.Frame(coluna_direita)
+            botoes_acao_frame.pack(fill="x", pady=10, padx=5, side="bottom")
+
+            # Frame para agrupar os botões lado a lado
+            botoes_container = ttk.Frame(botoes_acao_frame)
+            botoes_container.pack(expand=True)
+
+            # Botão Apenas Imprimir (agora à esquerda)
+            self.botao_imprimir = tk.Button(
+                botoes_container,
+                text="IMPRIMIR",
+                bg="#3498db",  # Azul
+                fg="white",
+                font=('Arial', 10, 'bold'),
+                padx=15,
+                pady=10,
+                relief="flat",
+                cursor="hand2",
+                command=self._imprimir_cupom
+            )
+            self.botao_imprimir.pack(side="left", expand=True, fill="x", padx=(0, 5))
+
+            # Botão Fechar Mesa e Imprimir (agora à direita)
+            self.botao_fechar_imprimir = tk.Button(
+                botoes_container,
+                text="FECHAR E IMPRIMIR",
+                bg="#e74c3c",  # Vermelho
+                fg="white",
+                font=('Arial', 10, 'bold'),
+                padx=15,
+                pady=10,
+                relief="flat",
+                cursor="hand2",
+                command=self._fechar_mesa_imprimir
+            )
+            self.botao_fechar_imprimir.pack(side="right", expand=True, fill="x", padx=(5, 0))
+
+            # Ajustar o container para expandir e centralizar os botões
+            botoes_container.pack(expand=True, fill="x")
         
         # Estilo para os frames e labels
         style.configure("Resumo.TLabelframe", background=self.cores["fundo"])
@@ -375,10 +442,7 @@ class PagamentoModule:
         ttk.Label(total_frame, text="TOTAL:", style="Total.TLabel").pack(side="left")
         self.total_label = ttk.Label(total_frame, text=f"R$ {self.valor_final:,.2f}".replace('.', '|').replace(',', '.').replace('|', ','), style="Total.TLabel")
         self.total_label.pack(side="right")
-        
-        # Separador
-        ttk.Separator(resumo_frame, orient="horizontal").pack(fill="x", padx=10, pady=5)
-        
+
         # Valor restante
         restante_frame = ttk.Frame(resumo_frame, style="Custom.TFrame")
         restante_frame.pack(fill="x", pady=8, padx=10)
@@ -497,11 +561,11 @@ class PagamentoModule:
         # Frame para o Treeview e scrollbar
         tree_frame = ttk.Frame(pagamentos_frame, style="Custom.TFrame")
         tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
+
         # Scrollbar
         scrollbar = ttk.Scrollbar(tree_frame)
         scrollbar.pack(side="right", fill="y")
-        
+
         # Treeview para pagamentos
         colunas = ('forma', 'valor')
         self.pagamentos_tree = ttk.Treeview(
@@ -536,7 +600,7 @@ class PagamentoModule:
         
           # Frame para os botões de finalização
         botoes_frame = ttk.Frame(coluna_meio)
-        botoes_frame.pack(fill="x", pady=10, expand=True)
+        botoes_frame.pack(fill="x", pady=10, side="bottom")
         
         # Botão Finalizar sem Imprimir
         self.finalizar_sem_imprimir_btn = tk.Button(
@@ -959,7 +1023,6 @@ class PagamentoModule:
                     # Continua mesmo com erro de impressão
             
             # Fechar a janela
-
             try:
                 if hasattr(self, 'master') and self.master:
                     if isinstance(self.master, tk.Toplevel):
@@ -1008,36 +1071,73 @@ class PagamentoModule:
                 self.frame = None
                 
     def _imprimir_cupom_fiscal(self, venda_dados):
-      
         """Imprime o cupom fiscal da venda finalizada"""
         try:
             # Obter os itens da venda (produtos)
             itens = self._obter_itens_venda()
             
+            # Inicializar as variáveis com valores padrão
+            nome_usuario = 'SISTEMA'
+            usuario_id = None
+            id_pedido = None
+            
+            # Tenta obter o ID do pedido
+            if hasattr(self, 'pedido_id') and self.pedido_id:
+                id_pedido = self.pedido_id
+            elif hasattr(self, 'referencia') and self.referencia:
+                id_pedido = self.referencia
+            
+            # Obtém o ID do usuário do primeiro item da venda, se disponível
+            if hasattr(self, 'itens_venda') and self.itens_venda:
+                for item in self.itens_venda:
+                    if 'usuario_id' in item and item['usuario_id']:
+                        usuario_id = item['usuario_id']
+                        # Tenta obter o nome do usuário do banco de dados
+                        try:
+                            import mysql.connector
+                            from src.db.config import get_db_config
+                            
+                            db_config = get_db_config()
+                            conn = mysql.connector.connect(**db_config)
+                            cursor = conn.cursor(dictionary=True)
+                            
+                            cursor.execute("SELECT nome FROM usuarios WHERE id = %s", (usuario_id,))
+                            usuario = cursor.fetchone()
+                            
+                            if usuario and 'nome' in usuario:
+                                nome_usuario = usuario['nome']
+                            
+                            cursor.close()
+                            conn.close()
+                            break  # Se encontrou o usuário, sai do loop
+                        except Exception as e:
+                            print(f"[DEBUG] Erro ao buscar nome do usuário no banco: {e}")
+            
+            # Garantir que venda_dados tenha o nome do usuário
+            venda_dados['usuario_nome'] = nome_usuario
+            
             # Obter o controlador de configurações
             config_controller = None
             if hasattr(self, 'config_controller'):
                 config_controller = self.config_controller
-
             elif hasattr(self, 'controller') and hasattr(self.controller, 'config_controller'):
                 config_controller = self.controller.config_controller
-            elif hasattr(self, 'controller') and hasattr(self.controller, 'controller') and hasattr(self.controller.controller, 'config_controller'):
+            elif (hasattr(self, 'controller') and 
+                hasattr(self.controller, 'controller') and 
+                hasattr(self.controller.controller, 'config_controller')):
                 config_controller = self.controller.controller.config_controller
-                
+                    
             # Carregar configurações de impressão se disponível
             if config_controller and hasattr(config_controller, 'carregar_config_impressoras'):
                 try:
                     config_controller.carregar_config_impressoras()
-                except Exception:
-                    pass
-            
-            # Inicializar o gerenciador de impressão
+                except Exception as e:
+                    print(f"Erro ao carregar configurações de impressão: {e}")
             
             # Garantir que temos um config_controller válido
             if not config_controller and hasattr(self, 'config_controller'):
                 config_controller = self.config_controller
 
-            
             # Se ainda não tivermos um config_controller, tentar obter do controller principal
             if not config_controller and hasattr(self, 'controller') and hasattr(self.controller, 'config_controller'):
                 config_controller = self.controller.config_controller
@@ -1064,9 +1164,136 @@ class PagamentoModule:
                 messagebox.showerror("Erro", "Não foi possível imprimir o cupom fiscal.")
             if not sucesso_cupom and tipo_venda != 'mesa' and not sucesso_comandas:
                 messagebox.showerror("Erro", "Não foi possível imprimir as comandas.")
+                
         except Exception as e:
             print(f"Erro ao imprimir cupom fiscal: {e}")
-            
+            messagebox.showerror("Erro", f"Ocorreu um erro ao imprimir o cupom fiscal: {str(e)}")
+                
     def _obter_itens_venda(self):
         """Obtém os itens da venda para impressão do cupom fiscal"""
         return self.itens_venda
+    
+    def _imprimir_cupom(self):
+        """Imprime o cupom fiscal da venda atual."""
+        try:
+            from decimal import Decimal, ROUND_HALF_UP
+            
+            # Inicializar as variáveis com valores padrão
+            nome_usuario = 'SISTEMA'
+            usuario_id = None
+            id_pedido = None
+            
+            # Tenta obter o ID do pedido
+            if hasattr(self, 'pedido_id') and self.pedido_id:
+                id_pedido = self.pedido_id
+            elif hasattr(self, 'referencia') and self.referencia:
+                id_pedido = self.referencia
+            
+            # Obtém o ID do usuário do primeiro item da venda, se disponível
+            if hasattr(self, 'itens_venda') and self.itens_venda:
+                for item in self.itens_venda:
+                    if 'usuario_id' in item and item['usuario_id']:
+                        usuario_id = item['usuario_id']
+                        # Tenta obter o nome do usuário do banco de dados
+                        try:
+                            import mysql.connector
+                            from src.db.config import get_db_config
+                            
+                            db_config = get_db_config()
+                            conn = mysql.connector.connect(**db_config)
+                            cursor = conn.cursor(dictionary=True)
+                            
+                            cursor.execute("SELECT nome FROM usuarios WHERE id = %s", (usuario_id,))
+                            usuario = cursor.fetchone()
+                            
+                            if usuario and 'nome' in usuario:
+                                nome_usuario = usuario['nome']
+                            
+                            cursor.close()
+                            conn.close()
+                            break  # Se encontrou o usuário, sai do loop
+                        except Exception as e:
+                            print(f"[DEBUG] Erro ao buscar nome do usuário no banco: {e}")
+            
+
+            # Resto do seu código de cálculo...
+            desconto = Decimal(str(self.desconto))
+            
+            # Calcular o subtotal somando os itens
+            subtotal = Decimal('0') 
+            for item in self.itens_venda:
+                preco = Decimal(str(item.get('preco', 0) or item.get('valor_unitario', 0)))
+                quantidade = Decimal(str(item.get('quantidade', 1)))
+                subtotal += preco * quantidade
+                    
+            subtotal = subtotal.quantize(Decimal('0.01'), ROUND_HALF_UP)
+            
+            # Calcular taxa de serviço (10% sobre o subtotal se for mesa com taxa)
+            valor_taxa_servico = Decimal('0.00')
+            if self.taxa_servico:
+                valor_taxa_servico = (subtotal * Decimal('0.1')).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            
+            # Calcular valor final (subtotal + taxa - desconto)
+            valor_final = (subtotal + valor_taxa_servico - desconto).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            
+            # Preparar dados da venda
+            venda_dados = {
+                'itens': self.itens_venda,
+                'valor_total': float(subtotal),
+                'desconto': float(desconto),
+                'valor_final': float(valor_final),
+                'data_hora': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+                'tipo': self.venda_tipo.upper(),
+                'taxa_servico': float(valor_taxa_servico),
+                'usuario_nome': nome_usuario,
+                'usuario_id': usuario_id,
+                'pedido_id': id_pedido,
+                'mesa': getattr(self, 'referencia', ''),
+                'pagamentos': [{
+                    'forma': p.get('forma_nome', 'Dinheiro'),
+                    'valor': float(p.get('valor', 0))
+                } for p in self.pagamentos]
+            }
+            
+            # Chamar o gerenciador de impressão
+            gerenciador = GerenciadorImpressao()
+            gerenciador.imprimir_cupom_fiscal(
+                venda=venda_dados,
+                itens=venda_dados['itens'],
+                pagamentos=venda_dados['pagamentos']
+            )
+                
+        except Exception as e:
+            print(f"Erro ao imprimir cupom: {str(e)}")
+            messagebox.showerror("Erro", f"Ocorreu um erro ao imprimir o cupom: {str(e)}")
+            
+    def _fechar_mesa_imprimir(self):
+        """Atualiza o status da mesa para 'em pagamento' e volta para a tela de mesas."""
+        try:
+            # Tenta imprimir o cupom (opcional)
+            try:
+                self._imprimir_cupom()
+            except Exception:
+                pass  # Impressão é opcional, continua mesmo se falhar
+            
+            # Verifica a conexão
+            if not hasattr(self, 'db_connection') or not self.db_connection:
+                messagebox.showerror("Erro", "Não foi possível conectar ao banco de dados.")
+                return False
+            
+            # Usa o controller existente ou cria um novo
+            if not hasattr(self, 'mesas_controller') or not self.mesas_controller:
+                from controllers.mesas_controller import MesasController
+                self.mesas_controller = MesasController(db_connection=self.db_connection)
+            
+            # Atualiza o status da mesa
+            if not self.mesas_controller.colocar_mesa_em_pagamento(self.referencia):
+                messagebox.showerror("Erro", "Não foi possível atualizar o status da mesa para 'EM PAGAMENTO'")
+                return False
+            
+            #fecha a tela de pagamentos
+            self._voltar()
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro ao fechar a mesa: {str(e)}")
+            return False

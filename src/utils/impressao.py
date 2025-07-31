@@ -970,7 +970,7 @@ class GerenciadorImpressao:
         
         Args:
             impressora: Nome da impressora a ser usada
-            texto: Texto a ser impresso
+            texto: Texto a ser impresso (já formatado com códigos ESC/POS)
             
         Returns:
             bool: True se a impressão foi bem-sucedida, False caso contrário
@@ -978,187 +978,100 @@ class GerenciadorImpressao:
         if not impressora or not texto:
             return False
             
-        # Lista todas as impressoras disponíveis
+        hprinter = None
+        
         try:
-            # Verifica se é uma impressora PDF, XPS ou virtual
-            impressora_upper = impressora.upper()
-            impressora_virtual = any(x in impressora_upper for x in ["TO PDF", "TO XPS", "MICROSOFT XPS", "MICROSOFT PRINT TO PDF"])
+            # Tenta abrir a impressora
+            hprinter = win32print.OpenPrinter(impressora)
             
-            if impressora_virtual:
-                # Método gráfico para impressoras virtuais (PDF, XPS, etc.)
-                hdc = win32ui.CreateDC()
-                hdc.CreatePrinterDC(impressora)
-                
-                # Configura o modo de mapeamento para TWIPS (1/1440 de polegada)
-                hdc.SetMapMode(win32con.MM_TWIPS)
-                
-                # Configura o tamanho do papel para 80mm x 297mm (comprimento contínuo)
-                PAPER_WIDTH = int(80 * 56.693)      # Largura: 80mm
-                PAPER_HEIGHT = int(297 * 56.693)    # Altura: 297mm (comprimento contínuo)
-                
-                # Define o tamanho do papel e as margens
-                hdc.SetViewportExt((PAPER_WIDTH, PAPER_HEIGHT))
-                hdc.SetWindowExt((PAPER_WIDTH, PAPER_HEIGHT))
-                
-                # Margens em TWIPS (1mm = 56.693 TWIPS)
-                MARGIN_LEFT = int(5 * 56.693)   # 5mm
-                MARGIN_TOP = int(5 * 56.693)    # 5mm
-                
-                # Cria e seleciona a fonte (Courier New, tamanho 9pt, não-negrito)
-                fonte = win32ui.CreateFont({
-                    "name": "Courier New",
-                    "height": -135,  # Tamanho da fonte em TWIPS (135 = ~9.5pt)
-                    "weight": 400,   # Peso normal (400 = normal, 700 = negrito)
-                    "charset": 0,    # ANSI_CHARSET
-                    "italic": 0,     # Não itálico
-                    "underline": 0   # Sem sublinhado
-                })
-                hdc.SelectObject(fonte)
-                
-                # Inicia o documento
-                try:
-                    hdc.StartDoc("Cupom Fiscal")
-                    hdc.StartPage()
-                except Exception as e:
+            # Verifica status da impressora
+            try:
+                printer_info = win32print.GetPrinter(hprinter, 2)
+                status = printer_info.get('Status', 0)
+                if status != 0 and (status & 1):  # Verifica se está sem papel
+                    print(f"ERRO: {impressora} sem papel")
                     return False
-                
-                # Configurações de impressão
-                line_height = 200  # Espaçamento entre linhas em TWIPS (~3.5mm)
-                y_position = MARGIN_TOP
-                
-                # Imprime o texto linha por linha
-                for linha in texto.split('\n'):
-                    # Remove caracteres de controle que podem ativar comandos da impressora
-                    linha = linha.replace('\x1B', '').replace('\x1D', '').replace('\x1C', '')
-                    
-                    # Se a linha estiver vazia, adiciona apenas o espaçamento
-                    if not linha.strip():
-                        y_position += line_height
-                        continue
-                        
-                    # Imprime a linha (Y negativo porque o eixo Y é invertido no modo TWIPS)
-                    hdc.TextOut(MARGIN_LEFT, -y_position, linha)
-                    
-                    # Atualiza a posição Y para a próxima linha
-                    y_position += line_height
-                    
-                    # Verifica se precisa de uma nova página
-                    if y_position > (PAPER_HEIGHT - int(10 * 56.693)):  # 10mm de margem inferior
-                        hdc.EndPage()
-                        hdc.StartPage()
-                        y_position = MARGIN_TOP
-                
-                # Finaliza a página e o documento
+            except:
+                pass  # Continua mesmo se não conseguir verificar o status
+            
+            # Comandos de inicialização otimizados
+            init_commands = [
+                b'\x1B@',           # Inicializa a impressora (reset)
+                b'\x1B3\x18',       # Define espaçamento entre linhas (24/180 polegadas)
+                b'\x1B!\x00',       # Fonte normal (12x24)
+                b'\x1Ba\x00',       # Alinhamento à esquerda
+                b'\x1B\x20\x00',    # Define espaçamento entre caracteres como 0
+                b'\x1B-\x00',       # Desativa sublinhado
+                b'\x1B\x45\x00',    # Desativa negrito
+                b'\x1B4\x00',       # Desativa itálico
+            ]
+            
+            # Inicia um trabalho de impressão RAW
+            try:
+                job = win32print.StartDocPrinter(hprinter, 1, ("Cupom Fiscal", None, "RAW"))
+                win32print.StartPagePrinter(hprinter)
+            except Exception as e:
+                print(f"ERRO ao iniciar documento: {e}")
+                return False
+            
+            # Envia os comandos de inicialização
+            for cmd in init_commands:
                 try:
-                    hdc.EndPage()
-                    hdc.EndDoc()
-                    hdc.DeleteDC()
-                    return True
-                except Exception as e:
-                    try:
-                        hdc.DeleteDC()
-                    except:
-                        pass
-                    return False
-                    
-            else:
-                # Método RAW para impressoras térmicas reais
-               
-                hprinter = None
-                
-                try:
-                    # Tenta abrir a impressora
-                  
-                    hprinter = win32print.OpenPrinter(impressora)
-                    
-                    # Verificação simplificada de status
-                    try:
-                        printer_info = win32print.GetPrinter(hprinter, 2)
-                        status = printer_info.get('Status', 0)
-                        if status != 0:
-                          
-                            if status & 1:  # Verifica se está sem papel
-
-                                return False
-                    except Exception as e:
-                        pass
-                    
-                    # Comandos de inicialização para impressoras térmicas
-                    init_commands = [
-                        b'\x1B@',           # Inicializa a impressora (reset)
-                        b'\x1B!\x00',      # Fonte padrão (normal, 12x24)
-                        b'\x1B3\x18',      # Define espaçamento entre linhas (24/180 polegadas = 3.38mm)
-                        b'\x1Ba\x01',      # Define o alinhamento para centralizado
-                        b'\x1B!\x00',      # Fonte normal
-                        b'\x0A\x0A',       # Linhas em branco
-                        b'\x1Ba\x00',      # Alinhamento à esquerda
-                    ]
-                    
-                    # Inicia um trabalho de impressão RAW
-                    try:
-                        job = win32print.StartDocPrinter(hprinter, 1, ("Cupom Fiscal", None, "RAW"))
-                        win32print.StartPagePrinter(hprinter)
-
-                    except Exception as e:
-                        raise
-                    
-                    # Envia os comandos de inicialização
-                    for cmd in init_commands:
+                    win32print.WritePrinter(hprinter, cmd)
+                except:
+                    continue
+            
+            # Prepara o texto para impressão
+            linhas = [linha.rstrip() for linha in texto.split('\n') if linha.strip()]
+            texto_formatado = '\n'.join(linhas)
+            
+            # Tenta enviar o texto de uma vez
+            try:
+                texto_bytes = texto_formatado.encode('cp850', errors='replace')
+                win32print.WritePrinter(hprinter, texto_bytes)
+            except Exception as e:
+                print(f"AVISO: Envio completo falhou, tentando linha por linha. Erro: {e}")
+                # Se falhar, tenta enviar linha por linha
+                for linha in texto_formatado.split('\n'):
+                    if linha.strip():  # Ignora linhas vazias
                         try:
-                            win32print.WritePrinter(hprinter, cmd)
-                        except:
-                            continue
-                    
-                    # Prepara o texto para impressão
-                    linhas = [linha.rstrip() for linha in texto.split('\n') if linha.strip()]
-                    texto_formatado = '\n'.join(linhas) + '\n\n\n'  # Adiciona 3 linhas em branco no final
-                    
-                    # Adiciona comandos para avançar e cortar o papel
-                    texto_formatado += '\n\n\n\x1DVA\x00'  # Avança 3 linhas e corta o papel
-                    
-                    # Converte para bytes usando codificação cp850
-                    try:
-                        texto_bytes = texto_formatado.encode('cp850', errors='replace')
-                        win32print.WritePrinter(hprinter, texto_bytes)
-                    except Exception as e:
-                        print(f"_imprimir_texto - Erro ao enviar texto: {str(e)}")
-                        # Tenta enviar o texto em partes menores
-                        for linha in texto_formatado.split('\n'):
-                            if linha.strip():  # Ignora linhas vazias
-                                try:
-                                    linha_bytes = (linha + '\n').encode('cp850', errors='replace')
-                                    win32print.WritePrinter(hprinter, linha_bytes)
-                                except:
-                                    continue
-                    
-                    # Finaliza a impressão
-                   
-                    try:
-                        win32print.EndPagePrinter(hprinter)
-                        win32print.EndDocPrinter(hprinter)
-                        win32print.ClosePrinter(hprinter)
-                      
-                        return True
-                    except Exception as e:
-
-                        try:
-                            win32print.ClosePrinter(hprinter)
-                        except:
-                            pass
-                        return False
-                    
-                except Exception as e:
-                    print(f"DEBUG - _imprimir_texto - Erro durante a impressão: {str(e)}")
-                    try:
-                        if hprinter:
-                            win32print.ClosePrinter(hprinter)
-                    except:
-                        pass
-                    return False
+                            linha_bytes = (linha + '\n').encode('cp850', errors='replace')
+                            win32print.WritePrinter(hprinter, linha_bytes)
+                        except Exception as e_linha:
+                            print(f"ERRO ao enviar linha: {e_linha}")
+            
+            # Comandos de finalização
+            final_commands = [
+                b'\n' * 3,         # 3 linhas em branco
+                b'\x1DVA\x00'      # Avança e corta o papel
+            ]
+            
+            for cmd in final_commands:
+                try:
+                    win32print.WritePrinter(hprinter, cmd)
+                except:
+                    continue
+            
+            # Finaliza a impressão
+            try:
+                win32print.EndPagePrinter(hprinter)
+                win32print.EndDocPrinter(hprinter)
+                return True
+            except Exception as e:
+                print(f"ERRO ao finalizar impressão: {e}")
+                return False
                 
         except Exception as e:
-            print(f"DEBUG - _imprimir_texto - Erro inesperado: {str(e)}")
+            print(f"ERRO durante a impressão: {e}")
             return False
+            
+        finally:
+            # Garante que a impressora seja fechada
+            try:
+                if hprinter:
+                    win32print.ClosePrinter(hprinter)
+            except:
+                pass
             
     def _obter_preco_item(self, item):
         """

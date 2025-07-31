@@ -29,7 +29,8 @@ class VisualizarMesasModule(BaseModule):
             "livre": CORES["primaria"],     # Azul claro para mesas livres
             "ocupada": CORES["secundaria"], # Azul escuro para mesas ocupadas
             "reservada": CORES["atencao"],  # Amarelo
-            "inativa": CORES["inativo"]     # Cinza muito escuro
+            "inativa": CORES["inativo"],     # Cinza muito escuro
+            "em pagamento": CORES["alerta"]  # vermelho
         }
         
         # Carregar mesas do banco de dados
@@ -219,7 +220,7 @@ class VisualizarMesasModule(BaseModule):
                 relief="flat",
                 cursor='hand2',  # Cursor de mão para indicar que é clicável
                 width=150,  # Largura fixa para garantir consistência
-                height=150   # Altura fixa para garantir consistência
+                height=160   # Altura fixa para garantir consistência
             )
             
             # Impedir que o frame mude de tamanho
@@ -283,6 +284,18 @@ class VisualizarMesasModule(BaseModule):
                         bg=status_cor,
                         fg=CORES['texto_claro']  # Texto branco
                     ).pack(pady=(0, 5))
+
+            if mesa.get('nome'):  # Verifica se a chave 'nome' existe e não é vazia
+                status_cor = self.cores_status.get(mesa["status"].lower(), CORES['destaque'])
+                tk.Label(
+                    conteudo_mesa,
+                    text=mesa['nome'],
+                    font=FONTES['normal'],
+                    bg=status_cor,
+                    fg=CORES['texto_claro'],  # Texto branco
+                    wraplength=130,  # Para garantir que nomes longos quebrem corretamente
+                    justify='center'
+                ).pack(pady=(0, 5))
             
             # Posicionar no grid
             mesa_frame.grid(row=row, column=col, padx=15, pady=15, sticky="nsew")
@@ -656,6 +669,11 @@ class VisualizarMesasModule(BaseModule):
     def _mostrar_menu_contexto(self, event, mesa, frame):
         """Exibe o menu de contexto para alterar o status da mesa"""
         menu = tk.Menu(self.frame, tearoff=0)
+
+        menu.add_command(
+            label="Renomear Mesa",
+            command=lambda: self._renomear_mesa(mesa, frame)
+        )
         
         # Adicionar opções de status disponíveis
         status_options = ["Livre", "Reservada", "Inativa"]
@@ -764,3 +782,108 @@ class VisualizarMesasModule(BaseModule):
             self.frame.pack(fill="both", expand=True, padx=20, pady=20)
             return self.frame
         return None
+
+    def _renomear_mesa(self, mesa, frame):
+        """Abre uma janela para renomear a mesa"""
+        # Criar janela de diálogo
+        janela = tk.Toplevel(self.frame)
+        janela.title(f"Renomear Mesa {mesa['numero']}")
+        janela.resizable(False, False)
+        janela.transient(self.frame)
+        janela.grab_set()
+        
+        # Frame principal
+        main_frame = tk.Frame(janela, padx=20, pady=20, bg=CORES['fundo'])
+        main_frame.pack(fill="both", expand=True)
+        
+        # Label de instrução
+        tk.Label(
+            main_frame,
+            text=f"Digite o novo nome para a Mesa {mesa['numero']}:",
+            font=FONTES['normal'],
+            bg=CORES['fundo'],
+            fg=CORES['texto']
+        ).pack(pady=(0, 10))
+        
+        # Campo de entrada
+        nome_var = tk.StringVar(value=mesa.get('nome', ''))
+        entry = ttk.Entry(
+            main_frame,
+            textvariable=nome_var,
+            font=FONTES['normal'],
+            width=30
+        )
+        entry.pack(pady=5)
+        entry.focus_set()
+        entry.select_range(0, tk.END)  # Seleciona todo o texto para facilitar a edição
+        
+        # Frame para botões
+        botoes_frame = tk.Frame(main_frame, bg=CORES['fundo'])
+        botoes_frame.pack(pady=(15, 0))
+        
+        # Função para salvar o novo nome
+        def salvar_nome():
+            novo_nome = nome_var.get().strip()
+            if novo_nome:
+                try:
+                    novo_nome = novo_nome.title()
+                    cursor = self.db_connection.cursor()
+                    query = "UPDATE mesas SET nome = %s WHERE id = %s"
+                    cursor.execute(query, (novo_nome, mesa['id']))
+                    self.db_connection.commit()
+                    
+                    # Atualizar o nome na lista de mesas
+                    for m in self.mesas:
+                        if m['id'] == mesa['id']:
+                            m['nome'] = novo_nome
+                            break
+                    
+                    # Atualizar a interface
+                    self.atualizar_mesas()
+                    janela.destroy()
+                    
+                except Exception as e:
+                    self.db_connection.rollback()
+                    messagebox.showerror("Erro", f"Erro ao renomear a mesa: {str(e)}")
+                finally:
+                    cursor.close()
+            else:
+                messagebox.showwarning("Aviso", "O nome da mesa não pode ficar em branco.")
+        
+        # Botão Salvar
+        tk.Button(
+            botoes_frame,
+            text="SALVAR",
+            font=FONTES['pequena'],
+            bg=CORES['primaria'],
+            fg=CORES['texto_claro'],
+            bd=0,
+            padx=20,
+            pady=5,
+            command=salvar_nome
+        ).pack(side="left", padx=5)
+        
+        # Botão Cancelar
+        tk.Button(
+            botoes_frame,
+            text="CANCELAR",
+            font=FONTES['pequena'],
+            bg=CORES['alerta'],
+            fg=CORES['texto_claro'],
+            bd=0,
+            padx=20,
+            pady=5,
+            command=janela.destroy
+        ).pack(side="left", padx=5)
+        
+        # Centralizar janela
+        self.centralizar_janela(janela, 400, 180)
+        
+        # Configurar tecla Enter para salvar
+        janela.bind('<Return>', lambda e: salvar_nome())
+        
+        # Configurar tecla Escape para cancelar
+        janela.bind('<Escape>', lambda e: janela.destroy())
+        
+        # Focar na janela de diálogo
+        janela.focus_force()

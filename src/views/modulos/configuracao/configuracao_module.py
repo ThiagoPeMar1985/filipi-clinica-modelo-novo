@@ -1596,7 +1596,7 @@ class ConfiguracaoModule(BaseModule):
                 
                 # Destaca o botão selecionado com amarelo
                 if modulo_id in self.botoes_modulos:
-                    self.botoes_modulos[modulo_id].config(bg='#ffc000')  # Cor amarela do backup
+                    self.botoes_modulos[modulo_id].config(bg='#28b5f4')  # Cor amarela do backup
                 
                 # Mostra o conteúdo do módulo
                 mostrar_modulo(modulo_id)
@@ -1623,7 +1623,7 @@ class ConfiguracaoModule(BaseModule):
                     font=('Arial', 10),
                     bg='#2b579a',  # Cor azul igual ao botão "Criar arquivo" do backup
                     fg='white',
-                    activebackground='#ffc000',  # Cor amarela ao passar o mouse
+                    activebackground='#28b5f4',  # Cor amarela ao passar o mouse
                     activeforeground='black',
                     relief='flat',
                     pady=8,

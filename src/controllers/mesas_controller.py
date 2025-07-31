@@ -98,10 +98,8 @@ class MesasController:
         Args:
             view: View associada ao controlador (opcional)
             db_connection: Conexão com o banco de dados (opcional)"""
-        
         self.view = view
         self.db_connection = db_connection
-        
         # Inicializa listas vazias para armazenar dados
         self.mesas = []
         self.pedidos = []
@@ -434,7 +432,7 @@ class MesasController:
                 """
                 UPDATE pedidos SET total = (
                     SELECT SUM(subtotal) FROM itens_pedido WHERE pedido_id = %s
-                ) WHERE id = %s
+                ) WHERE id = %s 
                 """,
                 (self.pedido_atual['id'], self.pedido_atual['id'])
             )
@@ -465,7 +463,7 @@ class MesasController:
                 SELECT ip.*, p.nome as nome_produto 
                 FROM itens_pedido ip
                 JOIN produtos p ON ip.produto_id = p.id
-                WHERE ip.id = %s
+                WHERE ip.id = %s 
                 """,
                 (item_id,)
             )
@@ -817,7 +815,7 @@ class MesasController:
             query_itens = """
                 SELECT COALESCE(SUM(ip.quantidade * ip.valor_unitario), 0) as total_itens
                 FROM itens_pedido ip
-                WHERE ip.pedido_id = %s
+                WHERE ip.pedido_id = %s AND ip.status = 'PENDENTE'
             """
             
             cursor.execute(query_itens, (pedido_id,))
@@ -989,3 +987,155 @@ class MesasController:
             import traceback
             traceback.print_exc()
             return []
+    def atualizar_status_mesa(self, mesa_id, novo_status):
+        """
+        Atualiza o status de uma mesa.
+        
+        Args:
+            mesa_id: ID da mesa
+            novo_status: Novo status para a mesa
+            
+        Returns:
+            bool: True se a atualização foi bem-sucedida, False caso contrário
+        """
+        try:
+            cursor = self.db_connection.cursor()
+            query = "UPDATE mesas SET status = %s WHERE id = %s"
+            cursor.execute(query, (novo_status.lower(), mesa_id))
+            self.db_connection.commit()
+            return True
+        except Exception as e:
+            print(f"Erro ao atualizar status da mesa: {str(e)}")
+            if self.db_connection:
+                self.db_connection.rollback()
+            return False
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+
+    def colocar_mesa_em_pagamento(self, mesa_numero):
+        """
+        Atualiza o status de uma mesa para 'EM PAGAMENTO' usando o número da mesa.
+        
+        Args:
+            mesa_numero: Número da mesa (não o ID)
+        """
+        if not hasattr(self, 'db_connection') or self.db_connection is None:
+            return False
+            
+        try:
+            cursor = self.db_connection.cursor(dictionary=True)
+            
+            # Verifica a mesa atual pelo número
+            cursor.execute("""
+                SELECT id, numero, status, pedido_atual_id 
+                FROM mesas 
+                WHERE numero = %s
+            """, (mesa_numero,))
+            mesa = cursor.fetchone()
+            
+            if not mesa:
+                return False
+                
+            # Atualiza o status para EM PAGAMENTO
+            query = """
+                UPDATE mesas 
+                SET status = 'EM PAGAMENTO' 
+                WHERE numero = %s
+            """
+            cursor.execute(query, (mesa_numero,))
+            self.db_connection.commit()
+            
+            return True
+                
+        except Exception:
+            if hasattr(self, 'db_connection') and self.db_connection:
+                self.db_connection.rollback()
+            return False
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+
+    def unir_mesas(self, mesa_principal_numero, mesas_para_unir):
+        """
+        Une os pedidos de várias mesas em uma única mesa.
+        
+        Args:
+            mesa_principal_numero: Número da mesa que vai receber os pedidos
+            mesas_para_unir: Lista de números das mesas que terão seus pedidos transferidos
+        """
+        cursor = None
+        try:
+            cursor = self.db_connection.cursor(dictionary=True)
+            
+            # 1. Obter o pedido atual da mesa principal
+            cursor.execute("""
+                SELECT id, pedido_atual_id 
+                FROM mesas 
+                WHERE numero = %s
+            """, (mesa_principal_numero,))
+            mesa_principal = cursor.fetchone()
+            
+            if not mesa_principal or not mesa_principal['pedido_atual_id']:
+                return False
+                
+            pedido_principal_id = mesa_principal['pedido_atual_id']
+            
+            # 2. Para cada mesa a ser unida
+            for mesa_numero in mesas_para_unir:
+                if mesa_numero == mesa_principal_numero:
+                    continue
+                    
+                # Obter pedido da mesa
+                cursor.execute("""
+                    SELECT id, pedido_atual_id 
+                    FROM mesas 
+                    WHERE numero = %s
+                """, (mesa_numero,))
+                mesa = cursor.fetchone()
+                
+                if mesa and mesa['pedido_atual_id']:
+                    # Atualiza o status do pedido para UNIFICADO
+                    cursor.execute("""
+                        UPDATE pedidos 
+                        SET status = 'UNIFICADO'
+                        WHERE id = %s
+                    """, (mesa['pedido_atual_id'],))
+
+                    # Transfere os itens do pedido
+                    cursor.execute("""
+                        UPDATE itens_pedido 
+                        SET pedido_id = %s
+                        WHERE pedido_id = %s
+                    """, (pedido_principal_id, mesa['pedido_atual_id']))
+                    
+                    # Atualiza o status da mesa
+                    cursor.execute("""
+                        UPDATE mesas 
+                        SET status = 'LIVRE',
+                            pedido_atual_id = NULL
+                        WHERE numero = %s
+                    """, (mesa_numero,))
+            
+            # 3. Atualizar total do pedido principal
+            cursor.execute("""
+                UPDATE pedidos p
+                SET total = (
+                    SELECT COALESCE(SUM(quantidade * valor_unitario), 0)
+                    FROM itens_pedido
+                    WHERE pedido_id = %s
+                )
+                WHERE id = %s
+            """, (pedido_principal_id, pedido_principal_id))
+            
+            self.db_connection.commit()
+            return True
+            
+        except Exception as e:
+            if self.db_connection:
+                self.db_connection.rollback()
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+    

@@ -444,6 +444,7 @@ class PedidosMesasModule(BaseModule):
             command=self.finalizar_pedido
         )
         self.botao_finalizar.pack(fill="x", pady=5)
+
         
         # Botão de confirmar (inicialmente oculto) - mesmo estilo do finalizar venda
         self.botao_confirmar = tk.Button(
@@ -1431,7 +1432,7 @@ class PedidosMesasModule(BaseModule):
             import traceback
             traceback.print_exc()
             return False
-    
+            
     def formatar_data(self, data):
         """Formata uma data para exibição"""
         if not data:
@@ -1484,7 +1485,6 @@ class PedidosMesasModule(BaseModule):
             from views.modulos.pagamento.pagamento_module import PagamentoModule
             
             # Preparar os itens para pagamento, garantindo que todos tenham o campo 'tipo'
-            # Preparar os itens para pagamento, garantindo que todos tenham o campo 'tipo'
             itens_para_pagamento = []
             for item in self.itens_pedido:
                 # Criar uma cópia do item para não modificar o original
@@ -1512,7 +1512,7 @@ class PedidosMesasModule(BaseModule):
 
             pagamento_window = tk.Toplevel(self.parent)
             pagamento_window.title("Pagamento - Mesa " + str(self.mesa.get('numero', '')))
-            pagamento_window.geometry("1200x600")
+            pagamento_window.geometry("1200x700")
             pagamento_window.transient(self.parent)
             pagamento_window.focus_set()
             pagamento_window.grab_set()
@@ -1535,7 +1535,7 @@ class PedidosMesasModule(BaseModule):
                 venda_tipo='mesa',
                 referencia=self.mesa.get('numero', ''),
                 itens_venda=itens_para_pagamento,
-                taxa_servico=self.taxa_servico_var.get()  # Passar o estado do checkbox da taxa de serviço
+                taxa_servico=self.taxa_servico_var.get(),  # Passar o estado do checkbox da taxa de serviço
             )
             
             # Configurar evento para quando a janela for fechada

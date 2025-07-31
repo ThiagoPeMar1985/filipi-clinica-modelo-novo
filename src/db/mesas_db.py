@@ -10,6 +10,7 @@ status varchar(20)
 capacidade int 
 pedido_id int 
 pedido_atual_id int
+nome varchar(255)
 
 Tabela: pedidos
 Columns:

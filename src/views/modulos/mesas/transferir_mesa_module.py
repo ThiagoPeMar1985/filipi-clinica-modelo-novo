@@ -47,13 +47,18 @@ class TransferirMesaModule:
     def _setup_ui(self):
         """Configura a interface do usuário"""
         try:
+
+            # Frame para o título no topo
+            title_frame = ttk.Frame(self.frame)
+            title_frame.pack(fill='x', pady=(0, 20))
+            
             # Título
             titulo = ttk.Label(
-                self.frame, 
+                title_frame, 
                 text="Transferir Mesa", 
                 font=('Arial', 16, 'bold')
             )
-            titulo.pack(pady=(0, 20))
+            titulo.pack(side='left', anchor='w')
             
             # Frame para as listas de mesas
             listas_frame = ttk.Frame(self.frame)

@@ -7,6 +7,7 @@ from tkinter import ttk, messagebox
 from .editarMesas_module import EditarMesasModule
 from .visualizar_module import VisualizarMesasModule
 from .transferir_mesa_module import TransferirMesaModule
+from .unir_module import UnirMesasModule
 
 class MesasModule:
     def __init__(self, parent, controller):
@@ -27,7 +28,8 @@ class MesasModule:
         self.opcoes = [
             {"nome": "Visualizar Mesas", "acao": "visualizar"},
             {"nome": "Editar Mesas", "acao": "editar"},
-            {"nome": "Transferir Mesa", "acao": "transferir"}
+            {"nome": "Transferir Mesa", "acao": "transferir"},
+            {"nome": "Unir Mesas", "acao": "unir"}
         ]
     
     def get_opcoes(self):
@@ -59,6 +61,8 @@ class MesasModule:
             self._show_editar()
         elif acao == 'transferir':
             self._show_transferir()
+        elif acao == 'unir':
+            self._show_unir()
         else:
             self._show_default()
         
@@ -152,6 +156,38 @@ class MesasModule:
             import traceback
             self._show_error(f"Erro ao carregar transferência de mesas: {str(e)}")
     
+    def _show_unir(self):
+        """Exibe a tela de unir mesas"""
+        try:
+            # Limpar a visualização atual se existir
+            if self.current_view:
+                self.current_view.destroy()
+                self.current_view = None
+
+            # Criar um frame para o conteúdo
+            content_frame = ttk.Frame(self.frame)
+            content_frame.pack(fill='both', expand=True)
+
+            # Inicializar o módulo de unir mesas
+            self.unir_module = UnirMesasModule(
+                content_frame,
+                self.controller,
+                db_connection=self.db_connection
+            )
+            
+            # Exibir o módulo
+            frame_unir = self.unir_module.show()
+            frame_unir.pack(fill='both', expand=True)
+            self.current_view = frame_unir
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror(
+                "Erro", 
+                f"Erro ao carregar a tela de unir mesas: {str(e)}"
+            )
+        
     def _show_error(self, message):
         """
         Exibe uma mensagem de erro na interface.
