@@ -960,6 +960,7 @@ class PagamentoModule:
             nome_usuario = 'Não identificado'
             if hasattr(self, 'controller') and hasattr(self.controller, 'usuario') and hasattr(self.controller.usuario, 'nome'):
                 nome_usuario = self.controller.usuario.nome
+                print(nome_usuario)
             
             # Processar dados da venda
             if self.venda_tipo == 'mesa' and self.taxa_servico:
@@ -1080,6 +1081,10 @@ class PagamentoModule:
             nome_usuario = 'SISTEMA'
             usuario_id = None
             id_pedido = None
+
+            if 'usuario_nome' in venda_dados and venda_dados['usuario_nome']:
+                nome_usuario = venda_dados['usuario_nome'].upper()
+                print(nome_usuario)
             
             # Tenta obter o ID do pedido
             if hasattr(self, 'pedido_id') and self.pedido_id:

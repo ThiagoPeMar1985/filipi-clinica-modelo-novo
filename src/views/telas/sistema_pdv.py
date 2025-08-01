@@ -284,6 +284,26 @@ class SistemaPDV:
             {"nome": "🔄 Transferir Mesa", "metodo": "transferir"},
             {"nome": "🔗 Unir Mesas", "metodo": "unir"}
         ]
+        
+    def _get_opcoes_financeiro(self):
+        """Retorna as opções do módulo financeiro"""
+        return [
+            {"nome": "💵 Caixa", "metodo": "caixa"},
+            {"nome": "📝 Contas a Pagar", "metodo": "contas_pagar"},
+            {"nome": "📋 Contas a Receber", "metodo": "contas_receber"},
+            {"nome": "📊 Relatórios", "metodo": "relatorios"}
+        ]
+        
+    def _get_opcoes_estoque(self):
+        """Retorna as opções do módulo de estoque"""
+        return [
+            {"nome": "📦 Ver Estoque", "metodo": "ver_estoque"},
+            {"nome": "➕ Adicionar ao Estoque", "metodo": "add_estoque"},
+            {"nome": "➖ Remover do Estoque", "metodo": "remover_estoque"},
+            {"nome": "🍳 Criar Receita", "metodo": "criar_receita"},
+            {"nome": "📈 Relatórios", "metodo": "relatorios_estoque"}
+        ]
+    
     def configurar_modulos(self):
         """Configura os módulos do sistema"""
         # Obtém as opções dos módulos
@@ -291,6 +311,8 @@ class SistemaPDV:
         opcoes_configuracao = self._get_opcoes_configuracao()
         opcoes_vendas = self._get_opcoes_vendas()
         opcoes_mesas = self._get_opcoes_mesas()
+        opcoes_financeiro = self._get_opcoes_financeiro()
+        opcoes_estoque = self._get_opcoes_estoque()
         
         # Configura os comandos para cada opção do cadastro
         for opcao in opcoes_cadastro:
@@ -320,6 +342,20 @@ class SistemaPDV:
             opcao["acao"] = metodo
             opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('mesas', m)
         
+        # Configura os comandos para cada opção de financeiro
+        for opcao in opcoes_financeiro:
+            metodo = opcao["metodo"]
+            opcao["modulo"] = 'financeiro'
+            opcao["acao"] = metodo
+            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('financeiro', m)
+        
+        # Configura os comandos para cada opção de estoque
+        for opcao in opcoes_estoque:
+            metodo = opcao["metodo"]
+            opcao["modulo"] = 'estoque'
+            opcao["acao"] = metodo
+            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('estoque', m)
+        
         # Configura os módulos disponíveis
         self.modulos = {
             "cadastro": {
@@ -340,12 +376,12 @@ class SistemaPDV:
             "financeiro": {
                 "nome": "FINANCEIRO",
                 "icone": "💰",
-                "opcoes": []
+                "opcoes": opcoes_financeiro
             },
             "estoque": {
                 "nome": "ESTOQUE",
                 "icone": "📦",
-                "opcoes": []
+                "opcoes": opcoes_estoque
             },
             "configuracao": {
                 "nome": "CONFIGURAÇÃO",

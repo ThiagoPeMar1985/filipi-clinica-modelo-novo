@@ -1,58 +1,166 @@
-"""
-Controlador de permissões do sistema
-"""
-from tkinter import messagebox
-from src.utils.gerenciador_permissoes import GerenciadorPermissoes
+
+
+from typing import Dict, List, Optional, Any
+from src.db.database import get_db
+from src.utils.gerenciador_permissoes_db import GerenciadorPermissoesDB
 
 class PermissionController:
-    """Controlador responsável por gerenciar as permissões do sistema"""
+    def __init__(self, db=None):
+        self.db = db if db is not None else get_db()
+        self.gerenciador = GerenciadorPermissoesDB(self.db)
     
-    def __init__(self):
-        """Inicializa o controlador de permissões"""
-        self.gerenciador_permissoes = GerenciadorPermissoes()
-    
-    def verificar_permissao(self, usuario, modulo, acao=None):
+    def verificar_permissao(self, usuario, modulo: str, acao: Optional[str] = None) -> bool:
         """
         Verifica se um usuário tem permissão para acessar um recurso
         
         Args:
-            usuario: Instância do usuário autenticado
-            modulo (str): Nome do módulo que está sendo acessado
-            acao (str, optional): Ação específica dentro do módulo
+            usuario: Pode ser um objeto Usuario ou o ID do usuário (int)
+            modulo: Nome do módulo
+            acao: Nome da ação (opcional)
             
         Returns:
             bool: True se tiver permissão, False caso contrário
         """
         try:
-            # Obtém o nível do usuário em minúsculas para comparação
-            nivel = getattr(usuario, 'nivel', '').lower()
+            # Se for um objeto Usuario, pega o ID
+            if hasattr(usuario, 'id'):
+                usuario_id = int(usuario.id)
+            elif hasattr(usuario, 'get_id'):
+                usuario_id = int(usuario.get_id())
+            elif isinstance(usuario, (int, str)):
+                usuario_id = int(usuario)
+            else:
+                print(f"[ERRO] Não foi possível obter o ID do usuário. Tipo: {type(usuario)}")
+                return False
+        
+            return self.gerenciador.verificar_permissao(usuario_id, modulo, acao)
+        
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return False
+        
+    def obter_todas_permissoes(self) -> Dict[str, Any]:
+        """
+        Obtém todas as permissões do sistema
+        
+        Returns:
+            dict: Dicionário com todas as permissões
+        """
+        return self.gerenciador.obter_todas_permissoes()
+    
+    def obter_todas_permissoes(self) -> Dict[str, Any]:
+        """
+        Obtém todas as permissões do sistema
+        
+        Returns:
+            dict: Dicionário com todas as permissões
+        """
+        return self.gerenciador.obter_todas_permissoes()
+    
+    def salvar_todas_permissoes(self, permissoes: Dict[str, Any]) -> bool:
+        """
+        Salva todas as permissões no banco de dados
+        
+        Args:
+            permissoes: Dicionário com as permissões a serem salvas
             
-            # Se o usuário for admin, tem acesso total a tudo
-            if nivel in ['admin', 'administrador']:
+        Returns:
+            bool: True se as permissões foram salvas com sucesso
+        """
+        return self.gerenciador.salvar_todas_permissoes(permissoes)
+    
+    def obter_todos_os_perfis(self) -> List[Dict]:
+        """Obtém todos os perfis do sistema"""
+        return self.gerenciador._obter_perfis_por_nome().values()
+    
+    def obter_todos_os_modulos(self) -> List[Dict]:
+        """Obtém todos os módulos do sistema"""
+        return list(self.gerenciador._obter_modulos_por_chave().values())
+    
+    def obter_botoes_por_modulo(self, modulo_id: int) -> List[Dict]:
+        """Obtém todos os botões de um módulo específico"""
+        botoes_por_modulo = self.gerenciador._obter_botoes_por_modulo_e_chave()
+        return list(botoes_por_modulo.get(modulo_id, {}).values())
+    
+    def obter_permissoes_por_perfil(self, perfil_id: int) -> Dict[str, Any]:
+        """
+        Obtém todas as permissões de um perfil específico
+        Retorna um dicionário com a estrutura: {modulo_id: {botao_id: permissao}}
+        """
+        query = """
+            SELECT modulo_id, botao_id, permitido 
+            FROM perfil_permissao 
+            WHERE perfil_id = %s
+        """
+        permissoes = self.db.execute_query(query, (perfil_id,), fetch_all=True) or []
+        
+        # Estrutura o resultado
+        resultado = {}
+        for permissao in permissoes:
+            if permissao['modulo_id'] not in resultado:
+                resultado[permissao['modulo_id']] = {}
+            resultado[permissao['modulo_id']][permissao['botao_id']] = bool(permissao['permitido'])
+        
+        return resultado
+    
+    def salvar_permissoes(self, perfil_id: int, permissoes: Dict[str, Any]) -> bool:
+        """
+        Atualiza as permissões (0 ou 1) para um perfil específico.
+        Todos os botões e módulos devem existir previamente.
+        
+        Args:
+            perfil_id: ID do perfil
+            permissoes: Dicionário com a estrutura {modulo_id: {botao_id: permissao (0 ou 1)}}
+            
+        Returns:
+            bool: True se salvou com sucesso, False caso contrário
+        """
+        try:
+            # Inicia uma transação
+            self.db.connection.autocommit = False
+            cursor = self.db.connection.cursor()
+            
+            try:
+                # Prepara as atualizações de permissão
+                for modulo_id, botoes in permissoes.items():
+                    for botao_id, permissao in botoes.items():
+                        # Garante que o valor seja 0 ou 1
+                        valor_permissao = 1 if permissao else 0
+                        
+                        # Usa ON DUPLICATE KEY UPDATE para atualizar apenas se existir
+                        query = """
+                            INSERT INTO perfil_permissao 
+                            (perfil_id, modulo_id, botao_id, permitido)
+                            VALUES (%s, %s, %s, %s)
+                            ON DUPLICATE KEY UPDATE permitido = VALUES(permitido)
+                        """
+                        cursor.execute(query, (
+                            int(perfil_id),
+                            int(modulo_id),
+                            int(botao_id),
+                            valor_permissao
+                        ))
+                
+                # Confirma a transação
+                self.db.connection.commit()
                 return True
                 
-            # Obtém o tipo de usuário (basico ou master)
-            tipo_usuario = 'master' if nivel in ['gerente', 'master'] else 'basico'
-            
-            # Obtém as permissões do usuário
-            permissoes = self.gerenciador_permissoes.obter_permissoes(tipo_usuario)
-            
-            # Verifica se o módulo existe nas permissões
-            if modulo not in permissoes.get('modulos', {}):
+            except Exception as e:
+                # Em caso de erro, faz rollback
+                self.db.connection.rollback()
+                print(f"Erro ao salvar permissões: {str(e)}")
                 return False
                 
-            # Se não foi especificada uma ação, verifica apenas se tem acesso ao módulo
-            if not acao:
-                return True
+            finally:
+                # Restaura o autocommit
+                self.db.connection.autocommit = True
+                cursor.close()
                 
-            # Verifica se o botão existe e se o usuário tem permissão
-            botao = permissoes['modulos'][modulo]['botoes'].get(acao, {})
-            return botao.get('visivel', False)
-            
         except Exception as e:
-            print(f"Erro ao verificar permissão: {e}")
+            print(f"Erro na transação de permissões: {str(e)}")
             return False
-    
+        
     def filtrar_menu(self, usuario, itens_menu):
         """
         Filtra os itens do menu com base nas permissões do usuário

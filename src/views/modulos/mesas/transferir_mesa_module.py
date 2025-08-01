@@ -299,7 +299,7 @@ class TransferirMesaModule:
             
             # 3. Atualizar o status da mesa de destino para ocupada
             cursor.execute(
-                "UPDATE mesas SET status = 'ocupada', pedido_atual_id = %s WHERE id = %s",
+                "UPDATE mesas SET status = 'OCUPADA', pedido_atual_id = %s WHERE id = %s",
                 (self.mesa_origem['pedido_id'], self.mesa_destino['id'])
             )
             

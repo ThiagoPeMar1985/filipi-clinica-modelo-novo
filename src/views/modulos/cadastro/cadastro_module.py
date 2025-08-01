@@ -1682,7 +1682,7 @@ class CadastroModule(BaseModule):
             # Garante que o controller está inicializado
             if not hasattr(self, 'tipos_controller'):
                 from src.controllers.tipos_produtos_controller import TiposProdutosController
-                self.tipos_controller = TiposProdutosController(self.db.db)
+                self.tipos_controller = TiposProdutosController(self.db.db) 
             
             # Usa o controller para excluir o tipo
             sucesso, mensagem_erro = self.tipos_controller.excluir_tipo(self.tipo_selecionado['id'])
@@ -1691,8 +1691,11 @@ class CadastroModule(BaseModule):
                 # Limpar seleção
                 self.tipo_selecionado = None
                 
-                # Atualizar a lista de tipos no formulário de cadastro de produtos primeiro
-                self._atualizar_tipos_no_formulario_produto()
+                try:
+                    # Tenta atualizar a lista de tipos no formulário de produtos
+                    self._atualizar_tipos_no_formulario_produto()
+                except Exception as e:
+                    print(f"Aviso: não foi possível atualizar o formulário de produtos: {e}")
                 
                 # Mostrar mensagem de sucesso
                 messagebox.showinfo("Sucesso", f"Tipo de produto '{nome_tipo}' excluído com sucesso!")

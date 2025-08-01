@@ -3,10 +3,12 @@ from tkinter import ttk, messagebox, filedialog
 import os
 import sys
 
+
 # Adicione o diretório raiz ao path para permitir importações absolutas
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from ..base_module import BaseModule
+from src.controllers.permission_controller import PermissionController
 
 class ConfiguracaoModule(BaseModule):
     def _criar_campo(self, frame, label_text, row, value='', width=30):
@@ -68,6 +70,8 @@ class ConfiguracaoModule(BaseModule):
         
         # Mostra a tela inicial
         self._show_default()
+        
+        self.permission_ctrl = PermissionController()
         
     def get_opcoes(self):
         """Retorna a lista de opções para a barra lateral"""
@@ -1330,8 +1334,8 @@ class ConfiguracaoModule(BaseModule):
                             'master': botao_data.get('master', True)
                         }
             
-            # Salva as permissões
-            if self.gerenciador_permissoes.salvar_todas_permissoes(permissoes_para_salvar):
+            # Usa o PermissionController para salvar as permissões
+            if self.permission_ctrl.salvar_todas_permissoes(permissoes_para_salvar):
                 # Mostra mensagem de sucesso
                 messagebox.showinfo("Sucesso", "Permissões salvas com sucesso!")
                 
@@ -1343,7 +1347,7 @@ class ConfiguracaoModule(BaseModule):
         except Exception as e:
             print(f"Erro ao salvar permissões: {e}")
             messagebox.showerror("Erro", f"Erro ao salvar permissões: {str(e)}")
-    
+        
     def _show_seguranca(self):
         # Tela de configuração de Segurança
         if not hasattr(self, 'frame') or not self.frame.winfo_exists():
@@ -1381,8 +1385,8 @@ class ConfiguracaoModule(BaseModule):
         
         try:
             # Importa o gerenciador de permissões
-            from src.utils.gerenciador_permissoes import GerenciadorPermissoes
-            self.gerenciador_permissoes = GerenciadorPermissoes()
+            from src.utils.gerenciador_permissoes_db import GerenciadorPermissoesDB
+            self.gerenciador_permissoes = GerenciadorPermissoesDB()
             self.permissoes = self.gerenciador_permissoes.obter_todas_permissoes()
             
             # Dicionário para armazenar o módulo atualmente selecionado
@@ -1680,4 +1684,15 @@ class ConfiguracaoModule(BaseModule):
             lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units")
         )
         
+
+
         self.current_view = main_frame
+    def _carregar_permissoes(self):
+        """Carrega as permissões usando o PermissionController"""
+        try:
+            self.permissoes = self.permission_ctrl.obter_todas_permissoes()
+            return True
+        except Exception as e:
+            print(f"Erro ao carregar permissões: {e}")
+            messagebox.showerror("Erro", f"Erro ao carregar permissões: {str(e)}")
+            return False
