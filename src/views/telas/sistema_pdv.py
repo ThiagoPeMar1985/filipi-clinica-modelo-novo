@@ -17,13 +17,12 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from views.modulos.cadastro.cadastro_module import CadastroModule
-from src.controllers.permission_controller import PermissionController
 
 class SistemaPDV:
     def __init__(self, root, usuario):
         self.root = root
         self.usuario = usuario
-        self.root.title("PDV Bar & Restaurante")
+        self.root.title("Clinica Medica")
         
         # Configura o tamanho da janela
         largura = 1780
@@ -53,12 +52,12 @@ class SistemaPDV:
             "secundaria": "#28b5f4",
             "terciaria": "#333f50",
             "fundo": "#f0f2f5",
-            "fundo_conteudo": "#f0f2f5",  # Mesma cor do fundo para remover a borda branca
+            "fundo_conteudo": "#f0f2f5",  
             "texto": "#000000",
             "texto_claro": "#ffffff",
             "destaque": "#4caf50",
             "alerta": "#f44336",
-            "borda": "#f0f2f5"  # Mesma cor do fundo para remover a borda
+            "borda": "#f0f2f5"  
         }
         
         # Configuração de fundo
@@ -69,9 +68,6 @@ class SistemaPDV:
         
         # Criar layout principal
         self.criar_layout()
-        
-        # Inicializa o controlador de permissões
-        self.permission_controller = PermissionController()
         
         # Inicializa o controlador de configurações
         try:
@@ -107,7 +103,7 @@ class SistemaPDV:
         # Título no cabeçalho
         title_label = tk.Label(
             self.header_frame, 
-            text="QUIOSQUE AQUARIUS",
+            text="Clinica Medica",
             font=("Arial", 16, "bold"),
             bg=self.cores["primaria"],
             fg=self.cores["texto_claro"]
@@ -242,19 +238,18 @@ class SistemaPDV:
         data_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         self.data_label.config(text=data_atual)
         
+        
         # Agendar a próxima atualização em 1000ms (1 segundo)
         self.root.after(1000, self._atualizar_relogio)
     
     def _get_opcoes_cadastro(self):
         """Retorna as opções do módulo de cadastro"""
         return [
-            {"nome": "🏢 Empresa", "metodo": "mostrar_empresa"},
-            {"nome": "👥 Usuários", "metodo": "mostrar_usuarios"},
-            {"nome": "👷 Funcionários", "metodo": "mostrar_funcionarios"},
-            {"nome": "👤 Clientes", "metodo": "mostrar_clientes"},
-            {"nome": "📦 Produtos", "metodo": "mostrar_produtos"},
-            {"nome": "🏭 Fornecedores", "metodo": "mostrar_fornecedores"},
-            {"nome": "➕ Opções", "metodo": "mostrar_opcoes"}
+            {"nome": "🏢 Empresa", "metodo": "empresa"},
+            {"nome": "👥 Usuários", "metodo": "usuarios"},
+            {"nome": "👨 Médicos", "metodo": "medicos"},
+            {"nome": "👤 Pacientes", "metodo": "clientes"},
+            {"nome": "📝 Modelos", "metodo": "modelos_prontuario"},
         ]
 
     def _get_opcoes_configuracao(self):
@@ -268,23 +263,14 @@ class SistemaPDV:
             {"nome": "🔒 Segurança", "metodo": "seguranca"}
         ]
 
-    def _get_opcoes_vendas(self):
-        """Retorna as opções do módulo de vendas"""
+    def _get_opcoes_atendimento(self):
+        """Retorna as opções do módulo de atendimento"""
         return [
-            {"nome": "💰 Venda Avulsa", "metodo": "venda_avulsa"},
-            {"nome": "🛵 Delivery", "metodo": "delivery"},
-            {"nome": "📊 Status Pedidos", "metodo": "status_pedidos"}
+            {"nome": "📅 Agenda", "metodo": "agenda"},
+            {"nome": "📋 Prontuário", "metodo": "prontuario"},
+            {"nome": "🏥 Exames", "metodo": "exames"},
         ]
-        
-    def _get_opcoes_mesas(self):
-        """Retorna as opções do módulo de mesas"""
-        return [
-            {"nome": "👁 Visualizar Mesas", "metodo": "visualizar"},
-            {"nome": "✏️ Editar Mesas", "metodo": "editar"},
-            {"nome": "🔄 Transferir Mesa", "metodo": "transferir"},
-            {"nome": "🔗 Unir Mesas", "metodo": "unir"}
-        ]
-        
+
     def _get_opcoes_financeiro(self):
         """Retorna as opções do módulo financeiro"""
         return [
@@ -294,25 +280,15 @@ class SistemaPDV:
             {"nome": "📊 Relatórios", "metodo": "relatorios"}
         ]
         
-    def _get_opcoes_estoque(self):
-        """Retorna as opções do módulo de estoque"""
-        return [
-            {"nome": "📦 Ver Estoque", "metodo": "ver_estoque"},
-            {"nome": "➕ Adicionar ao Estoque", "metodo": "add_estoque"},
-            {"nome": "➖ Remover do Estoque", "metodo": "remover_estoque"},
-            {"nome": "🍳 Criar Receita", "metodo": "criar_receita"},
-            {"nome": "📈 Relatórios", "metodo": "relatorios_estoque"}
-        ]
     
     def configurar_modulos(self):
         """Configura os módulos do sistema"""
         # Obtém as opções dos módulos
         opcoes_cadastro = self._get_opcoes_cadastro()
         opcoes_configuracao = self._get_opcoes_configuracao()
-        opcoes_vendas = self._get_opcoes_vendas()
-        opcoes_mesas = self._get_opcoes_mesas()
+        opcoes_atendimento = self._get_opcoes_atendimento()
         opcoes_financeiro = self._get_opcoes_financeiro()
-        opcoes_estoque = self._get_opcoes_estoque()
+
         
         # Configura os comandos para cada opção do cadastro
         for opcao in opcoes_cadastro:
@@ -328,33 +304,19 @@ class SistemaPDV:
             opcao["acao"] = metodo
             opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('configuracao', m)
             
-        # Configura os comandos para cada opção de vendas
-        for opcao in opcoes_vendas:
+        # Configura os comandos para cada opção de atendimento
+        for opcao in opcoes_atendimento:
             metodo = opcao["metodo"]
-            opcao["modulo"] = 'vendas'
+            opcao["modulo"] = 'atendimento'
             opcao["acao"] = metodo
-            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('vendas', m)
+            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('atendimento', m)
             
-        # Configura os comandos para cada opção de mesas
-        for opcao in opcoes_mesas:
-            metodo = opcao["metodo"]
-            opcao["modulo"] = 'mesas'
-            opcao["acao"] = metodo
-            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('mesas', m)
-        
         # Configura os comandos para cada opção de financeiro
         for opcao in opcoes_financeiro:
             metodo = opcao["metodo"]
             opcao["modulo"] = 'financeiro'
             opcao["acao"] = metodo
             opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('financeiro', m)
-        
-        # Configura os comandos para cada opção de estoque
-        for opcao in opcoes_estoque:
-            metodo = opcao["metodo"]
-            opcao["modulo"] = 'estoque'
-            opcao["acao"] = metodo
-            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('estoque', m)
         
         # Configura os módulos disponíveis
         self.modulos = {
@@ -363,25 +325,15 @@ class SistemaPDV:
                 "icone": "📋",
                 "opcoes": opcoes_cadastro
             },
-            "vendas": {
-                "nome": "VENDAS",
-                "icone": "💰",
-                "opcoes": opcoes_vendas
-            },
-            "mesas": {
-                "nome": "MESAS",
-                "icone": "🍽️",
-                "opcoes": opcoes_mesas
+            "atendimento": {
+                "nome": "ATENDIMENTO",
+                "icone": "🏥",
+                "opcoes": opcoes_atendimento
             },
             "financeiro": {
                 "nome": "FINANCEIRO",
                 "icone": "💰",
                 "opcoes": opcoes_financeiro
-            },
-            "estoque": {
-                "nome": "ESTOQUE",
-                "icone": "📦",
-                "opcoes": opcoes_estoque
             },
             "configuracao": {
                 "nome": "CONFIGURAÇÃO",
@@ -390,23 +342,23 @@ class SistemaPDV:
             }
         }
         
-        # Criar botões dos módulos no cabeçalho
         for modulo_id, modulo in self.modulos.items():
-            btn = tk.Button(
+            # Cria um Label que funcionará como botão
+            lbl = tk.Label(
                 self.modulos_frame,
                 text=f"{modulo['icone']} {modulo['nome']}",
-                command=lambda m=modulo_id: self.selecionar_modulo(m),
-                bg=self.cores["primaria"],
+                bg=self.cores["primaria"],  # Cor fixa
                 fg=self.cores["texto_claro"],
                 font=("Arial", 11),
-                relief="flat",
                 padx=10,
                 pady=5,
-                activebackground=self.cores["secundaria"],
-                activeforeground=self.cores["texto_claro"]
+                cursor="hand2"
             )
-            btn.pack(side="left", padx=5)
-    
+            
+            # Adiciona o evento de clique sem mudar a cor
+            lbl.bind("<Button-1>", lambda e, m=modulo_id: self.selecionar_modulo(m))
+            lbl.pack(side="left", padx=5)
+        
     def selecionar_modulo(self, modulo_id):
         """Seleciona um módulo para exibição"""
         # Limpa opções anteriores
@@ -419,37 +371,28 @@ class SistemaPDV:
         
         # Adiciona as opções do módulo na barra lateral
         for opcao in modulo.get("opcoes", []):
-            # Verifica se o usuário tem permissão para ver esta opção
-            tem_permissao = self.permission_controller.verificar_permissao(
-                self.usuario, 
-                opcao.get("modulo", ""), 
-                opcao.get("acao", "")
+            # Cria um Label que funcionará como botão
+            lbl = tk.Label(
+                self.sidebar_options,
+                text=opcao["nome"],
+                bg=self.cores["terciaria"],  # Cor fixa
+                fg=self.cores["texto_claro"],
+                font=("Arial", 11),
+                anchor="w",
+                padx=15,
+                pady=10,
+                cursor="hand2"
             )
             
-            if tem_permissao:
-                btn = tk.Button(
-                    self.sidebar_options,
-                    text=opcao["nome"],
-                    command=opcao["comando"],
-                    bg=self.cores["terciaria"],
-                    fg=self.cores["texto_claro"],
-                    font=("Arial", 11),
-                    relief="flat",
-                    anchor="w",
-                    padx=15,
-                    pady=10,  # Aumentado o padding vertical
-                    width=20,  # Definindo largura fixa para todos os botões
-                    activebackground=self.cores["secundaria"],
-                    activeforeground=self.cores["texto_claro"]
-                )
-                btn.pack(fill="x", pady=3)  # Aumentado o espaçamento entre botões
-        
-        # Atualiza o módulo atual
-        self.modulo_atual = modulo_id
+            # Adiciona o evento de clique sem mudar a cor
+            lbl.bind("<Button-1>", lambda e, cmd=opcao["comando"]: cmd())
+            lbl.pack(fill="x")
+            
+            # Atualiza o módulo atual
+            self.modulo_atual = modulo_id
         
         # Chama o método mostrar_conteudo_modulo com o módulo selecionado
         self.mostrar_conteudo_modulo(modulo_id)
-            
 
     def mostrar_conteudo_modulo(self, modulo_id, metodo_nome='mostrar_inicio'):
         """Mostra o conteúdo do módulo selecionado"""
@@ -458,34 +401,52 @@ class SistemaPDV:
             widget.destroy()
             
         try:
-            if modulo_id == 'vendas':
+            if modulo_id == 'atendimento':
                 # Cria um frame para o módulo que ocupa todo o espaço
                 modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
                 modulo_frame.pack(fill='both', expand=True)
                 
-                # Importa o módulo de vendas
-                from src.views.modulos.vendas.vendas_module import VendasModule
+                # Importa o módulo de atendimento
+                from views.modulos.atendimento.atendimento_module import AtendimentoModule
                 from src.db.database import db
                 
                 # Obtém a conexão com o banco de dados
                 db_connection = db.get_connection()
                 
-                # Cria a instância do módulo com o config_controller
-                modulo = VendasModule(modulo_frame, self)
-                
-                # Define a conexão com o banco de dados
-                self.db_connection = db_connection
-                
-                # Passa o config_controller para o módulo de vendas
-                if hasattr(self, 'config_controller'):
-                    modulo.config_controller = self.config_controller
+                # Cria a instância do módulo
+                modulo = AtendimentoModule(modulo_frame, self, db_connection)
                 
                 # Configura o frame do módulo para ocupar todo o espaço
                 modulo.frame.pack(fill='both', expand=True, padx=10, pady=10)
                 
-                # Chama o método show com a ação específica
-                modulo.show(metodo_nome)
+                # Se for uma ação específica, chama o método executar_acao
+                if metodo_nome and metodo_nome != 'mostrar_inicio':
+                    modulo.executar_acao(metodo_nome)
+                else:
+                    modulo.mostrar_inicio()
+                    
+            elif modulo_id == 'cadastro' and metodo_nome == 'modelos_prontuario':
+                # Cria um frame para o módulo que ocupa todo o espaço
+                modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
+                modulo_frame.pack(fill='both', expand=True)
                 
+                # Importa o módulo de modelos de prontuário
+                from views.modulos.cadastro.modelo_prontuario_module import ModeloProntuarioModule
+                from src.db.database import db
+                
+                # Obtém a conexão com o banco de dados
+                db_connection = db.get_connection()
+                
+                # Cria a instância do módulo
+                modulo = ModeloProntuarioModule(modulo_frame, self, db_connection)
+                
+                # Configura o frame do módulo para ocupar todo o espaço
+                modulo.frame.pack(fill='both', expand=True, padx=10, pady=10)
+                
+                # Chama o método para mostrar o conteúdo inicial
+                if hasattr(modulo, 'mostrar_inicio'):
+                    modulo.mostrar_inicio()
+                    
             elif modulo_id == 'cadastro':
                 # Cria um frame para o módulo que ocupa todo o espaço
                 modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
@@ -505,7 +466,9 @@ class SistemaPDV:
                 modulo.frame.pack(fill='both', expand=True, padx=10, pady=10)
                 
                 # Chama o método solicitado ou o padrão
-                if hasattr(modulo, metodo_nome):
+                if hasattr(modulo, 'executar_acao'):
+                    modulo.executar_acao(metodo_nome)
+                elif hasattr(modulo, metodo_nome):
                     metodo = getattr(modulo, metodo_nome)
                     metodo()
                 else:
@@ -535,20 +498,20 @@ class SistemaPDV:
                 else:
                     modulo.show()
                     
-            elif modulo_id == 'mesas':
+            elif modulo_id == 'financeiro':
                 # Cria um frame para o módulo que ocupa todo o espaço
                 modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
                 modulo_frame.pack(fill='both', expand=True)
                 
-                # Importa o módulo de mesas
-                from src.views.modulos.mesas.mesas_module import MesasModule
+                # Importa o módulo de financeiro
+                from src.views.modulos.financeiro.financeiro_module import FinanceiroModule
                 from src.db.database import db
                 
                 # Obtém a conexão com o banco de dados
                 db_connection = db.get_connection()
                 
                 # Cria a instância do módulo
-                modulo = MesasModule(modulo_frame, self)
+                modulo = FinanceiroModule(modulo_frame, self)
                 
                 # Define a conexão com o banco de dados
                 self.db_connection = db_connection

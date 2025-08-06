@@ -41,7 +41,7 @@ class TelaLogin:
             self.db_config.pop(key, None)
         
         # Configura a janela
-        self.root.title("Login - PDV")
+        self.root.title("Login -Clinica")
         self.root.geometry("400x300")
         self.root.resizable(False, False)
         
@@ -62,7 +62,7 @@ class TelaLogin:
         main_frame.pack(expand=True, fill="both", padx=20, pady=20)
         
         # Título
-        title_label = tk.Label(main_frame, text="PDV BAR & RESTAURANTE", 
+        title_label = tk.Label(main_frame, text="Clinica Medica", 
                               font=("Arial", 16, "bold"), bg="#f0f0f0")
         title_label.pack(pady=10)
         

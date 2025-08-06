@@ -1,338 +1,300 @@
 """
-Controlador para o módulo de Cadastro.
+Controlador para operações de cadastro do sistema.
+Gerencia operações relacionadas a médicos, pacientes e outros cadastros.
 """
 from typing import Dict, List, Optional, Tuple, Any
 
 class CadastroController:
-    """Controlador para operações do módulo de Cadastro."""
+    """Controlador para operações de cadastro do sistema."""
     
-    def __init__(self, view=None):
-        """Inicializa o controlador com a view opcional."""
-        self.view = view
-        self._cliente_controller = None
-        # Aqui você pode inicializar o DB específico do módulo
-        # from src.db.cadastro_db import CadastroDB
-        # self.db = CadastroDB(obter_conexao())
+    def __init__(self, db_connection=None):
+        self.db = db_connection
     
-    def configurar_view(self, view):
-        """Configura a view para este controlador."""
-        self.view = view
+    def set_db_connection(self, db_connection):
+        """Define a conexão com o banco de dados."""
+        self.db = db_connection
     
-    @property
-    def cliente_controller(self):
-        """Obtém uma instância do ClienteController sob demanda."""
-        if self._cliente_controller is None:
-            from src.controllers.cliente_controller import ClienteController
-            self._cliente_controller = ClienteController()
-        return self._cliente_controller
-        
-    def listar_produtos(self):
-        """Lista todos os produtos cadastrados."""
-        from src.db.cadastro_db import CadastroDB
-        from src.db.database import DatabaseConnection
-        
-        try:
-            # Obter conexão usando a classe DatabaseConnection
-            connection = DatabaseConnection().get_connection()
-            db = CadastroDB(connection)
-            return db.listar_produtos()
-        except Exception as e:
-            raise Exception(f"Erro ao listar produtos: {str(e)}")
-            
-    def obter_produto_por_id(self, produto_id):
-        """
-        Obtém um produto pelo seu ID.
-        
-        Args:
-            produto_id: ID do produto a ser buscado
-            
-        Returns:
-            dict: Dicionário com os dados do produto ou None se não encontrado
-        """
-        from src.db.cadastro_db import CadastroDB
-        from src.db.database import DatabaseConnection
-        
-        try:
-            # Obter conexão usando a classe DatabaseConnection
-            connection = DatabaseConnection().get_connection()
-            db = CadastroDB(connection)
-            
-            # Usar o método existente obter_produto
-            return db.obter_produto(produto_id)
-        except Exception as e:
-            print(f"Erro ao obter produto por ID: {str(e)}")
+    # ===== MÉTODOS PARA MÉDICOS =====
+    
+    def obter_medico_por_id(self, medico_id: int) -> Optional[Dict[str, Any]]:
+        """Obtém um médico pelo ID."""
+        if not self.db:
             return None
-            
-    def obter_produto(self, produto_id):
-        """Obtém um produto pelo ID."""
-        from src.db.cadastro_db import CadastroDB
-        from src.db.database import DatabaseConnection
-        
         try:
-            # Obter conexão usando a classe DatabaseConnection
-            connection = DatabaseConnection().get_connection()
-            db = CadastroDB(connection)
-            return db.obter_produto(produto_id)
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM medicos WHERE id = %s", (medico_id,))
+            return cursor.fetchone()
         except Exception as e:
-            print(f"Erro ao obter produto: {str(e)}")
+            print(f"Erro ao obter médico: {e}")
             return None
-            
-    def excluir_produto(self, produto_id):
-        """
-        Exclui um produto do banco de dados.
-        
-        Args:
-            produto_id: ID do produto a ser excluído
-            
-        Returns:
-            tuple: (sucesso, mensagem) onde sucesso é booleano e mensagem é string
-        """
-        from src.db.cadastro_db import CadastroDB
-        from src.db.database import DatabaseConnection
-        
-        try:
-            # Obter conexão usando a classe DatabaseConnection
-            connection = DatabaseConnection().get_connection()
-            db = CadastroDB(connection)
-            
-            # Verificar se o produto existe antes de tentar excluir
-            produto = db.obter_produto(produto_id)
-            if not produto:
-                return False, "Produto não encontrado"
-                
-            # Tentar excluir o produto
-            sucesso = db.excluir_produto(produto_id)
-            if sucesso:
-                return True, "Produto excluído com sucesso"
-            else:
-                return False, "Não foi possível excluir o produto"
-                
-        except Exception as e:
-            return False, f"Erro ao excluir produto: {str(e)}"
-            
-    # Métodos para gerenciar configurações de impressoras
-    def verificar_tabela_impressoras_tipos(self):
-        """
-        Verifica se a tabela impressoras_tipos existe, se não, cria
-        
-        Returns:
-            bool: True se a operação foi bem-sucedida, False caso contrário
-        """
-        from src.db.database import DatabaseConnection
-        
-        try:
-            # Obter conexão usando a classe DatabaseConnection
-            connection = DatabaseConnection().get_connection()
-            cursor = connection.cursor()
-            
-            # Verificar se a tabela existe
-            cursor.execute("SHOW TABLES LIKE 'impressoras_tipos'")
-            if not cursor.fetchone():
-                # Criar tabela se não existir
-                cursor.execute("""
-                CREATE TABLE IF NOT EXISTS impressoras_tipos (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    impressora_id INT NOT NULL,
-                    tipo_id INT NOT NULL,
-                    FOREIGN KEY (tipo_id) REFERENCES tipos_produtos(id),
-                    UNIQUE(impressora_id, tipo_id)
-                );
-                """)
-                connection.commit()
-                print("Tabela impressoras_tipos criada com sucesso!")
-            return True
-        except Exception as e:
-            print(f"Erro ao verificar/criar tabela impressoras_tipos: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return False
     
-    def salvar_config_impressoras(self, config_impressoras):
-        """
-        Salva a configuração de impressoras por tipo de produto no banco de dados
-        
-        Args:
-            config_impressoras (dict): Dicionário com as configurações de impressoras
-                                      {impressora_id: [nome_tipo1, nome_tipo2, ...]}
-        
-        Returns:
-            bool: True se a operação foi bem-sucedida, False caso contrário
-        """
-        from src.db.database import DatabaseConnection
-        from src.db.cadastro_db import CadastroDB
-        
+    def listar_medicos(self) -> List[Dict[str, Any]]:
+        """Lista todos os médicos cadastrados."""
+        if not self.db:
+            return []
         try:
-            # Verificar se a tabela existe
-            if not self.verificar_tabela_impressoras_tipos():
-                return False
-                
-            # Obter conexão usando a classe DatabaseConnection
-            connection = DatabaseConnection().get_connection()
-            cursor = connection.cursor()
-            db = CadastroDB(connection)
-            
-            # Limpar configurações anteriores
-            cursor.execute("DELETE FROM impressoras_tipos")
-            
-            # Inserir novas configurações
-            for impressora_id, tipos in config_impressoras.items():
-                for tipo_nome in tipos:
-                    # Obter o ID do tipo pelo nome
-                    cursor.execute("SELECT id FROM tipos_produtos WHERE nome = %s", (tipo_nome,))
-                    resultado = cursor.fetchone()
-                    if resultado:
-                        tipo_id = resultado[0]
-                        # Inserir na tabela de configuração
-                        cursor.execute("""
-                        INSERT INTO impressoras_tipos (impressora_id, tipo_id)
-                        VALUES (%s, %s)
-                        ON DUPLICATE KEY UPDATE impressora_id = VALUES(impressora_id)
-                        """, (int(impressora_id), tipo_id))
-            
-            # Confirmar as alterações
-            connection.commit()
-            return True
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM medicos ORDER BY nome")
+            return cursor.fetchall()
         except Exception as e:
-            print(f"Erro ao salvar configurações de impressoras: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return False
+            print(f"Erro ao listar médicos: {e}")
+            return []
     
-    # Mapeamento explícito entre IDs numéricos e nomes de impressoras
-    # Este mapeamento deve ser usado em todo o sistema para garantir consistência
-    MAPEAMENTO_IMPRESSORAS = {
-        # ID numérico -> nome interno -> nome de exibição
-        "1": {"nome_interno": "impressora 1", "nome_exibicao": "impressora 1"},
-        "2": {"nome_interno": "impressora 2", "nome_exibicao": "impressora 2"},
-        "3": {"nome_interno": "impressora 3", "nome_exibicao": "impressora 3"},
-        "4": {"nome_interno": "impressora 4", "nome_exibicao": "impressora 4"},
-        "5": {"nome_interno": "impressora 5", "nome_exibicao": "impressora 5"},
-        "6": {"nome_interno": "não imprimir", "nome_exibicao": "não imprimir"}
-    }
-    
-    def carregar_config_impressoras(self):
-        """
-        Carrega as configurações de impressoras salvas do banco de dados
-        
-        Returns:
-            dict: Dicionário com as configurações de impressoras
-                 {impressora_id: [nome_tipo1, nome_tipo2, ...]}
-        """
-        from src.db.database import DatabaseConnection
-        
-        # Configuração padrão (vazia)
-        config = {
-            "1": [],  # Cupom Fiscal
-            "2": [],  # Cozinha
-            "3": [],  # Bar
-            "4": [],  # Sobremesas
-            "5": [],  # Outros
-            "6": []   # Não imprimir
-        }
-        
+    def listar_medicos_com_modelos(self) -> List[Dict[str, Any]]:
+        """Lista todos os médicos, independente de terem modelos ou não."""
+        if not self.db:
+            return []
         try:
-            # Verificar se a tabela existe
-            if not self.verificar_tabela_impressoras_tipos():
-                return config
-                
-            # Obter conexão usando a classe DatabaseConnection
-            connection = DatabaseConnection().get_connection()
-            cursor = connection.cursor()
-            
-            # Carregar configurações do banco de dados
+            cursor = self.db.cursor(dictionary=True)
             query = """
-            SELECT it.impressora_id, tp.nome
-            FROM impressoras_tipos it
-            JOIN tipos_produtos tp ON it.tipo_id = tp.id
-            ORDER BY it.impressora_id, tp.nome
+                SELECT m.* FROM medicos m
+                ORDER BY m.nome
             """
             cursor.execute(query)
-            resultados = cursor.fetchall()
-            
-            # Preencher a configuração com os resultados do banco
-            for impressora_id, nome_tipo in resultados:
-                config[str(impressora_id)].append(nome_tipo)
-                
-            return config
+            return cursor.fetchall()
         except Exception as e:
-            print(f"Erro ao carregar configurações de impressoras: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return config
+            print(f"Erro ao listar médicos: {e}")
+            return []
     
-    # Métodos para gerenciar clientes usando ClienteController e a tabela clientes_delivery
-    def listar_clientes(self, filtro: str = None) -> List[Dict[str, Any]]:
-        """
-        Lista todos os clientes, opcionalmente filtrando por nome ou telefone.
+    def salvar_medico(self, dados: Dict[str, Any]) -> Tuple[bool, str]:
+        """Salva ou atualiza um médico."""
+        if not self.db:
+            return False, "Sem conexão com o banco de dados"
         
-        Args:
-            filtro: Texto para filtrar por nome ou telefone (opcional).
+        try:
+            cursor = self.db.cursor()
             
-        Returns:
-            Lista de dicionários com os dados dos clientes.
-        """
-        return self.cliente_controller.listar_clientes(filtro)
+            # Validações
+            campos_obrigatorios = ['nome', 'especialidade', 'crm', 'telefone']
+            for campo in campos_obrigatorios:
+                if not str(dados.get(campo, '')).strip():
+                    return False, f"O campo {campo} é obrigatório"
+            
+            # Formatação
+            nome = str(dados['nome']).strip()
+            crm = ''.join(filter(str.isdigit, str(dados['crm'])))
+            telefone = ''.join(filter(str.isdigit, str(dados['telefone'])))
+            email = str(dados.get('email', '')).strip() or None
+            
+            if 'id' in dados and dados['id']:
+                # Atualização
+                query = """
+                    UPDATE medicos 
+                    SET nome=%s, especialidade=%s, crm=%s, 
+                        telefone=%s, email=%s, data_atualizacao=NOW()
+                    WHERE id=%s
+                """
+                valores = (nome, dados['especialidade'], crm, telefone, email, dados['id'])
+            else:
+                # Inserção
+                query = """
+                    INSERT INTO medicos 
+                    (nome, especialidade, crm, telefone, email, data_cadastro)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                """
+                valores = (nome, dados['especialidade'], crm, telefone, email)
+            
+            cursor.execute(query, valores)
+            self.db.commit()
+            
+            if 'id' not in dados or not dados['id']:
+                return True, ("Médico cadastrado com sucesso!", cursor.lastrowid)
+            return True, "Médico atualizado com sucesso!"
+                
+        except Exception as e:
+            self.db.rollback()
+            print(f"Erro ao salvar médico: {e}")
+            return False, f"Erro ao salvar médico: {str(e)}"
+
+    def obter_usuario_por_id(self, usuario_id: int) -> Optional[Dict[str, Any]]:
+        """Obtém um usuário pelo ID."""
+        if not self.db:
+            return None
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM usuarios WHERE id = %s", (usuario_id,))
+            return cursor.fetchone()
+        except Exception as e:
+            self.ultimo_erro = str(e)
+            print(f"Erro ao obter usuário: {e}")
+            return None
     
-    def obter_cliente(self, cliente_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Obtém um cliente pelo ID.
-        
-        Args:
-            cliente_id: ID do cliente.
-            
-        Returns:
-            Dicionário com os dados do cliente ou None se não encontrado.
-        """
-        return self.cliente_controller.obter_cliente_por_id(cliente_id)
+    def listar_usuarios(self) -> List[Dict[str, Any]]:
+        """Lista todos os usuários cadastrados."""
+        if not self.db:
+            return []
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM usuarios ORDER BY nome")
+            return cursor.fetchall()
+        except Exception as e:
+            self.ultimo_erro = str(e)
+            print(f"Erro ao listar usuários: {e}")
+            return []
     
-    def inserir_cliente(self, **dados_cliente) -> bool:
+    def salvar_usuario(self, dados: Dict[str, Any]) -> Tuple[bool, str]:
         """
-        Insere um novo cliente no banco de dados.
+        Salva ou atualiza um usuário.
         
         Args:
-            **dados_cliente: Dados do cliente a serem inseridos.
-            
+            dados: Dicionário com os dados do usuário
+                - id (opcional): ID do usuário para atualização
+                - nome: Nome completo (obrigatório)
+                - login: Nome de usuário (obrigatório, único)
+                - senha: Senha (obrigatória)
+                - nivel: Nível de acesso (obrigatório, ex: 'admin' ou 'usuario')
+                - telefone: Telefone (opcional)
+                
         Returns:
-            True se o cliente foi inserido com sucesso, False caso contrário.
+            Tuple[bool, str]: (sucesso, mensagem)
         """
-        sucesso, resultado = self.cliente_controller.cadastrar_cliente(dados_cliente)
-        if sucesso:
-            return True
-        else:
-            raise Exception(resultado)  # Lança exceção com a mensagem de erro
+        if not self.db:
+            return False, "Sem conexão com o banco de dados"
+            
+        try:
+            cursor = self.db.cursor()
+            
+            # Validações
+            campos_obrigatorios = ['nome', 'login', 'senha', 'nivel']
+            for campo in campos_obrigatorios:
+                if campo not in dados or not str(dados.get(campo, '')).strip():
+                    return False, f"O campo {campo} é obrigatório"
+            
+            # Verifica se já existe usuário com o mesmo login
+            if 'id' in dados and dados['id']:
+                # Atualização - verifica se outro usuário tem o mesmo login
+                cursor.execute(
+                    "SELECT id FROM usuarios WHERE login = %s AND id != %s",
+                    (dados['login'], dados['id'])
+                )
+            else:
+                # Inserção - verifica se já existe o login
+                cursor.execute(
+                    "SELECT id FROM usuarios WHERE login = %s",
+                    (dados['login'],)
+                )
+            
+            if cursor.fetchone():
+                return False, f"Já existe um usuário com o login '{dados['login']}'"
+            
+            # Prepara os dados para salvar
+            nome = str(dados['nome']).strip()
+            login = str(dados['login']).strip()
+            senha = str(dados['senha']).strip()
+            nivel = str(dados['nivel']).strip()
+            telefone = str(dados.get('telefone', '')).strip() or None
+            
+            if 'id' in dados and dados['id']:
+                # Atualização
+                query = """
+                    UPDATE usuarios 
+                    SET nome=%s, login=%s, senha=%s, nivel=%s, telefone=%s
+                    WHERE id=%s
+                """
+                valores = (nome, login, senha, nivel, telefone, dados['id'])
+            else:
+                # Inserção
+                query = """
+                    INSERT INTO usuarios 
+                    (nome, login, senha, nivel, telefone, data_cadastro)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                """
+                valores = (nome, login, senha, nivel, telefone)
+            
+            cursor.execute(query, valores)
+            self.db.commit()
+            
+            if 'id' not in dados or not dados['id']:
+                return True, ("Usuário cadastrado com sucesso!", cursor.lastrowid)
+            return True, "Usuário atualizado com sucesso!"
+                
+        except Exception as e:
+            self.db.rollback()
+            self.ultimo_erro = str(e)
+            return False, f"Erro ao salvar usuário: {str(e)}"
     
-    def atualizar_cliente(self, cliente_id: int, **dados_atualizados) -> bool:
-        """
-        Atualiza os dados de um cliente existente.
-        
-        Args:
-            cliente_id: ID do cliente a ser atualizado.
-            **dados_atualizados: Dados atualizados do cliente.
+    def excluir_usuario(self, usuario_id: int) -> Tuple[bool, str]:
+        """Exclui um usuário pelo ID."""
+        if not self.db:
+            return False, "Sem conexão com o banco de dados"
             
-        Returns:
-            True se o cliente foi atualizado com sucesso, False caso contrário.
-        """
-        sucesso, mensagem = self.cliente_controller.atualizar_cliente(cliente_id, dados_atualizados)
-        if sucesso:
-            return True
-        else:
-            raise Exception(mensagem)  # Lança exceção com a mensagem de erro
+        try:
+            cursor = self.db.cursor()
+            cursor.execute("DELETE FROM usuarios WHERE id = %s", (usuario_id,))
+            self.db.commit()
+            return True, "Usuário excluído com sucesso!"
+        except Exception as e:
+            self.db.rollback()
+            self.ultimo_erro = str(e)
+            return False, f"Erro ao excluir usuário: {str(e)}"
+    
+    def obter_empresa(self) -> Optional[Dict[str, Any]]:
+        """Obtém os dados da empresa."""
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM empresas LIMIT 1")
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"Erro ao obter dados da empresa: {e}")
+            return None
+    
+    def salvar_empresa(self, dados: Dict[str, Any]) -> Tuple[bool, str]:
+        """Salva ou atualiza os dados da empresa."""
+        try:
+            cursor = self.db.cursor()
             
-    def excluir_cliente(self, cliente_id: int) -> bool:
-        """
-        Exclui permanentemente um cliente do banco de dados.
-        
-        Args:
-            cliente_id: ID do cliente a ser excluído.
+            # Verifica se já existe uma empresa cadastrada
+            empresa_existente = self.obter_empresa()
             
-        Returns:
-            bool: True se o cliente foi excluído com sucesso, False caso contrário.
+            if empresa_existente:
+                # Atualização
+                query = """
+                    UPDATE empresas 
+                    SET nome_fantasia = %s, razao_social = %s, cnpj = %s,
+                        inscricao_estadual = %s, telefone = %s, endereco = %s,
+                        cep = %s, bairro = %s, cidade = %s, estado = %s, numero = %s
+                    WHERE id = %s
+                """
+                valores = (
+                    dados.get('nome_fantasia', ''),
+                    dados.get('razao_social', ''),
+                    dados.get('cnpj', ''),
+                    dados.get('inscricao_estadual', ''),
+                    dados.get('telefone', ''),
+                    dados.get('endereco', ''),
+                    dados.get('cep', ''),
+                    dados.get('bairro', ''),
+                    dados.get('cidade', ''),
+                    dados.get('estado', ''),
+                    dados.get('numero', ''),
+                    empresa_existente['id']
+                )
+            else:
+                # Inserção
+                query = """
+                    INSERT INTO empresas 
+                    (nome_fantasia, razao_social, cnpj, inscricao_estadual, 
+                     telefone, endereco, cep, bairro, cidade, estado, numero)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                valores = (
+                    dados.get('nome_fantasia', ''),
+                    dados.get('razao_social', ''),
+                    dados.get('cnpj', ''),
+                    dados.get('inscricao_estadual', ''),
+                    dados.get('telefone', ''),
+                    dados.get('endereco', ''),
+                    dados.get('cep', ''),
+                    dados.get('bairro', ''),
+                    dados.get('cidade', ''),
+                    dados.get('estado', ''),
+                    dados.get('numero', '')
+                )
             
-        Raises:
-            Exception: Se ocorrer um erro durante a exclusão.
-        """
-        sucesso, mensagem = self.cliente_controller.excluir_cliente(cliente_id)
-        if sucesso:
-            return True
-        else:
-            raise Exception(mensagem)  # Lança exceção com a mensagem de erro
+            cursor.execute(query, valores)
+            self.db.commit()
+            return True, "Dados da empresa salvos com sucesso!"
+            
+        except Exception as e:
+            self.db.rollback()
+            return False, f"Erro ao salvar dados da empresa: {str(e)}"

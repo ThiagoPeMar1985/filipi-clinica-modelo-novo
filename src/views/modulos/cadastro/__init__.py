@@ -8,9 +8,7 @@ def get_module():
         "opcoes": [
             {"nome": "Empresa", "acao": "empresa"},
             {"nome": "Usuários", "acao": "usuarios"},
-            {"nome": "Funcionários", "acao": "funcionarios"},
-            {"nome": "Clientes", "acao": "clientes"},
-            {"nome": "Produtos", "acao": "produtos"},
-            {"nome": "Fornecedores", "acao": "fornecedores"}
+            {"nome": "Medicos", "acao": "medicos"},
+            {"nome": "clientes", "acao": "clientes"}
         ]
     }

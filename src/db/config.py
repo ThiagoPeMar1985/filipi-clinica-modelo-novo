@@ -10,7 +10,7 @@ DB_CONFIG = {
     'host': '127.0.0.1',
     'user': 'root',
     'password': 'Beer1234@',
-    'database': 'pdv_bar',
+    'database': 'clinica_filipi',
     'port': 3306,
     'raise_on_warnings': True,
     'use_pure': True,
