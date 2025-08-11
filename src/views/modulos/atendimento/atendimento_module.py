@@ -27,10 +27,19 @@ class AtendimentoModule(BaseModule):
         
         # Mapeamento de ações para as funções correspondentes
         # As chaves DEVEM corresponder exatamente ao que é passado pelo menu lateral
+        # Suporta rótulos antigos ("prontuario") e novos ("Consultas" e "Área Médica")
         self.acoes = {
             "inicio": self.mostrar_inicio,
             "agenda": self.mostrar_agenda,
             "prontuario": self.mostrar_prontuario,
+            # aliases para o novo nome do botão/rota "Consultas"
+            "consultas": self.mostrar_prontuario,
+            "consulta": self.mostrar_prontuario,
+            # aliases para o novo nome do botão/rota
+            "area_medica": self.mostrar_prontuario,
+            "área_médica": self.mostrar_prontuario,
+            "área médica": self.mostrar_prontuario,
+            "area medica": self.mostrar_prontuario,
             "exames": self.mostrar_exames,
         }
         
@@ -66,7 +75,7 @@ class AtendimentoModule(BaseModule):
                 self.agendamento_module.frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
                 
                 # Reconstroi a interface do módulo
-                self.agendamento_module._construir_interface()
+                self.agendamento_module._criar_interface()
             else:
                 # Cria uma nova instância do módulo se não existir
                 self.agendamento_module = AgendamentoModule(
@@ -88,28 +97,28 @@ class AtendimentoModule(BaseModule):
             self.mostrar_inicio()
     
     def mostrar_prontuario(self):
-        """Mostra a tela de prontuário"""
+        """Mostra a tela de prontuário (Consultas / Área Médica)."""
+        
         self.limpar_conteudo()
         
         # Importa o módulo de prontuários
         from .prontuario_module import ProntuarioModule
         
-        # Cria e exibe o módulo de prontuários
-        prontuario_module = ProntuarioModule(self.conteudo_frame, self.controller)
+        # Cria e exibe o módulo de prontuários (garante conexão DB para resolver CRM)
+        prontuario_module = ProntuarioModule(self.conteudo_frame, self.controller, db_connection=self.db_connection)
         prontuario_module.exibir()
     
     def mostrar_exames(self):
         """Mostra a tela de exames"""
         self.limpar_conteudo()
         
-        # Aqui você pode adicionar a lógica da tela de exames
-        tk.Label(
-            self.conteudo_frame,
-            text="Tela de Exames",
-            font=('Arial', 16, 'bold'),
-            bg='#f0f2f5',
-            fg='#333333'
-        ).pack(pady=20)
+        # Importa o módulo de Exames que reutiliza o layout/fluxo do Prontuário
+        from .exames_prontuario_module import ExamesProntuarioModule
+        
+        # Cria e exibe o módulo de Exames (mesma UX do Prontuário)
+        exames_module = ExamesProntuarioModule(self.conteudo_frame, self.controller, db_connection=self.db_connection)
+        frame = exames_module.get_frame()
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
     
     def limpar_conteudo(self):
         """Limpa o conteúdo do frame"""

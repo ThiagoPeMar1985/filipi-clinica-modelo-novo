@@ -38,7 +38,8 @@ class ModeloProntuarioModule(BaseModule):
         
         # Variáveis de estado
         self.modelo_atual = None
-        self.medico_selecionado = None
+        self.medico_selecionado = None  # id do médico
+        self.medico_selecionado_usuario_id = None  # usuario_id do médico
         self.modo_edicao = False
         
         # Dicionário para armazenar a lista de médicos
@@ -203,15 +204,121 @@ class ModeloProntuarioModule(BaseModule):
         )
         self.nome_modelo.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # Área de visualização/edição do modelo
+        # Área de visualização/edição do modelo dentro de uma PÁGINA A4 real
+        canvas = tk.Canvas(self.visualizacao_frame, bg='#cccccc')
+        canvas.pack(fill=tk.BOTH, expand=True)
+
+        # Cria o widget de texto (com scrollbar) mas NÃO faz pack; ele será inserido no canvas
         self.texto_modelo = scrolledtext.ScrolledText(
             self.visualizacao_frame,
             wrap=tk.WORD,
             font=('Arial', 11),
             height=20
         )
-        self.texto_modelo.pack(fill=tk.BOTH, expand=True)
+
+        # Conversão mm->px com DPI real da tela
+        def mm_to_px(mm: float) -> int:
+            try:
+                dpi = float(canvas.winfo_fpixels('1i'))  # pixels por polegada
+            except Exception:
+                dpi = 96.0
+            return int(mm * dpi / 25.4)
+
+        # IDs gráficos
+        state = {
+            'page_id': None,
+            'win_id': None,
+        }
+
+        def desenhar_pagina():
+            # Tamanho A4: 210 x 297 mm e margens de 10 mm
+            page_w = mm_to_px(210)
+            page_h = mm_to_px(297)
+            margem = 10
+            m_esq = mm_to_px(margem)
+            m_dir = mm_to_px(margem)
+            m_top = mm_to_px(margem)
+            m_bot = mm_to_px(margem)
+
+            cw = max(1, canvas.winfo_width())
+            ch = max(1, canvas.winfo_height())
+            x0 = max(10, (cw - page_w)//2)
+            y0 = max(10, (ch - page_h)//2)
+
+            # Página
+            if state['page_id'] is None:
+                state['page_id'] = canvas.create_rectangle(x0, y0, x0+page_w, y0+page_h, fill='white', outline='#888')
+            else:
+                canvas.coords(state['page_id'], x0, y0, x0+page_w, y0+page_h)
+
+            # Área útil onde o texto deve ficar
+            x_left = x0 + m_esq
+            y_top = y0 + m_top
+            largura_util = max(50, page_w - m_esq - m_dir)
+            altura_util = max(50, page_h - m_top - m_bot)
+
+            if state['win_id'] is None:
+                state['win_id'] = canvas.create_window(
+                    x_left, y_top,
+                    anchor='nw',
+                    window=self.texto_modelo,
+                    width=largura_util,
+                    height=altura_util
+                )
+            else:
+                canvas.coords(state['win_id'], x_left, y_top)
+                canvas.itemconfigure(state['win_id'], width=largura_util, height=altura_util)
+
+        # Redesenha quando o canvas mudar de tamanho
+        canvas.bind('<Configure>', lambda e: desenhar_pagina())
+        # Desenha inicialmente após o pack
+        self.visualizacao_frame.after(50, desenhar_pagina)
+        # Corretor ortográfico (opcional)
+        try:
+            self._enable_spellcheck(self.texto_modelo)
+        except Exception:
+            pass
         self.texto_modelo.config(state=tk.DISABLED)  # Inicia como somente leitura
+
+        # Barra rápida para fonte (6-8) - atua sobre self.texto_modelo
+        def _aplicar_fonte_modelo(n: int):
+            try:
+                txt = self.texto_modelo
+                # Guarda estado atual
+                prev_state = str(txt.cget('state'))
+                if prev_state == tk.DISABLED:
+                    txt.config(state=tk.NORMAL)
+                conteudo = txt.get('1.0', 'end-1c')
+                linhas = conteudo.splitlines()
+                nova_dir = f"<<font:{n}>>"
+                if not linhas:
+                    txt.insert('1.0', nova_dir + "\n")
+                else:
+                    primeira = linhas[0].strip()
+                    if primeira.lower().startswith('<<font:') and primeira.endswith('>>'):
+                        linhas[0] = nova_dir
+                        novo = "\n".join(linhas)
+                        txt.delete('1.0', tk.END)
+                        txt.insert('1.0', novo)
+                    else:
+                        txt.insert('1.0', nova_dir + "\n")
+                # Ajusta a fonte na tela para pré-visualização imediata
+                try:
+                    tam = max(6, min(12, int(n)))
+                    txt.configure(font=('Arial', tam))
+                except Exception:
+                    pass
+                # Restaura estado
+                if prev_state == tk.DISABLED:
+                    txt.config(state=tk.DISABLED)
+            except Exception:
+                pass
+        fonte_bar = tk.Frame(self.visualizacao_frame, bg='#ffffff')
+        fonte_bar.pack(fill=tk.X, pady=(6, 6))
+        tk.Label(fonte_bar, text="Fonte:", bg='#ffffff', fg='#333333', font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 6))
+        for n in (6, 7, 8):
+            tk.Button(fonte_bar, text=str(n), bg="#495057", fg="white", relief=tk.FLAT, cursor='hand2',
+                      command=lambda v=n: _aplicar_fonte_modelo(v)).pack(side=tk.LEFT, padx=2)
         
         # Frame de botões de ação (salvar/cancelar)
         self.botoes_acao_frame = ttk.Frame(self.visualizacao_frame)
@@ -249,30 +356,38 @@ class ModeloProntuarioModule(BaseModule):
     def _carregar_medicos(self):
         """Carrega a lista de médicos no combobox."""
         try:
-            medicos = self.cadastro_controller.listar_medicos_com_modelos()
+            # Prioriza usuários que possuem modelos (fonte: ProntuarioController)
+            usuarios_com_modelos = self.prontuario_controller.listar_medicos_com_modelos() or []
+            medicos = usuarios_com_modelos
             
+            # Se vier vazio, cai no cadastro de médicos apenas para exibir nomes (sem usuario_id)
             if not medicos:
-                # Tenta carregar todos os médicos, mesmo sem modelos
-                medicos = self.cadastro_controller.listar_medicos()
-                
+                medicos = self.cadastro_controller.listar_medicos() or []
                 if not medicos:
                     return
             
-            # Limpa o dicionário de médicos
+            # Limpa o dicionário de médicos/usuários
             self.medicos = {}
             
             # Preenche o dicionário e a lista de opções
             opcoes = []
-            for medico in medicos:
-                texto_medico = f"{medico['nome']} - {medico.get('crm', '')}"
-                self.medicos[texto_medico] = medico['id']
-                opcoes.append(texto_medico)
+            for m in medicos:
+                nome = m.get('nome', 'Sem nome')
+                crm = m.get('crm', '')  # pode não existir quando vier de usuarios
+                texto = f"{nome} - {crm}" if crm else nome
+                # Quando vem de listar_medicos_com_modelos (ProntuarioController), o campo é usuario_id
+                uid = m.get('usuario_id') or m.get('id') if 'usuario_id' in m else None
+                # Mantém medico_id se existir
+                self.medicos[texto] = {
+                    'medico_id': m.get('id') if 'crm' in m else None,
+                    'usuario_id': uid
+                }
+                opcoes.append(texto)
             
             # Atualiza o combobox
             if hasattr(self, 'medico_cb') and self.medico_cb.winfo_exists():
                 self.medico_cb['values'] = opcoes
-                
-                # Se houver apenas um médico, seleciona automaticamente
+                # Se houver apenas um, seleciona automaticamente
                 if len(opcoes) == 1:
                     self.medico_cb.current(0)
                     self._on_medico_selecionado()
@@ -287,12 +402,26 @@ class ModeloProntuarioModule(BaseModule):
         if not medico_nome:
             return
             
-        self.medico_selecionado = self.medicos[medico_nome]
+        sel = self.medicos[medico_nome]
+        self.medico_selecionado = sel.get('medico_id')
+        self.medico_selecionado_usuario_id = sel.get('usuario_id')
+        if not self.medico_selecionado_usuario_id:
+            messagebox.showinfo(
+                "Aviso",
+                "Este profissional não possui usuário vinculado. Vincule um usuário para visualizar os modelos."
+            )
+            # Limpa lista e visualização
+            for item in self.lista_modelos.get_children():
+                self.lista_modelos.delete(item)
+            self._limpar_visualizacao()
+            return
         self._carregar_modelos()
 
     def _carregar_modelos(self):
         """Carrega os modelos do médico selecionado."""
-        if not self.medico_selecionado:
+        # Passa a depender do usuario_id (dono dos modelos)
+        if not self.medico_selecionado_usuario_id:
+            messagebox.showinfo("Aviso", "Selecione um profissional com usuário vinculado para listar modelos.")
             return
         
         try:
@@ -300,8 +429,9 @@ class ModeloProntuarioModule(BaseModule):
             for item in self.lista_modelos.get_children():
                 self.lista_modelos.delete(item)
             
-            # Busca os modelos do médico
-            modelos = self.prontuario_controller.listar_modelos_texto(self.medico_selecionado)
+            # Busca os modelos do usuário (médico) pelo usuario_id
+            uid = self.medico_selecionado_usuario_id
+            modelos = self.prontuario_controller.listar_modelos_texto(uid) or []
             
             # Preenche a lista com os modelos encontrados
             for modelo in modelos:
@@ -325,23 +455,15 @@ class ModeloProntuarioModule(BaseModule):
                 self.controller.atualizar_status(f"Carregados {len(modelos)} modelo(s)")
                 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             messagebox.showerror("Erro", f"Erro ao carregar modelos: {str(e)}")
     
     def _criar_modelo(self):
         """Prepara a interface para criar um novo modelo de prontuário."""
-        # Verifica se um médico está selecionado
-        if not self.medico_selecionado:
-            messagebox.showwarning("Aviso", "Selecione um médico antes de criar um novo modelo.")
+        # Verifica se há usuário vinculado selecionado
+        if not self.medico_selecionado_usuario_id:
+            messagebox.showwarning("Aviso", "Selecione um profissional com usuário vinculado antes de criar um novo modelo.")
             return
         
-        # Pede o nome do modelo
-        nome_modelo = simpledialog.askstring("Novo Modelo", "Digite um nome para o modelo:", parent=self.frame)
-        
-        # Se o usuário cancelar ou não digitar um nome, retorna
-        if not nome_modelo:
-            return
             
         # Limpa a seleção atual
         self.lista_modelos.selection_remove(self.lista_modelos.selection())
@@ -358,7 +480,7 @@ class ModeloProntuarioModule(BaseModule):
         
         # Define o modo de edição e armazena o nome do modelo
         self.modo_edicao = 'criar'
-        self.modelo_atual = {'nome': nome_modelo, 'conteudo': ''}
+        self.modelo_atual = {'nome': self.nome_modelo.get(), 'conteudo': ''}
         
         # Define o foco no campo de texto
         self.texto_modelo.focus_set()
@@ -499,9 +621,9 @@ class ModeloProntuarioModule(BaseModule):
 
     def _salvar_modelo(self):
         """Salva o modelo de prontuário, seja criando um novo ou atualizando um existente."""
-        # Verifica se há um médico selecionado
-        if not self.medico_selecionado:
-            messagebox.showwarning("Aviso", "Selecione um médico antes de salvar o modelo.")
+        # Verifica se há um usuário (profissional) vinculado selecionado
+        if not self.medico_selecionado_usuario_id:
+            messagebox.showwarning("Aviso", "Selecione um profissional com usuário vinculado antes de salvar o modelo.")
             return
         
         # Obtém o conteúdo do texto
@@ -518,7 +640,8 @@ class ModeloProntuarioModule(BaseModule):
                 dados = {
                     'nome': self.nome_modelo.get(),
                     'conteudo': conteudo,
-                    'medico_id': self.medico_selecionado,
+                    # modelos_texto agora usa usuario_id
+                    'usuario_id': self.medico_selecionado_usuario_id,
                     'data_criacao': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 }
                 

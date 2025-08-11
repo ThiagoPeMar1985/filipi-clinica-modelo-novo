@@ -4,6 +4,12 @@ Fornece funcionalidades comuns e estilos padronizados.
 """
 import tkinter as tk
 from tkinter import ttk
+import re
+try:
+    # Corretor ortográfico opcional
+    from spellchecker import SpellChecker
+except Exception:
+    SpellChecker = None
 
 class BaseModule:
     def __init__(self, parent, controller):
@@ -18,12 +24,220 @@ class BaseModule:
         self.controller = controller
         self.frame = ttk.Frame(parent)
         self.current_view = None
+        # Estado compartilhado do corretor (por módulo)
+        self._spellchecker = None
+        self._spell_jobs = {}
         
         # Configura os estilos padrão
         self.configurar_estilos()
         
         # Aplica os estilos iniciais
         self.aplicar_estilos()
+
+    # ------------------------- Utilitário: Corretor ortográfico -------------------------
+    def _get_spellchecker(self, language: str = 'pt'):
+        """Obtém (cache) uma instância do SpellChecker para o idioma informado."""
+        if SpellChecker is None:
+            return None
+        try:
+            if not self._spellchecker:
+                self._spellchecker = SpellChecker(language=language)
+        except Exception:
+            self._spellchecker = None
+        return self._spellchecker
+
+    def _enable_spellcheck(self, text_widget: tk.Text, language: str = 'pt', limit_chars: int = 30000):
+        """Ativa verificação ortográfica em um widget Text/ScrolledText.
+        - Sublinha em vermelho palavras desconhecidas (tag 'misspelled').
+        - Debounce para não pesar a digitação.
+        Se a dependência não existir, não faz nada.
+        """
+        try:
+            if text_widget is None or not hasattr(text_widget, 'winfo_exists'):
+                return
+            sc = self._get_spellchecker(language)
+            if sc is None:
+                return
+            # Configuração de tag
+            try:
+                text_widget.tag_configure('misspelled', underline=True, foreground='#c82333')
+            except Exception:
+                pass
+
+            # Função de verificação
+            def _run_check():
+                try:
+                    conteudo = text_widget.get('1.0', 'end-1c')
+                    analisado = conteudo[:limit_chars]
+                    text_widget.tag_remove('misspelled', '1.0', tk.END)
+                    for m in re.finditer(r"\b[\wÀ-ÖØ-öø-ÿ]+\b", analisado, flags=re.UNICODE):
+                        palavra = m.group(0)
+                        if palavra.isdigit() or len(palavra) <= 2:
+                            continue
+                        low = palavra.lower()
+                        try:
+                            # unknown é mais confiável que 'in'
+                            if low in sc.unknown([low]):
+                                start = f"1.0+{m.start()}c"
+                                end = f"1.0+{m.end()}c"
+                                text_widget.tag_add('misspelled', start, end)
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+
+            # Debounce por widget
+            def _on_key_release(event=None):
+                try:
+                    job = self._spell_jobs.get(text_widget)
+                    if job:
+                        self.frame.after_cancel(job)
+                except Exception:
+                    pass
+                self._spell_jobs[text_widget] = self.frame.after(250, _run_check)
+
+            text_widget.bind('<KeyRelease>', _on_key_release, add=True)
+            # Primeira checagem imediata
+            _run_check()
+            # Context menu (botão direito) para correções
+            try:
+                self._bind_spell_menu(text_widget, language, limit_chars)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _spellcheck_now(self, text_widget: tk.Text, language: str = 'pt', limit_chars: int = 30000):
+        """Força a verificação ortográfica imediatamente para o conteúdo atual.
+        Útil após inserir texto programaticamente (ex.: carregar/editar receita)."""
+        try:
+            if text_widget is None or not hasattr(text_widget, 'winfo_exists'):
+                return
+            sc = self._get_spellchecker(language)
+            if sc is None:
+                return
+            try:
+                text_widget.tag_configure('misspelled', underline=True, foreground='#c82333')
+            except Exception:
+                pass
+            conteudo = text_widget.get('1.0', 'end-1c')
+            analisado = conteudo[:limit_chars]
+            text_widget.tag_remove('misspelled', '1.0', tk.END)
+            for m in re.finditer(r"\b[\wÀ-ÖØ-öø-ÿ]+\b", analisado, flags=re.UNICODE):
+                palavra = m.group(0)
+                if palavra.isdigit() or len(palavra) <= 2:
+                    continue
+                low = palavra.lower()
+                try:
+                    if low in sc.unknown([low]):
+                        start = f"1.0+{m.start()}c"
+                        end = f"1.0+{m.end()}c"
+                        text_widget.tag_add('misspelled', start, end)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    def _bind_spell_menu(self, text_widget: tk.Text, language: str = 'pt', limit_chars: int = 30000):
+        """Associa menu de contexto (botão direito) para corrigir palavras 'misspelled'."""
+        try:
+            if text_widget is None or not hasattr(text_widget, 'winfo_exists'):
+                return
+            # Evita múltiplos binds no mesmo widget
+            if getattr(text_widget, '_spell_menu_bound', False):
+                return
+            sc = self._get_spellchecker(language)
+            if sc is None:
+                return
+
+            def _on_right_click(event):
+                try:
+                    # 1) Tenta palavra sob o ponteiro do mouse
+                    idx = text_widget.index(f"@{event.x},{event.y}")
+                    start = text_widget.index(f"{idx} wordstart")
+                    end = text_widget.index(f"{idx} wordend")
+                    palavra = text_widget.get(start, end)
+                    low = palavra.lower()
+                    valida = bool(palavra) and not low.isdigit() and len(low) > 2
+                    desconhecida = False
+                    if valida:
+                        try:
+                            desconhecida = (low in sc.unknown([low]))
+                        except Exception:
+                            desconhecida = False
+                    # 2) Se não for válida/desconhecida, tenta palavra no cursor de inserção
+                    if not (valida and desconhecida):
+                        idx = text_widget.index('insert')
+                        start = text_widget.index(f"{idx} wordstart")
+                        end = text_widget.index(f"{idx} wordend")
+                        palavra = text_widget.get(start, end)
+                        low = palavra.lower()
+                        valida = bool(palavra) and not low.isdigit() and len(low) > 2
+                        if valida:
+                            try:
+                                desconhecida = (low in sc.unknown([low]))
+                            except Exception:
+                                desconhecida = False
+                    if not (valida and desconhecida):
+                        return
+                    try:
+                        best = sc.correction(low)
+                    except Exception:
+                        best = None
+                    try:
+                        cand = list(sc.candidates(low))
+                    except Exception:
+                        cand = []
+                    opcoes = []
+                    if best:
+                        opcoes.append(best)
+                    for c in cand:
+                        if c and c not in opcoes:
+                            opcoes.append(c)
+                    opcoes = opcoes[:7]
+
+                    menu = tk.Menu(text_widget, tearoff=0)
+                    if opcoes:
+                        for s in opcoes:
+                            def _repl(sug=s, s_idx=start, e_idx=end, original=palavra):
+                                try:
+                                    rep = sug.capitalize() if original[:1].isupper() else sug
+                                    prev = text_widget.cget('state')
+                                    try:
+                                        text_widget.config(state='normal')
+                                        text_widget.delete(s_idx, e_idx)
+                                        text_widget.insert(s_idx, rep)
+                                    finally:
+                                        text_widget.config(state=prev)
+                                    self._spellcheck_now(text_widget, language, limit_chars)
+                                except Exception:
+                                    pass
+                            menu.add_command(label=s, command=_repl)
+                    else:
+                        menu.add_command(label='Sem sugestões', state='disabled')
+                    menu.add_separator()
+                    menu.add_command(label='Ignorar', command=lambda s_idx=start, e_idx=end: text_widget.tag_remove('misspelled', s_idx, e_idx))
+                    try:
+                        menu.tk_popup(event.x_root, event.y_root)
+                    finally:
+                        try:
+                            menu.grab_release()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            # Windows/Linux principal
+            text_widget.bind('<Button-3>', _on_right_click, add=True)
+            # Compatibilidade extra (alguns ambientes usam Button-2 ou Ctrl+Click)
+            text_widget.bind('<Button-2>', _on_right_click, add=True)
+            text_widget.bind('<Control-Button-1>', _on_right_click, add=True)
+            try:
+                text_widget._spell_menu_bound = True
+            except Exception:
+                pass
+        except Exception:
+            pass
     
     def configurar_estilos(self):
         """Configura os estilos padrão para todos os widgets"""

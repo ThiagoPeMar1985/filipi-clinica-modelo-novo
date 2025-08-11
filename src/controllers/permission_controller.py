@@ -40,14 +40,7 @@ class PermissionController:
             traceback.print_exc()
             return False
         
-    def obter_todas_permissoes(self) -> Dict[str, Any]:
-        """
-        Obtém todas as permissões do sistema
-        
-        Returns:
-            dict: Dicionário com todas as permissões
-        """
-        return self.gerenciador.obter_todas_permissoes()
+
     
     def obter_todas_permissoes(self) -> Dict[str, Any]:
         """
@@ -187,7 +180,7 @@ class PermissionController:
         tipo_usuario = 'master' if nivel in ['gerente', 'master'] else 'basico'
         
         # Obtém as permissões do usuário
-        permissoes = self.gerenciador_permissoes.obter_permissoes(tipo_usuario)
+        permissoes = self.gerenciador.obter_permissoes(tipo_usuario)
         
         # Filtra os itens do menu
         itens_filtrados = []

@@ -11,6 +11,48 @@ class ClienteController:
         """Inicializa o controlador de pacientes."""
         from src.db.database import db
         self.db = db
+
+    def set_db_connection(self, db_connection):
+        """Permite alinhar a conexão (wrapper com execute_query ou conexão nativa com cursor)."""
+        self.db = db_connection
+
+    def _execute_query(self, query: str, params=(), fetch_all: bool = True):
+        """Executa a query tanto com wrapper (execute_query) quanto com conexão nativa (cursor).
+        - Para SELECT, retorna lista de dicts (fetch_all=True) ou um dict (fetch_all=False).
+        - Para INSERT/UPDATE/DELETE com conexão nativa, faz commit automático.
+        """
+        if not self.db:
+            return [] if fetch_all else None
+        # Caso seja o wrapper que expõe execute_query
+        if hasattr(self.db, 'execute_query') and callable(getattr(self.db, 'execute_query')):
+            return self.db.execute_query(query, params, fetch_all=fetch_all)
+        # Caso seja uma conexão nativa (e.g., mysql.connector.connection_cext.CMySQLConnection)
+        cursor = None
+        try:
+            # dicionário para mapear colunas
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute(query, params or ())
+            lower = query.strip().lower()
+            is_select = lower.startswith('select') or (' return ' in lower and 'select' in lower)
+            if is_select:
+                if fetch_all:
+                    rows = cursor.fetchall()
+                else:
+                    rows = cursor.fetchone()
+                return rows
+            else:
+                # operações de escrita
+                self.db.commit()
+                try:
+                    return cursor.lastrowid if hasattr(cursor, 'lastrowid') else True
+                except Exception:
+                    return True
+        finally:
+            try:
+                if cursor:
+                    cursor.close()
+            except Exception:
+                pass
     
     def buscar_cliente_por_id(self, cliente_id: int) -> tuple[bool, dict]:
         """
@@ -33,7 +75,7 @@ class ClienteController:
         """
         
         try:
-            resultado = self.db.execute_query(query, (cliente_id,), fetch_all=False)
+            resultado = self._execute_query(query, (cliente_id,), fetch_all=False)
             
             if resultado:
                 # Formatar a data para exibição (DD/MM/YYYY)
@@ -85,7 +127,7 @@ class ClienteController:
         try:
             # Adiciona % para busca parcial
             termo_busca = f"{telefone}%"
-            resultados = self.db.execute_query(query, (termo_busca, termo_busca))
+            resultados = self._execute_query(query, (termo_busca, termo_busca))
             return resultados if resultados else []
         except Exception as e:
             print(f"Erro ao buscar cliente por telefone: {e}")
@@ -108,7 +150,7 @@ class ClienteController:
             LIMIT 10
         """
         try:
-            return self.db.execute_query(query, (f"%{nome}%",))
+            return self._execute_query(query, (f"%{nome}%",))
         except Exception as e:
             print(f"Erro ao buscar cliente por nome: {e}")
             return []
@@ -156,7 +198,7 @@ class ClienteController:
                 VALUES ({placeholders})
             """
             
-            self.db.execute_query(query, list(dados.values()))
+            self._execute_query(query, list(dados.values()))
             return True, "Cliente cadastrado com sucesso."
             
         except Exception as e:
@@ -199,7 +241,7 @@ class ClienteController:
         """
         
         try:
-            self.db.execute_query(query, tuple(valores))
+            self._execute_query(query, tuple(valores))
             return True, "Cliente atualizado com sucesso."
         except Exception as e:
             print(f"Erro ao atualizar cliente: {e}")
@@ -230,7 +272,7 @@ class ClienteController:
         query += " ORDER BY nome"
         
         try:
-            return self.db.execute_query(query, params)
+            return self._execute_query(query, params)
         except Exception as e:
             print(f"Erro ao listar clientes: {e}")
             return []
@@ -252,7 +294,7 @@ class ClienteController:
         """
         
         try:
-            return self.db.execute_query(query, (cliente_id,), fetch_all=False)
+            return self._execute_query(query, (cliente_id,), fetch_all=False)
         except Exception as e:
             print(f"Erro ao obter cliente por ID: {e}")
             return None
@@ -276,7 +318,7 @@ class ClienteController:
                 return False, "Cliente não encontrado."
                 
             # Executar a exclusão
-            self.db.execute_query(query, (cliente_id,))
+            self._execute_query(query, (cliente_id,))
             return True, "Cliente excluído permanentemente com sucesso."
             
         except Exception as e:

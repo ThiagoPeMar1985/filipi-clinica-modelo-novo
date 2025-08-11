@@ -167,7 +167,7 @@ def mostrar_sistema_pdv(usuario, login_window):
         widget.destroy()
     
     # Configura a janela principal
-    login_window.title("PDV Bar & Restaurante")
+    login_window.title("Clinica Medica")
     login_window.state('zoomed')  # Maximiza a janela
     
     # Configura o que acontece ao fechar a janela

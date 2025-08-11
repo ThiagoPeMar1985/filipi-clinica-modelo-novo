@@ -272,6 +272,50 @@ class ConfigController:
             return self.obter_config('impressoras', {})
         except Exception:
             return {}
+
+    # ---------------- Preferência de sala por médico (usuario_id) ----------------
+    def carregar_impressora_ponto_medico(self, usuario_id):
+        """Retorna o ponto (1-5) salvo para o médico (usuario_id), ou None se não houver.
+        Armazena no JSON em: {'impressoras_medico': {str(usuario_id): ponto_int}}
+        """
+        try:
+            if not usuario_id:
+                return None
+            cfg = self._carregar_config() or {}
+            mapa = cfg.get('impressoras_medico', {}) or {}
+            val = mapa.get(str(usuario_id))
+            if val is None:
+                return None
+            try:
+                val_int = int(val)
+            except Exception:
+                return None
+            return val_int if 1 <= val_int <= 5 else None
+        except Exception:
+            return None
+
+    def salvar_impressora_ponto_medico(self, usuario_id, ponto):
+        """Salva o ponto (1-5) para o médico (usuario_id) na seção 'impressoras_medico'.
+        Retorna True/False.
+        """
+        try:
+            if not usuario_id:
+                return False
+            try:
+                ponto_int = int(ponto)
+            except Exception:
+                return False
+            if ponto_int < 1 or ponto_int > 5:
+                return False
+            cfg = self._carregar_config() or {}
+            if 'impressoras_medico' not in cfg or not isinstance(cfg.get('impressoras_medico'), dict):
+                cfg['impressoras_medico'] = {}
+            cfg['impressoras_medico'][str(usuario_id)] = ponto_int
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(cfg, f, indent=4, ensure_ascii=False)
+            return True
+        except Exception:
+            return False
         
     def carregar_config_backup(self):
         """Carrega as configurações de backup salvas."""

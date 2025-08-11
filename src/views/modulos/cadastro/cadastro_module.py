@@ -10,6 +10,7 @@ import requests
 import json
 from datetime import datetime
 from pathlib import Path
+from src.views.modulos.cadastro.horario_disponivel_module import HorarioDisponivelModule
 
 # Importar configurações de estilo
 from config.estilos import CORES, FONTES, aplicar_estilo
@@ -20,6 +21,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 # Importações locais
 from src.controllers.cadastro_controller import CadastroController
 from ..base_module import BaseModule
+from src.views.modulos.cadastro.modelo_prontuario_module import ModeloProntuarioModule
+
 
 
 class CadastroModule(BaseModule):
@@ -50,7 +53,11 @@ class CadastroModule(BaseModule):
             "empresa": self.mostrar_empresa,
             "usuarios": self.mostrar_usuarios,
             "medicos": self.mostrar_medicos,
-            "clientes": self.mostrar_clientes,
+            "pacientes": self.mostrar_pacientes,
+            "modelos": self.mostrar_tela_modelo,
+            "receitas": self.mostrar_tela_receitas,
+            "exames_consultas": self.mostrar_tela_exames_consultas,
+            "horario_medico": self.horario_medico,
         }
         
         
@@ -420,7 +427,7 @@ class CadastroModule(BaseModule):
                 combo = ttk.Combobox(
                     form_frame, 
                     textvariable=nivel_var,
-                    values=['básico', 'master'],
+                    values=['medico', 'funcionario'],
                     state='readonly',
                     width=37
                 )
@@ -518,9 +525,9 @@ class CadastroModule(BaseModule):
                 
             # Validar nível de acesso
             nivel = self.entries_usuario['nivel'].get().strip()
-            if nivel not in ['básico', 'master']:
-                messagebox.showwarning("Aviso", "Selecione um nível de acesso válido (básico ou master)")
-                return
+            if nivel not in ['funcionario', 'medico']:
+                messagebox.showwarning("Aviso", "Selecione um nível de acesso válido (funcionario ou medico)")
+                return  
                 
             # Preparar os dados para salvar
             dados = {
@@ -823,38 +830,75 @@ class CadastroModule(BaseModule):
         # Nome
         tk.Label(form_frame, text="Nome Completo:").grid(row=0, column=0, sticky='e', padx=10, pady=5)
         entry_nome = tk.Entry(form_frame, width=40)
-        entry_nome.grid(row=0, column=1, sticky='w', pady=5, padx=(0, 10))
+        entry_nome.grid(row=0, column=1, sticky='w', padx=10, pady=5)
+        self.entries = {'nome': entry_nome}
         
         # CRM
         tk.Label(form_frame, text="CRM:").grid(row=1, column=0, sticky='e', padx=10, pady=5)
         entry_crm = tk.Entry(form_frame, width=20)
-        entry_crm.grid(row=1, column=1, sticky='w', pady=5, padx=(0, 10))
+        entry_crm.grid(row=1, column=1, sticky='w', padx=10, pady=5)
         entry_crm.bind('<KeyRelease>', format_crm)
+        self.entries['crm'] = entry_crm
         
         # Especialidade
         tk.Label(form_frame, text="Especialidade:").grid(row=2, column=0, sticky='e', padx=10, pady=5)
         entry_especialidade = tk.Entry(form_frame, width=40)
-        entry_especialidade.grid(row=2, column=1, sticky='w', pady=5, padx=(0, 10))
+        entry_especialidade.grid(row=2, column=1, sticky='w', padx=10, pady=5)
+        self.entries['especialidade'] = entry_especialidade
         
         # Telefone
         tk.Label(form_frame, text="Telefone:").grid(row=3, column=0, sticky='e', padx=10, pady=5)
         entry_telefone = tk.Entry(form_frame, width=20)
-        entry_telefone.grid(row=3, column=1, sticky='w', pady=5, padx=(0, 10))
+        entry_telefone.grid(row=3, column=1, sticky='w', padx=10, pady=5)
         entry_telefone.bind('<KeyRelease>', format_telefone)
+        self.entries['telefone'] = entry_telefone
         
         # E-mail
         tk.Label(form_frame, text="E-mail:").grid(row=4, column=0, sticky='e', padx=10, pady=5)
         entry_email = tk.Entry(form_frame, width=40)
-        entry_email.grid(row=4, column=1, sticky='w', pady=5, padx=(0, 10))
-        
-        # Dicionário para acessar os campos
-        self.entries = {
-            'nome': entry_nome,
-            'crm': entry_crm,
-            'especialidade': entry_especialidade,
-            'telefone': entry_telefone,
-            'email': entry_email
-        }
+        entry_email.grid(row=4, column=1, sticky='w', padx=10, pady=5)
+        self.entries['email'] = entry_email
+
+        # Usuário (dono do CRM)
+        try:
+            from tkinter import ttk
+        except Exception:
+            ttk = None
+        tk.Label(form_frame, text="Usuário (dono do CRM):").grid(row=5, column=0, sticky='e', padx=10, pady=5)
+        if ttk is not None and self.db:
+            try:
+                usuarios = self.db.listar_usuarios() or []
+            except Exception:
+                usuarios = []
+            # Monta opções de exibição "login - nome" para evitar ambiguidade
+            display_list = []
+            display_to_id = {}
+            for u in usuarios:
+                login = str(u.get('login') or '').strip()
+                nome_u = str(u.get('nome') or '').strip()
+                uid = u.get('id')
+                display = f"{login} - {nome_u}" if login else nome_u
+                display_list.append(display)
+                display_to_id[display] = uid
+            self._usuarios_display_to_id = display_to_id
+            combo_usuario = ttk.Combobox(form_frame, values=display_list, state='readonly', width=37)
+            combo_usuario.grid(row=5, column=1, sticky='w', padx=10, pady=5)
+            self.entries['usuario_display'] = combo_usuario
+            # Pré-seleção quando em edição
+            try:
+                if self.medico_atual and self.medico_atual.get('usuario_id'):
+                    alvo_id = self.medico_atual.get('usuario_id')
+                    for disp, uid in display_to_id.items():
+                        if uid == alvo_id:
+                            combo_usuario.set(disp)
+                            break
+            except Exception:
+                pass
+        else:
+            # Fallback sem ttk: apenas um campo de ID numérico
+            entry_usuario_id = tk.Entry(form_frame, width=20)
+            entry_usuario_id.grid(row=5, column=1, sticky='w', padx=10, pady=5)
+            self.entries['usuario_id'] = entry_usuario_id
         
         # Preencher campos se for edição
         if self.medico_atual:
@@ -870,7 +914,8 @@ class CadastroModule(BaseModule):
         
         # Frame para os botões
         botoes_frame = tk.Frame(form_frame)
-        botoes_frame.grid(row=5, column=0, columnspan=2, pady=(20, 0))
+        # Linha 6 para não conflitar com o combobox de usuário (linha 5)
+        botoes_frame.grid(row=6, column=0, columnspan=2, pady=(20, 0))
         
         # Botão Salvar
         btn_salvar = tk.Button(
@@ -926,10 +971,30 @@ class CadastroModule(BaseModule):
             especialidade = self.entries['especialidade'].get().strip()
             telefone = self.entries['telefone'].get().strip()
             email = self.entries['email'].get().strip()
+            # Usuário alvo (dono do CRM)
+            usuario_id = None
+            if 'usuario_display' in self.entries:
+                display = self.entries['usuario_display'].get().strip()
+                usuario_id = (getattr(self, '_usuarios_display_to_id', {}) or {}).get(display)
+            elif 'usuario_id' in self.entries:
+                try:
+                    usuario_id = int(self.entries['usuario_id'].get().strip())
+                except Exception:
+                    usuario_id = None
             
-            # Verificação básica de campos obrigatórios
-            if not nome or not crm:
-                messagebox.showwarning("Atenção", "Os campos Nome e CRM são obrigatórios!")
+            # Verificação básica de campos obrigatórios (Nome, CRM, Telefone, Usuário)
+            faltando = []
+            if not nome:
+                faltando.append("Nome")
+            if not crm:
+                faltando.append("CRM")
+            if not telefone:
+                faltando.append("Telefone")
+            if not usuario_id:
+                faltando.append("Usuário (dono do CRM)")
+            if faltando:
+                msg = "Preencha os campos obrigatórios: " + ", ".join(faltando)
+                messagebox.showwarning("Atenção", msg)
                 return
                 
             # Prepara os dados para salvar
@@ -938,7 +1003,8 @@ class CadastroModule(BaseModule):
                 'crm': crm,
                 'especialidade': especialidade,
                 'telefone': telefone,
-                'email': email
+                'email': email,
+                'usuario_id': usuario_id
             }
             
             # Adiciona o ID se for uma atualização
@@ -950,19 +1016,20 @@ class CadastroModule(BaseModule):
                 try:
                     if funcionario_id:
                         # Atualiza médico existente
-                        if self.db.salvar_medico(dados):
-                            messagebox.showinfo("Sucesso", "Médico atualizado com sucesso!")
+                        ok, msg, _ = self.db.salvar_medico(dados)
+                        if ok:
+                            messagebox.showinfo("Sucesso", msg)
                             self.mostrar_medicos()
                         else:
-                            messagebox.showerror("Erro", "Não foi possível atualizar o médico.")
+                            messagebox.showerror("Erro", msg)
                     else:
                         # Insere novo médico
-                        novo_id = self.db.salvar_medico(dados)
-                        if novo_id:
-                            messagebox.showinfo("Sucesso", "Médico cadastrado com sucesso!")
+                        ok, msg, novo_id = self.db.salvar_medico(dados)
+                        if ok:
+                            messagebox.showinfo("Sucesso", msg)
                             self.mostrar_medicos()
                         else:
-                            messagebox.showerror("Erro", "Não foi possível cadastrar o médico.")
+                            messagebox.showerror("Erro", msg)
                 except Exception as e:
                     messagebox.showerror("Erro", f"Erro ao salvar médico: {str(e)}")
                     import traceback
@@ -1019,8 +1086,13 @@ class CadastroModule(BaseModule):
             {"nome": "🏢 Empresa", "comando": self.mostrar_empresa},
             {"nome": "👥 Usuários", "comando": self.mostrar_usuarios},
             {"nome": "👷 Médicos", "comando": self.mostrar_medicos},
-            {"nome": "👤 Clientes", "comando": self.mostrar_clientes},
-        ]
+            {"nome": "👤 Pacientes", "comando": self.mostrar_pacientes},
+            {"nome": "📝 Modelos", "comando": self.mostrar_tela_modelo},
+            {"nome": "📜 Receitas", "comando": self.mostrar_tela_receitas},
+            {"nome": "⏳ Exames & Consultas", "comando": self.mostrar_tela_exames_consultas},
+            {"nome": "📅 Horários", "comando": self.horario_medico},
+        ] 
+        
     
     def limpar_conteudo(self):
         """Limpa o conteúdo da área de exibição"""
@@ -1063,10 +1135,18 @@ class CadastroModule(BaseModule):
             self.mostrar_usuarios()
         elif acao == 'medicos':
             self.mostrar_medicos()
-        elif acao == 'clientes':
-            self.mostrar_clientes()
+        elif acao == 'pacientes':
+            self.mostrar_pacientes()
+        elif acao == 'modelos':
+            self.mostrar_tela_modelo()
+        elif acao == 'receitas':
+            self.mostrar_tela_receitas()
+        elif acao == 'exames_consultas':
+            self.mostrar_tela_exames_consultas()
+        elif acao == 'horario_medico':
+            self.horario_medico()
         else:
-            self.mostrar_inicio()
+            self.mostrar_inicio()   
             
         return self.frame
     
@@ -1253,7 +1333,7 @@ class CadastroModule(BaseModule):
             sucesso, self.cliente_atual = cliente_controller.buscar_cliente_por_id(cliente_id)
             if not sucesso or not self.cliente_atual:
                 messagebox.showwarning("Aviso", "Não foi possível carregar os dados do cliente.")
-                self.mostrar_clientes()
+                self.mostrar_pacientes()
                 return
         
         # Frame principal
@@ -1323,6 +1403,11 @@ class CadastroModule(BaseModule):
         self.txt_observacoes.grid(row=9, column=1, sticky='w', padx=5, pady=5)
         if self.cliente_atual and 'observacoes' in self.cliente_atual and self.cliente_atual['observacoes'] is not None:
             self.txt_observacoes.insert('1.0', self.cliente_atual['observacoes'])
+        # Corretor ortográfico (opcional)
+        try:
+            self._enable_spellcheck(self.txt_observacoes)
+        except Exception:
+            pass
         
         # Frame para os botões de ação (abaixo dos campos)
         botoes_frame = tk.Frame(form_frame)
@@ -1346,7 +1431,7 @@ class CadastroModule(BaseModule):
         btn_cancelar = tk.Button(
             botoes_frame, 
             text="Cancelar", 
-            command=self.mostrar_clientes,
+            command=self.mostrar_pacientes,
             font=('Arial', 10, 'bold'),
             bg='#f44336',
             fg='white',
@@ -1445,13 +1530,13 @@ class CadastroModule(BaseModule):
                     messagebox.showerror("Erro", "Não foi possível cadastrar o cliente")
                     return
             
-            self.mostrar_clientes()
+            self.mostrar_pacientes()
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao salvar: {str(e)}")
             import traceback
             traceback.print_exc()
     
-    def mostrar_clientes(self):
+    def mostrar_pacientes(self):
         """Mostra a tela de clientes usando a tabela clientes_delivery"""
         self.limpar_conteudo()
         try:
@@ -1613,3 +1698,664 @@ class CadastroModule(BaseModule):
             messagebox.showerror("Erro", f"Erro ao carregar clientes: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def mostrar_tela_receitas(self):
+        """Mostra a tela de gerenciamento de receitas médicas."""
+        # Limpa o frame de conteúdo
+
+        self.nome_receita_var = tk.StringVar()
+
+        for widget in self.conteudo_frame.winfo_children():
+            widget.destroy()
+       
+        # Frame principal
+        main_frame = ttk.Frame(self.conteudo_frame, style='TFrame')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Título
+        titulo_frame = ttk.Frame(main_frame)
+        titulo_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        ttk.Label(
+            titulo_frame,
+            text="Receitas Médicas",
+            font=('Arial', 16, 'bold')
+        ).pack(side=tk.LEFT)
+        
+        # Frame de filtros
+        filtros_frame = ttk.LabelFrame(main_frame, text="Filtros", padding=10)
+        filtros_frame.pack(fill=tk.X, pady=(0, 10))
+ 
+        # Seletor de médico
+        ttk.Label(filtros_frame, text="Médico:").grid(row=0, column=0, padx=5, pady=5, sticky='e')
+        
+        self.medico_var = tk.StringVar()
+        self.medico_cb = ttk.Combobox(
+            filtros_frame,
+            textvariable=self.medico_var,
+            state='readonly',
+            width=50
+        )
+        self.medico_cb.grid(row=0, column=1, padx=5, pady=5, sticky='w')
+        self.medico_cb.bind('<<ComboboxSelected>>', lambda e: self._carregar_receitas())
+     
+        
+        # Frame principal (lista + visualização)
+        conteudo_frame = ttk.Frame(main_frame)
+        conteudo_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Frame da lista de receitas
+        lista_frame = ttk.LabelFrame(conteudo_frame, text="Receitas", padding=10)
+        lista_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+        
+        # Botões de ação
+        botoes_frame = ttk.Frame(lista_frame)
+        botoes_frame.pack(fill=tk.X, pady=(0, 10))
+    
+        # Botão Novo
+        self.btn_novo = tk.Button(
+            botoes_frame,
+            text="Novo",
+            command=self._criar_receita,
+            bg="#4CAF50",  # Verde
+            fg="white",
+            bd=0,
+            padx=10,
+            pady=5
+        )
+        self.btn_novo.pack(side=tk.LEFT, padx=2)
+        
+        # Botão Editar
+        self.btn_editar = tk.Button(
+            botoes_frame,
+            text="Editar",
+            command=self._editar_receita,
+            bg="#4a6fa5",  # Azul
+            fg="white",
+            bd=0,
+            padx=10,
+            pady=5,
+            state=tk.DISABLED
+        )
+        self.btn_editar.pack(side=tk.LEFT, padx=2)
+        
+        # Botão Excluir
+        self.btn_excluir = tk.Button(
+            botoes_frame,
+            text="Excluir",
+            command=self._excluir_receita,
+            bg="#f44336",  # Vermelho
+            fg="white",
+            bd=0,
+            padx=10,
+            pady=5,
+            state=tk.DISABLED
+        )
+        self.btn_excluir.pack(side=tk.LEFT, padx=2)
+        
+        # Lista de receitas
+        self.lista_receitas = ttk.Treeview(
+            lista_frame,
+            columns=('id', 'nome', 'data_criacao'),
+            show='headings',
+            selectmode='browse',
+            height=15
+        )
+        self.lista_receitas.heading('id', text='ID')
+        self.lista_receitas.heading('nome', text='Nome')
+        self.lista_receitas.heading('data_criacao', text='Data de Criação')
+        
+        # Configuração das colunas
+        self.lista_receitas.column('id', width=50, anchor='center')
+        self.lista_receitas.column('nome', width=200)
+        self.lista_receitas.column('data_criacao', width=150)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(
+            lista_frame,
+            orient=tk.VERTICAL,
+            command=self.lista_receitas.yview
+        )
+        self.lista_receitas.configure(yscrollcommand=scrollbar.set)
+        
+        # Empacota a lista e a scrollbar
+        self.lista_receitas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Frame de visualização
+        vis_frame = ttk.LabelFrame(conteudo_frame, text="Visualização", padding=10)
+        vis_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+   
+        
+        # Nome da receita
+        ttk.Label(vis_frame, text="Nome:", font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 5))
+        self.nome_receita_var = tk.StringVar()
+        self.entry_nome = ttk.Entry(vis_frame, textvariable=self.nome_receita_var, state='readonly')
+        self.entry_nome.pack(fill=tk.X, pady=(0, 10))
+      
+        
+        # Texto da receita
+        ttk.Label(vis_frame, text="Receita:", font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 5))
+        # Barra rápida para fonte (6-8) - insere/atualiza <<font:N>> na 1ª linha do texto
+        def _aplicar_fonte_receita(n: int):
+            try:
+                txt = getattr(self, 'texto_receita', None)
+                if not txt:
+                    return
+                conteudo = txt.get('1.0', 'end-1c')
+                linhas = conteudo.splitlines()
+                nova_dir = f"<<font:{n}>>"
+                if not linhas:
+                    txt.insert('1.0', nova_dir + "\n")
+                    return
+                primeira = linhas[0].strip()
+                if primeira.lower().startswith('<<font:') and primeira.endswith('>>'):
+                    linhas[0] = nova_dir
+                    novo = "\n".join(linhas)
+                    txt.delete('1.0', tk.END)
+                    txt.insert('1.0', novo)
+                else:
+                    txt.insert('1.0', nova_dir + "\n")
+                # Ajusta a fonte na tela para pré-visualização imediata
+                try:
+                    tam = max(6, min(12, int(n)))
+                    txt.configure(font=('Arial', tam))
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        fonte_bar = tk.Frame(vis_frame, bg='#ffffff')
+        fonte_bar.pack(fill=tk.X, pady=(0, 6))
+        tk.Label(fonte_bar, text="Fonte:", bg='#ffffff', fg='#333333', font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 6))
+        for n in (6, 7, 8):
+            tk.Button(fonte_bar, text=str(n), bg="#495057", fg="white", relief=tk.FLAT, cursor='hand2',
+                      command=lambda v=n: _aplicar_fonte_receita(v)).pack(side=tk.LEFT, padx=2)
+
+        # Frame para o texto com barra de rolagem
+        text_frame = ttk.Frame(vis_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Barra de rolagem vertical
+        scrollbar = ttk.Scrollbar(text_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Widget Text
+        self.texto_receita = tk.Text(
+            text_frame,
+            wrap=tk.WORD,
+            height=15,
+            yscrollcommand=scrollbar.set
+        )
+        self.texto_receita.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Corretor ortográfico (opcional)
+        try:
+            self._enable_spellcheck(self.texto_receita)
+        except Exception:
+            pass
+
+        # Configurar a scrollbar
+        scrollbar.config(command=self.texto_receita.yview)
+
+        # Frame de botões de ação
+        botoes_acao_frame = ttk.Frame(vis_frame)
+        botoes_acao_frame.pack(fill=tk.X, pady=(10, 0))
+        
+                
+        # Frame de botões de ação
+        botoes_acao_frame = ttk.Frame(vis_frame)
+        botoes_acao_frame.pack(fill=tk.X, pady=(10, 0))
+   
+        
+        # Botão Salvar
+        self.btn_salvar = tk.Button(
+            botoes_acao_frame,
+            text="Salvar",
+            command=self._salvar_receita,
+            bg="#4CAF50",  # Verde
+            fg="white",
+            bd=0,
+            padx=15,
+            pady=5,
+            state=tk.DISABLED
+        )
+        self.btn_salvar.pack(side=tk.RIGHT, padx=5)
+     
+        
+        # Configura o bind da lista de receitas
+        self.lista_receitas.bind('<<TreeviewSelect>>', self._on_select_receita)
+    
+        
+        # Chama carregar medicos
+    
+        self._carregar_medicos_receitas()
+    
+    def _carregar_medicos_receitas(self):
+        """Carrega a lista de médicos no combobox de receitas."""
+        try:
+            
+            
+            # Inicializa o dicionário de médicos
+            self.medicos_receita_dict = {}
+            
+            # Limpa o combobox
+            if hasattr(self, 'medico_cb'):
+                self.medico_cb.set('')  # Limpa a seleção atual
+                self.medico_cb['values'] = []
+            
+            # Obtém a lista de médicos do banco de dados
+            medicos = self.db.listar_medicos()
+            
+            
+            if not medicos:
+                print("Nenhum médico encontrado no banco de dados")
+                messagebox.showwarning("Aviso", "Nenhum médico cadastrado.")
+                return []
+                    
+            # Preenche o dicionário e a lista de valores
+            valores = []
+       
+            for i, medico in enumerate(medicos, 1):
+                medico_id = medico.get('id')
+                medico_nome = medico.get('nome')
+                if medico_id and medico_nome:
+             
+                    self.medicos_receita_dict[medico_nome] = medico_id
+                    valores.append(medico_nome)
+            
+          
+            
+            # Atualiza o combobox sem selecionar nenhum item
+            if hasattr(self, 'medico_cb'):
+                self.medico_cb['values'] = valores
+                # Não seleciona nenhum médico por padrão
+                self.medico_cb.set('Selecione um médico...')
+                
+            return valores
+                
+        except Exception as e:
+            print(f"Erro ao carregar médicos: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", f"Erro ao carregar lista de médicos: {str(e)}")
+            return []
+
+    def listar_receitas(self):
+        """Lista as receitas cadastradas."""
+        # Limpa a lista atual
+        for widget in self.lista_receitas_frame.winfo_children():
+            widget.destroy()
+        
+        # Obtém as receitas do banco de dados
+        receitas = self.db.listar_receitas_por_medico(1)  # Substitua 1 pelo ID do médico logado
+        
+        if not receitas:
+            tk.Label(
+                self.lista_receitas_frame,
+                text="Nenhuma receita cadastrada.",
+                bg='#f0f2f5'
+            ).pack(pady=20)
+            return
+        
+        # Cabeçalho
+        cabecalho = tk.Frame(self.lista_receitas_frame, bg='#e1e5eb')
+        cabecalho.pack(fill='x', pady=(0, 10))
+        
+        tk.Label(
+            cabecalho, text="Nome", width=40, bg='#e1e5eb', font=('Arial', 10, 'bold')
+        ).pack(side='left', padx=5, pady=5)
+        
+        tk.Label(
+            cabecalho, text="Data", width=20, bg='#e1e5eb', font=('Arial', 10, 'bold')
+        ).pack(side='left', padx=5, pady=5)
+        
+        # Lista de receitas
+        for receita in receitas:
+            frame = tk.Frame(self.lista_receitas_frame, bg='white', bd=1, relief='solid')
+            frame.pack(fill='x', pady=2)
+            
+            # Nome da receita
+            tk.Label(
+                frame, 
+                text=receita['nome'], 
+                bg='white',
+                width=40,
+                anchor='w'
+            ).pack(side='left', padx=5, pady=5)
+            
+            # Data de criação
+            data_formatada = receita['criado_em'].strftime('%d/%m/%Y %H:%M')
+            tk.Label(
+                frame, 
+                text=data_formatada, 
+                bg='white',
+                width=20
+            ).pack(side='left', padx=5, pady=5)
+            
+            # Botão de visualizar
+            btn_visualizar = ttk.Button(
+                frame,
+                text="Visualizar",
+                command=lambda r=receita: self.visualizar_receita(r['id'])
+            )
+            btn_visualizar.pack(side='right', padx=5)
+
+    def _criar_receita(self):
+        """Prepara a interface para criar uma nova receita."""
+        self.modo_edicao = 'novo'
+        self.receita_atual = None
+        
+        # Habilita os campos para edição
+        self.entry_nome.config(state='normal')
+        self.texto_receita.config(state='normal')
+        
+        # Limpa os campos
+        self.nome_receita_var.set('')
+        self.texto_receita.delete(1.0, tk.END)
+        
+        # Habilita/desabilita botões
+        self.btn_novo.config(state=tk.DISABLED)
+        self.btn_editar.config(state=tk.DISABLED)
+        self.btn_excluir.config(state=tk.DISABLED)
+        self.btn_salvar.config(state=tk.NORMAL)
+        
+        # Foca no campo de nome
+        self.entry_nome.focus_set()
+
+    def _editar_receita(self):
+        """Prepara a interface para editar a receita selecionada."""
+        selecionado = self.lista_receitas.selection()
+        if not selecionado:
+            return
+            
+        self.modo_edicao = 'editar'
+        
+        # Habilita os campos para edição
+        self.entry_nome.config(state='normal')
+        self.texto_receita.config(state='normal')
+        # Força checagem do corretor ao entrar em modo de edição
+        try:
+            self._spellcheck_now(self.texto_receita)
+        except Exception:
+            pass
+        
+        # Habilita/desabilita botões
+        self.btn_novo.config(state=tk.DISABLED)
+        self.btn_editar.config(state=tk.DISABLED)
+        self.btn_excluir.config(state=tk.DISABLED)
+        self.btn_salvar.config(state=tk.NORMAL)
+        
+        # Foca no campo de nome
+        self.entry_nome.focus_set()
+
+    def _salvar_receita(self):
+        """Salva uma receita no banco de dados."""
+        try:
+      
+            
+            # Obtém os dados do formulário
+            medico_nome = self.medico_cb.get()
+            nome = self.nome_receita_var.get().strip()
+            texto = self.texto_receita.get("1.0", tk.END).strip()
+            
+            # Validação básica
+            if not medico_nome or not nome or not texto:
+                messagebox.showwarning("Aviso", "Preencha todos os campos obrigatórios.")
+                return
+                
+            # Obtém o ID do médico
+            if not hasattr(self, 'medicos_receita_dict') or not self.medicos_receita_dict:
+             
+                if not self._carregar_medicos_receitas():
+                    messagebox.showerror("Erro", "Não foi possível carregar os médicos.")
+                    return
+                    
+            medico_id = self.medicos_receita_dict.get(medico_nome)
+            if not medico_id:
+                messagebox.showerror("Erro", "Médico não encontrado.")
+                return
+            
+            # Verifica se é uma nova receita ou atualização
+            if hasattr(self, 'receita_atual') and self.receita_atual:
+                # Atualização de receita existente
+                receita_id = self.receita_atual['id']
+    
+                
+                # Prepara os dados para atualização
+                dados_atualizacao = {
+                    'nome': nome,
+                    'texto': texto,
+                    'medico_id': medico_id
+                }
+                
+                # Remove campos vazios
+                dados_atualizacao = {k: v for k, v in dados_atualizacao.items() if v is not None}
+                
+                # Chama o método de atualização
+                if self.db.atualizar_receita(receita_id, dados_atualizacao):
+    
+                    messagebox.showinfo("Sucesso", "Receita atualizada com sucesso!")
+                else:
+                    raise Exception("Falha ao atualizar a receita no banco de dados")
+            else:
+              
+                
+                # Chama o método de criação do banco de dados
+                receita_id = self.db.criar_receita(medico_id, nome, texto)
+                
+                if receita_id:
+                  
+                    messagebox.showinfo("Sucesso", "Receita criada com sucesso!")
+                else:
+                    raise Exception("Falha ao criar a receita no banco de dados")
+            
+            # Atualiza a lista de receitas
+            self._carregar_receitas()
+            
+            # Limpa os campos
+            self._limpar_campos()
+            
+        except Exception as e:
+            print(f"Erro ao salvar receita: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", f"Erro ao salvar receita: {str(e)}")
+    
+    def _excluir_receita(self):
+        """Exclui a receita selecionada."""
+        selecionado = self.lista_receitas.selection()
+        if not selecionado:
+            return
+            
+        if not messagebox.askyesno("Confirmar", "Tem certeza que deseja excluir esta receita?"):
+            return
+            
+        try:
+            receita_id = self.lista_receitas.item(selecionado[0])['values'][0]
+            
+            if self.db.excluir_receita(receita_id):
+                messagebox.showinfo("Sucesso", "Receita excluída com sucesso!")
+                self._carregar_receitas()
+                self._limpar_campos()
+            else:
+                messagebox.showerror("Erro", "Não foi possível excluir a receita.")
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao excluir receita: {str(e)}")
+
+    def _limpar_campos(self):
+        """Limpa todos os campos do formulário."""
+        self.nome_receita_var.set('')
+        self.texto_receita.config(state='normal')
+        self.texto_receita.delete(1.0, tk.END)
+        self.texto_receita.config(state='disabled')
+        
+        # Desabilita os campos
+        self.entry_nome.config(state='readonly')
+        
+        # Reseta os botões
+        self.btn_novo.config(state=tk.NORMAL)
+        self.btn_editar.config(state=tk.DISABLED)
+        self.btn_excluir.config(state=tk.DISABLED)
+        self.btn_salvar.config(state=tk.DISABLED)
+        
+        # Remove a seleção da lista
+        for item in self.lista_receitas.selection():
+            self.lista_receitas.selection_remove(item)
+
+    def _on_select_receita(self, event):
+        """Chamado quando uma receita é selecionada na lista."""
+        selecionado = self.lista_receitas.selection()
+        
+        if selecionado:
+            # Habilita os botões de editar e excluir
+            self.btn_editar.config(state=tk.NORMAL)
+            self.btn_excluir.config(state=tk.NORMAL)
+            
+            # Carrega os dados da receita selecionada
+            receita_id = self.lista_receitas.item(selecionado[0])['values'][0]
+            receita = self.db.obter_receita_por_id(receita_id)
+            
+            if receita:
+                self.receita_atual = receita
+                self.nome_receita_var.set(receita['nome'])
+                
+                self.texto_receita.config(state='normal')
+                self.texto_receita.delete(1.0, tk.END)
+                self.texto_receita.insert(tk.END, receita['texto'])
+                # Força checagem do corretor após carregar o texto
+                try:
+                    self._spellcheck_now(self.texto_receita)
+                except Exception:
+                    pass
+                self.texto_receita.config(state='disabled')
+        else:
+            self._limpar_campos()
+
+    def _carregar_receitas(self, event=None):
+        """Carrega as receitas do médico selecionado."""
+        try:
+            # Verifica se o dicionário de médicos está carregado
+            if not hasattr(self, 'medicos_receita_dict') or not self.medicos_receita_dict:
+                if not self._carregar_medicos_receitas():
+                    return
+                        
+            # Obtém o médico selecionado
+            medico_nome = self.medico_cb.get()
+            if not medico_nome:
+              
+                return
+                
+            # Obtém o ID do médico
+            medico_id = self.medicos_receita_dict.get(medico_nome)
+            if not medico_id:
+             
+                return
+                
+         
+            # Limpa a lista atual
+            for item in self.lista_receitas.get_children():
+                self.lista_receitas.delete(item)
+            
+            # Obtém as receitas do banco de dados
+            receitas = self.db.listar_receitas_por_medico(medico_id)
+      
+            
+            # Preenche a lista de receitas
+            for i, receita in enumerate(receitas, 1):
+                try:
+                    # Formata os dados
+                    receita_id = receita.get('id', '')
+                    nome = receita.get('nome', 'Sem nome')
+                    data = receita.get('data', '')
+                    
+                    # Formata a data se existir
+                    data_formatada = data.strftime('%d/%m/%Y %H:%M') if data else 'Data não informada'
+                    
+                   
+                    
+                    # Adiciona à lista
+                    self.lista_receitas.insert('', 'end', values=(
+                        receita_id,
+                        nome,
+                        data_formatada
+                    ))
+                    
+                except Exception as e:
+                    print(f"Erro ao processar receita {i}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+            
+           
+                    
+        except Exception as e:
+            print(f"\n!!! ERRO EM _carregar_receitas: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", f"Erro ao carregar receitas: {str(e)}")
+
+    def mostrar_tela_exames_consultas(self):
+        """Mostra a tela de gerenciamento de exames e consultas"""
+        self.limpar_conteudo()
+        
+        try:
+            # Importa o módulo de exames e consultas
+            from .exames_consultas_module import ExamesConsultasModule
+            
+            # Cria uma instância do módulo de exames e consultas
+            exames_consultas_module = ExamesConsultasModule(
+                parent=self.conteudo_frame,
+                controller=self.db,
+                db=self.db
+            )
+            
+            # Empacota o frame para preencher o espaço disponível
+            exames_consultas_module.frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível carregar a tela de exames e consultas: {str(e)}")
+            print(f"Erro ao carregar exames e consultas: {str(e)}")
+            
+    def mostrar_tela_modelo(self):
+        """Mostra a tela de gerenciamento de modelos de prontuário"""
+        self.limpar_conteudo()
+        
+        try:
+            # Cria uma instância do módulo de modelos
+            modelo_module = ModeloProntuarioModule(
+                parent=self.conteudo_frame,
+                controller=self.controller,
+                db_connection=self.db.db if self.db else None
+            )
+            
+            # Empacota o frame do módulo para preencher o espaço disponível
+            modelo_module.frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            # Armazena a referência para evitar coleta de lixo
+            self.modelo_module = modelo_module
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", f"Não foi possível carregar a tela de modelos: {str(e)}")
+
+    def horario_medico(self):
+        """Mostra a tela de gerenciamento de horários dos médicos"""
+        self.limpar_conteudo()
+        
+        try:
+            # Cria uma instância do módulo de horários
+            horario_module = HorarioDisponivelModule(
+                parent=self.conteudo_frame,
+                db_connection=self.db.db if hasattr(self.db, 'db') else None
+            )
+            
+            # Empacota o frame do módulo para preencher o espaço disponível
+            horario_module.frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            # Armazena a referência para evitar coleta de lixo
+            self.horario_module = horario_module
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", f"Não foi possível carregar a tela de horários: {str(e)}")

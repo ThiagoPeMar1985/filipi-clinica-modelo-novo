@@ -188,3 +188,56 @@ class AgendaController:
         finally:
             if 'cursor' in locals():
                 cursor.close()
+
+    def buscar_exames_por_medico(self, medico_id):
+        """Busca os exames/consultas de um médico específico"""
+        try:
+            cursor = self.db_connection.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT id, nome, tempo 
+                FROM exames_consultas 
+                WHERE medico_id = %s
+                ORDER BY nome
+            """, (medico_id,))
+            
+            return cursor.fetchall()
+            
+        except Exception as e:
+            raise Exception(f"Erro ao buscar exames do médico: {str(e)}")
+        finally:
+            if cursor:
+                cursor.close()
+    
+    def _carregar_exames_medico(self, medico_id):
+        """Carrega os exames/consultas de um médico"""
+        try:
+            exames = self.agenda_controller.buscar_exames_por_medico(medico_id)
+            
+            # Armazenar os exames em um dicionário para acesso rápido
+            self.exames_medico = {exame['id']: exame for exame in exames}
+            
+            # Retornar a lista de exames formatada para exibição
+            return [{'id': e['id'], 'nome': e['nome'], 'tempo': e['tempo']} 
+                for e in exames]
+                
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao carregar exames: {str(e)}")
+            return []
+    
+    def buscar_horarios_ocupados(self, medico_id, data):
+        """Busca os horários ocupados de um médico em uma data específica"""
+        try:
+            cursor = self.db_connection.cursor(dictionary=True)
+            query = """
+                SELECT hora, tipo_atendimento 
+                FROM consultas 
+                WHERE medico_id = %s AND data = %s
+                ORDER BY hora
+            """
+            cursor.execute(query, (medico_id, data))
+            return cursor.fetchall()
+        except Exception as e:
+            raise Exception(f"Erro ao buscar horários ocupados: {str(e)}")
+        finally:
+            if 'cursor' in locals():
+                cursor.close()

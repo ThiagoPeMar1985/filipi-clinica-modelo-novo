@@ -11,61 +11,44 @@ class GerenciadorPermissoesDB:
         self.db = db if db is not None else get_db()
     
     def verificar_permissao(self, usuario_id: int, modulo: str, acao: Optional[str] = None) -> bool:
+
         try:
-           
-            
             # Mapeamento de módulos para suas chaves no banco
             modulos_map = {
                 'cadastro': 'cadastro',
-                'vendas': 'vendas',
-                'mesas': 'mesas',
+                'atendimento': 'atendimento',
                 'financeiro': 'financeiro',
-                'estoque': 'estoque',
                 'configuracao': 'configuracao'
             }
             
             # Mapeamento de ações para suas chaves no banco
             acoes_map = {
-                # Módulo Cadastro
-                'mostrar_empresa': 'empresa',
-                'mostrar_usuarios': 'usuarios',
-                'mostrar_funcionarios': 'funcionarios',
-                'mostrar_clientes': 'clientes',
-                'mostrar_produtos': 'produtos',
-                'mostrar_fornecedores': 'fornecedores',
-                'mostrar_opcoes': 'opcoes',
-                
-                # Módulo Vendas
-                'venda_avulsa': 'venda_avulsa',
-                'delivery': 'delivery',
-                'status_pedidos': 'status_pedidos',
-                
-                # Módulo Mesas
-                'visualizar': 'visualizar_mesas',
-                'editar': 'editar_mesas',
-                'transferir': 'transferir_mesas',
-                'unir': 'unir_mesas',
-                
-                # Módulo Financeiro
+                # Módulo Cadastro (ID 1)
+                'empresa': 'empresa',
+                'usuarios': 'usuarios',
+                'medicos': 'medicos',
+                'pacientes': 'pacientes',  
+                'modelo': 'modelo',  
+                'receita': 'receita',  
+                'exames_consultas': 'exames_consultas',
+                # Módulo Atendimento (ID 2)
+                'agenda': 'agenda',
+                'area_medica': 'area_medica',
+                'exames': 'exames', 
+                # Módulo Financeiro (ID 3)
                 'caixa': 'caixa',
-                'contas': 'contas',
+                'contas_pagar': 'contas_pagar',
+                'contas_receber': 'contas_receber',
                 'relatorios': 'relatorios',
-                
-                # Módulo Estoque
-                'adicionar_estoque': 'adicionar_produtos',
-                'alterar_estoque': 'alterar_estoque',
-                'avisos': 'avisos',
-                'criar_receita': 'criar_receita',
-                
-                # Módulo Configuração
+                # Módulo Configuração (ID 4)
                 'nfe': 'nfe',
                 'backup': 'backup',
                 'impressoras': 'impressoras',
-                'banco_dados': 'banco_de_dados',
-                'integracoes': 'integracoes',
+                'banco_dados': 'banco_dados',
+                'integracao': 'integracao',  
                 'seguranca': 'seguranca'
             }
-            
+
             # Obtém as chaves normalizadas
             modulo_chave = modulos_map.get(modulo, modulo)
             acao_chave = acoes_map.get(acao, acao) if acao else None
@@ -85,7 +68,6 @@ class GerenciadorPermissoesDB:
                 return False
                 
             perfil_id = resultado['perfil_id']
-            
             
             # Se não há ação, verifica permissão no módulo
             if not acao_chave:
@@ -136,7 +118,7 @@ class GerenciadorPermissoesDB:
         except Exception as e:
             print(f"[ERRO] Erro ao verificar permissão de ação: {e}")
             return False
-        
+    
     def obter_todas_permissoes(self) -> Dict[str, Any]:
         """
         Obtém todas as permissões do sistema com os valores para cada perfil

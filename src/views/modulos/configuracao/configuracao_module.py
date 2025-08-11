@@ -1450,7 +1450,7 @@ class ConfiguracaoModule(BaseModule):
             # Cabeçalho Usuário Master (centralizado)
             tk.Label(
                 header_content,
-                text="Usuário  Master",
+                text="Medico",
                 font=('Arial', 11, 'bold'),
                 bg='white',
                 fg='#000000',
@@ -1461,7 +1461,7 @@ class ConfiguracaoModule(BaseModule):
             # Cabeçalho Usuário Básico (centralizado)
             tk.Label(
                 header_content,
-                text="Usuário Básico",
+                text="Funcionario",
                 font=('Arial', 11, 'bold'),
                 bg='white',
                 fg='#000000',
@@ -1607,11 +1607,9 @@ class ConfiguracaoModule(BaseModule):
             
             # Nomes corretos dos módulos na interface
             nomes_modulos = {
-                'cadastro': 'Cadastro',
-                'vendas': 'Vendas',
-                'mesas': 'Mesas',
+                'cadastro': 'Cadastro',  
+                'atendimento': 'Atendimento',
                 'financeiro': 'Financeiro',
-                'estoque': 'Estoque',
                 'configuracao': 'Configuração'
             }
             

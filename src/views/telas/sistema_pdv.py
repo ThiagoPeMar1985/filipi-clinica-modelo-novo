@@ -17,6 +17,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from views.modulos.cadastro.cadastro_module import CadastroModule
+from src.controllers.permission_controller import PermissionController
+
 
 class SistemaPDV:
     def __init__(self, root, usuario):
@@ -25,8 +27,8 @@ class SistemaPDV:
         self.root.title("Clinica Medica")
         
         # Configura o tamanho da janela
-        largura = 1780
-        altura = 1280
+        largura = 1920
+        altura = 1080
         
         self.db_connection = getattr(usuario, 'db_connection', None)  
 
@@ -68,6 +70,9 @@ class SistemaPDV:
         
         # Criar layout principal
         self.criar_layout()
+
+        # Inicializa o controlador de permissões
+        self.permission_controller = PermissionController()
         
         # Inicializa o controlador de configurações
         try:
@@ -248,8 +253,11 @@ class SistemaPDV:
             {"nome": "🏢 Empresa", "metodo": "empresa"},
             {"nome": "👥 Usuários", "metodo": "usuarios"},
             {"nome": "👨 Médicos", "metodo": "medicos"},
-            {"nome": "👤 Pacientes", "metodo": "clientes"},
-            {"nome": "📝 Modelos", "metodo": "modelos_prontuario"},
+            {"nome": "👤 Pacientes", "metodo": "pacientes"},
+            {"nome": "📝 Modelos", "metodo": "modelos"},
+            {"nome": "📜 Receitas", "metodo": "receitas"},
+            {"nome": "⏳ Exames & Consultas", "metodo": "exames_consultas"},
+            {"nome": "📅 Horário Médico", "metodo": "horario_medico"},
         ]
 
     def _get_opcoes_configuracao(self):
@@ -267,7 +275,7 @@ class SistemaPDV:
         """Retorna as opções do módulo de atendimento"""
         return [
             {"nome": "📅 Agenda", "metodo": "agenda"},
-            {"nome": "📋 Prontuário", "metodo": "prontuario"},
+            {"nome": "📋 Consultas", "metodo": "consultas"},
             {"nome": "🏥 Exames", "metodo": "exames"},
         ]
 
@@ -280,7 +288,6 @@ class SistemaPDV:
             {"nome": "📊 Relatórios", "metodo": "relatorios"}
         ]
         
-    
     def configurar_modulos(self):
         """Configura os módulos do sistema"""
         # Obtém as opções dos módulos
@@ -371,6 +378,16 @@ class SistemaPDV:
         
         # Adiciona as opções do módulo na barra lateral
         for opcao in modulo.get("opcoes", []):
+            # Verifica se o usuário tem permissão para ver esta opção
+            tem_permissao = self.permission_controller.verificar_permissao(
+                self.usuario,
+                modulo_id,  # módulo
+                opcao.get("acao")  # ação
+            )
+        
+            # Se não tiver permissão, pula para a próxima opção
+            if not tem_permissao:
+                continue
             # Cria um Label que funcionará como botão
             lbl = tk.Label(
                 self.sidebar_options,
@@ -424,28 +441,7 @@ class SistemaPDV:
                     modulo.executar_acao(metodo_nome)
                 else:
                     modulo.mostrar_inicio()
-                    
-            elif modulo_id == 'cadastro' and metodo_nome == 'modelos_prontuario':
-                # Cria um frame para o módulo que ocupa todo o espaço
-                modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
-                modulo_frame.pack(fill='both', expand=True)
-                
-                # Importa o módulo de modelos de prontuário
-                from views.modulos.cadastro.modelo_prontuario_module import ModeloProntuarioModule
-                from src.db.database import db
-                
-                # Obtém a conexão com o banco de dados
-                db_connection = db.get_connection()
-                
-                # Cria a instância do módulo
-                modulo = ModeloProntuarioModule(modulo_frame, self, db_connection)
-                
-                # Configura o frame do módulo para ocupar todo o espaço
-                modulo.frame.pack(fill='both', expand=True, padx=10, pady=10)
-                
-                # Chama o método para mostrar o conteúdo inicial
-                if hasattr(modulo, 'mostrar_inicio'):
-                    modulo.mostrar_inicio()
+    
                     
             elif modulo_id == 'cadastro':
                 # Cria um frame para o módulo que ocupa todo o espaço

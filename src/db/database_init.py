@@ -53,11 +53,14 @@ def criar_tabelas(connection):
             nome TEXT NOT NULL,
             especialidade TEXT,
             crm VARCHAR(20) UNIQUE,
+            usuario_id INTEGER,
             telefone VARCHAR(20),
             email VARCHAR(255),
             data_cadastro DATETIME DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_medico_crm (crm(20)),
-            INDEX idx_medico_nome (nome(100))
+            INDEX idx_medico_nome (nome(100)),
+            INDEX idx_medico_usuario (usuario_id),
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
 
@@ -132,6 +135,52 @@ def criar_tabelas(connection):
             INDEX idx_prontuario_data (data)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
+
+        # Tabela: horarios_disponiveis
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS horarios_disponiveis (
+            id INTEGER PRIMARY KEY AUTO_INCREMENT,
+            medico_id INTEGER NOT NULL,
+            dia_semana TINYINT NOT NULL COMMENT '0=Segunda, 1=Terça, ..., 6=Domingo',
+            hora_inicio TIME NOT NULL,
+            hora_fim TIME NOT NULL,
+            ativo BOOLEAN DEFAULT TRUE,
+            data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+            data_atualizacao DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (medico_id) REFERENCES medicos(id) ON DELETE CASCADE,
+            UNIQUE KEY unq_medico_dia_horario (medico_id, dia_semana, hora_inicio, hora_fim),
+            INDEX idx_horario_medico (medico_id),
+            INDEX idx_horario_dia (dia_semana)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        """)
+
+        # Migração segura: garantir coluna usuario_id em medicos para instalações antigas
+        try:
+            cursor.execute("SHOW COLUMNS FROM medicos LIKE 'usuario_id';")
+            col = cursor.fetchone()
+            if not col:
+                # Adiciona a coluna, índice e FK de forma idempotente
+                try:
+                    cursor.execute("ALTER TABLE medicos ADD COLUMN usuario_id INTEGER NULL;")
+                except Error:
+                    pass
+                try:
+                    cursor.execute("CREATE INDEX idx_medico_usuario ON medicos (usuario_id);")
+                except Error:
+                    pass
+                # Tenta criar a constraint de FK (pode falhar se já existir)
+                try:
+                    cursor.execute("""
+                        ALTER TABLE medicos
+                        ADD CONSTRAINT fk_medicos_usuario
+                        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                        ON DELETE SET NULL
+                    """)
+                except Error:
+                    pass
+        except Error:
+            # Se SHOW COLUMNS falhar por algum motivo, ignora migração
+            pass
 
         connection.commit()
         print("Tabelas criadas com sucesso!")

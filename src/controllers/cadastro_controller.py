@@ -14,7 +14,6 @@ class CadastroController:
         """Define a conexão com o banco de dados."""
         self.db = db_connection
     
-    # ===== MÉTODOS PARA MÉDICOS =====
     
     def obter_medico_por_id(self, medico_id: int) -> Optional[Dict[str, Any]]:
         """Obtém um médico pelo ID."""
@@ -65,7 +64,7 @@ class CadastroController:
             cursor = self.db.cursor()
             
             # Validações
-            campos_obrigatorios = ['nome', 'especialidade', 'crm', 'telefone']
+            campos_obrigatorios = ['nome', 'especialidade', 'crm', 'telefone', 'usuario_id']
             for campo in campos_obrigatorios:
                 if not str(dados.get(campo, '')).strip():
                     return False, f"O campo {campo} é obrigatório"
@@ -75,36 +74,41 @@ class CadastroController:
             crm = ''.join(filter(str.isdigit, str(dados['crm'])))
             telefone = ''.join(filter(str.isdigit, str(dados['telefone'])))
             email = str(dados.get('email', '')).strip() or None
+            try:
+                usuario_id = int(dados.get('usuario_id')) if dados.get('usuario_id') is not None else None
+            except Exception:
+                usuario_id = None
             
             if 'id' in dados and dados['id']:
-                # Atualização
+                # Atualização (sem coluna inexistente 'data_atualizacao')
                 query = """
                     UPDATE medicos 
                     SET nome=%s, especialidade=%s, crm=%s, 
-                        telefone=%s, email=%s, data_atualizacao=NOW()
+                        telefone=%s, email=%s, usuario_id=%s
                     WHERE id=%s
                 """
-                valores = (nome, dados['especialidade'], crm, telefone, email, dados['id'])
+                valores = (nome, dados['especialidade'], crm, telefone, email, usuario_id, dados['id'])
             else:
                 # Inserção
                 query = """
                     INSERT INTO medicos 
-                    (nome, especialidade, crm, telefone, email, data_cadastro)
-                    VALUES (%s, %s, %s, %s, %s, NOW())
+                    (nome, especialidade, crm, telefone, email, usuario_id, data_cadastro)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
                 """
-                valores = (nome, dados['especialidade'], crm, telefone, email)
+                valores = (nome, dados['especialidade'], crm, telefone, email, usuario_id)
             
             cursor.execute(query, valores)
             self.db.commit()
             
             if 'id' not in dados or not dados['id']:
-                return True, ("Médico cadastrado com sucesso!", cursor.lastrowid)
-            return True, "Médico atualizado com sucesso!"
+                # Padroniza retorno: (ok, mensagem, lastrowid)
+                return True, "Médico cadastrado com sucesso!", cursor.lastrowid
+            return True, "Médico atualizado com sucesso!", None
                 
         except Exception as e:
             self.db.rollback()
             print(f"Erro ao salvar médico: {e}")
-            return False, f"Erro ao salvar médico: {str(e)}"
+            return False, f"Erro ao salvar médico: {str(e)}", None
 
     def obter_usuario_por_id(self, usuario_id: int) -> Optional[Dict[str, Any]]:
         """Obtém um usuário pelo ID."""
@@ -196,8 +200,8 @@ class CadastroController:
                 # Inserção
                 query = """
                     INSERT INTO usuarios 
-                    (nome, login, senha, nivel, telefone, data_cadastro)
-                    VALUES (%s, %s, %s, %s, %s, NOW())
+                    (nome, login, senha, nivel, telefone)
+                    VALUES (%s, %s, %s, %s, %s)
                 """
                 valores = (nome, login, senha, nivel, telefone)
             
@@ -298,3 +302,261 @@ class CadastroController:
         except Exception as e:
             self.db.rollback()
             return False, f"Erro ao salvar dados da empresa: {str(e)}"
+
+    def criar_receita(self, medico_id: int, nome: str, texto: str) -> Optional[int]:
+        """Cria uma nova receita no banco de dados.
+        
+        Args:
+            medico_id: ID do médico que está criando a receita
+            nome: Nome/título da receita
+            texto: Conteúdo da receita
+            
+        Returns:
+            int: ID da receita criada ou None em caso de erro
+        """
+        if not self.db:
+            return None
+        try:
+            from datetime import datetime
+            
+            cursor = self.db.cursor()
+            cursor.execute(
+                "INSERT INTO receitas (medico_id, nome, texto, data) VALUES (%s, %s, %s, %s)",
+                (medico_id, nome, texto, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            )
+            self.db.commit()
+            return cursor.lastrowid
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"Erro ao criar receita: {e}")
+            return None
+        
+    def obter_receita_por_id(self, receita_id: int) -> Optional[Dict[str, Any]]:
+        """Obtém uma receita pelo ID."""
+        if not self.db:
+            return None
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM receitas WHERE id = %s", (receita_id,))
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"Erro ao obter receita: {e}")
+            return None
+
+    def listar_receitas_por_medico(self, medico_id: int) -> List[Dict[str, Any]]:
+        """Lista todas as receitas de um médico.
+        
+        Args:
+            medico_id: ID do médico
+            
+        Returns:
+            List[Dict]: Lista de dicionários com as receitas
+        """
+        if not self.db:
+            return []
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT r.*, m.nome as nome_medico
+                FROM receitas r
+                LEFT JOIN medicos m ON r.medico_id = m.id
+                WHERE r.medico_id = %s 
+                ORDER BY r.data DESC
+            """, (medico_id,))
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"Erro ao listar receitas: {e}")
+            return []
+
+    def obter_receita_por_id(self, receita_id: int) -> Optional[Dict[str, Any]]:
+        """Obtém uma receita pelo ID.
+        
+        Args:
+            receita_id: ID da receita
+            
+        Returns:
+            Dict: Dados da receita ou None se não encontrada
+        """
+        if not self.db:
+            return None
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT r.*, m.nome as nome_medico
+                FROM receitas r
+                LEFT JOIN medicos m ON r.medico_id = m.id
+                WHERE r.id = %s
+            """, (receita_id,))
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"Erro ao obter receita: {e}")
+            return None
+
+    def excluir_receita(self, receita_id: int) -> bool:
+        """Exclui uma receita."""
+        if not self.db:
+            return False
+        try:
+            cursor = self.db.cursor()
+            cursor.execute("DELETE FROM receitas WHERE id = %s", (receita_id,))
+            self.db.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Erro ao excluir receita: {e}")
+            self.db.rollback()
+            return False
+
+    def listar_medicos_receitas(self):
+        """Método temporário para depuração."""
+        print("listar_medicos() foi chamado")
+        try:
+            # Tenta listar os médicos do banco
+          
+            self.cursor.execute("SELECT id, nome FROM medicos WHERE ORDER BY nome")
+            resultado = self.cursor.fetchall()
+           
+            return resultado
+        except Exception as e:
+            print(f"Erro em listar_medicos: {str(e)}")
+            return []
+
+    def atualizar_receita(self, receita_id: int, dados: dict) -> bool:
+        """Atualiza uma receita existente.
+        
+        Args:
+            receita_id: ID da receita a ser atualizada
+            dados: Dicionário com os campos a serem atualizados (nome, texto, medico_id)
+            
+        Returns:
+            bool: True se a atualização foi bem-sucedida, False caso contrário
+        """
+        if not self.db:
+            return False
+            
+        try:
+            cursor = self.db.cursor()
+            
+            # Monta a query dinamicamente com base nos campos fornecidos
+            set_clause = ', '.join([f"{campo} = %s" for campo in dados.keys()])
+            valores = list(dados.values())
+            valores.append(receita_id)  # Adiciona o ID para o WHERE
+            
+            query = f"UPDATE receitas SET {set_clause} WHERE id = %s"
+            
+            cursor.execute(query, valores)
+            self.db.commit()
+            
+            return cursor.rowcount > 0
+            
+        except Exception as e:
+            print(f"Erro ao atualizar receita: {e}")
+            self.db.rollback()
+            return False
+
+
+    def criar_exame_consulta(self, medico_id: int, nome: str, tempo: int) -> Optional[int]:
+        """Cria um novo exame/consulta.
+        
+        Args:
+            medico_id: ID do médico
+            nome: Nome do exame/consulta
+            tempo: Tempo em minutos
+            
+        Returns:
+            int: ID do exame/consulta criado ou None em caso de erro
+        """
+        if not self.db:
+            return None
+            
+        try:
+            cursor = self.db.cursor()
+            cursor.execute(
+                "INSERT INTO exames_consultas (medico_id, nome, tempo) VALUES (%s, %s, %s)",
+                (medico_id, nome, tempo)
+            )
+            self.db.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            print(f"Erro ao criar exame/consulta: {e}")
+            self.db.rollback()
+            return None
+
+    def listar_exames_consultas_por_medico(self, medico_id: int) -> List[Dict[str, Any]]:
+        """Lista todos os exames/consultas de um médico.
+        
+        Args:
+            medico_id: ID do médico
+            
+        Returns:
+            List[Dict]: Lista de exames/consultas
+        """
+        if not self.db:
+            return []
+            
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT id, medico_id, nome, tempo 
+                FROM exames_consultas 
+                WHERE medico_id = %s 
+                ORDER BY nome
+            """, (medico_id,))
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"Erro ao listar exames/consultas: {e}")
+            return []
+
+    def atualizar_exame_consulta(self, exame_id: int, dados: dict) -> bool:
+        """Atualiza um exame/consulta existente.
+        
+        Args:
+            exame_id: ID do exame/consulta
+            dados: Dicionário com os campos a serem atualizados (nome, tempo)
+            
+        Returns:
+            bool: True se a atualização foi bem-sucedida, False caso contrário
+        """
+        if not self.db or not dados:
+            return False
+            
+        try:
+            cursor = self.db.cursor()
+            
+            # Monta a query dinamicamente
+            set_clause = ', '.join([f"{campo} = %s" for campo in dados.keys()])
+            valores = list(dados.values())
+            valores.append(exame_id)  # Adiciona o ID para o WHERE
+            
+            query = f"UPDATE exames_consultas SET {set_clause} WHERE id = %s"
+            
+            cursor.execute(query, valores)
+            self.db.commit()
+            return cursor.rowcount > 0
+            
+        except Exception as e:
+            print(f"Erro ao atualizar exame/consulta: {e}")
+            self.db.rollback()
+            return False
+
+    def excluir_exame_consulta(self, exame_id: int) -> bool:
+        """Exclui um exame/consulta.
+        
+        Args:
+            exame_id: ID do exame/consulta a ser excluído
+            
+        Returns:
+            bool: True se a exclusão foi bem-sucedida, False caso contrário
+        """
+        if not self.db:
+            return False
+            
+        try:
+            cursor = self.db.cursor()
+            cursor.execute("DELETE FROM exames_consultas WHERE id = %s", (exame_id,))
+            self.db.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Erro ao excluir exame/consulta: {e}")
+            self.db.rollback()
+            return False

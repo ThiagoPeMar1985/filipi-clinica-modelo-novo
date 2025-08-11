@@ -21,6 +21,35 @@ class ProntuarioController:
         """
         self.db = db_connection
     
+    def _execute_query(self, query: str, params=(), fetch_all: bool = True):
+        """Executa query com wrapper (execute_query) ou conexão nativa (cursor dictionary=True).
+        SELECT retorna lista de dicts (fetch_all=True) ou um dict (fetch_all=False).
+        INSERT/UPDATE/DELETE com conexão nativa fazem commit e retornam lastrowid/True.
+        """
+        if not self.db:
+            return [] if fetch_all else None
+        if hasattr(self.db, 'execute_query') and callable(getattr(self.db, 'execute_query')):
+            return self.db.execute_query(query, params, fetch_all=fetch_all)
+        cursor = None
+        try:
+            cursor = self.db.cursor(dictionary=True)
+            cursor.execute(query, params or ())
+            lower = query.strip().lower()
+            is_select = lower.startswith('select')
+            if is_select:
+                return cursor.fetchall() if fetch_all else cursor.fetchone()
+            self.db.commit()
+            try:
+                return cursor.lastrowid if hasattr(cursor, 'lastrowid') else True
+            except Exception:
+                return True
+        finally:
+            try:
+                if cursor:
+                    cursor.close()
+            except Exception:
+                pass
+    
     def buscar_prontuarios_paciente(self, paciente_id: int) -> List[Dict[str, Any]]:
         """
         Busca todos os prontuários de um paciente.
@@ -32,14 +61,26 @@ class ProntuarioController:
             Lista de prontuários do paciente.
         """
         query = """
-            SELECT p.*, m.nome as nome_medico
+            SELECT 
+                p.id,
+                p.paciente_id,
+                p.consulta_id,
+                p.titulo,
+                p.conteudo,
+                p.data,
+                p.usuario_id,
+                pa.nome AS nome,                 -- nome do paciente
+                u.nome AS nome_medico,           -- nome do médico (do usuário)
+                p.data AS data_criacao,          -- data do exame
+                p.paciente_id AS data_atualizacao -- substitui por paciente_id conforme solicitado
             FROM prontuarios p
-            LEFT JOIN medicos m ON p.medico_id = m.id
+            LEFT JOIN usuarios u ON u.id = p.usuario_id
+            LEFT JOIN pacientes pa ON p.paciente_id = pa.id
             WHERE p.paciente_id = %s
             ORDER BY p.data DESC
         """
         try:
-            return self.db.execute_query(query, (paciente_id,))
+            return self._execute_query(query, (paciente_id,)) or []
         except Exception as e:
             print(f"Erro ao buscar prontuários do paciente: {e}")
             return []
@@ -55,14 +96,25 @@ class ProntuarioController:
             Dicionário com os dados do prontuário ou None se não encontrado.
         """
         query = """
-            SELECT p.*, m.nome as nome_medico, pa.nome as nome_paciente
+            SELECT 
+                p.id,
+                p.paciente_id,
+                p.consulta_id,
+                p.titulo,
+                p.conteudo,
+                p.data,
+                p.usuario_id,
+                pa.nome AS nome,                 -- nome do paciente
+                u.nome AS nome_medico,           -- nome do médico (do usuário)
+                p.data AS data_criacao,          -- data do exame
+                p.paciente_id AS data_atualizacao -- substitui por paciente_id conforme solicitado
             FROM prontuarios p
-            LEFT JOIN medicos m ON p.medico_id = m.id
+            LEFT JOIN usuarios u ON u.id = p.usuario_id
             LEFT JOIN pacientes pa ON p.paciente_id = pa.id
             WHERE p.id = %s
         """
         try:
-            return self.db.execute_query(query, (prontuario_id,), fetch_all=False)
+            return self._execute_query(query, (prontuario_id,), fetch_all=False)
         except Exception as e:
             print(f"Erro ao buscar prontuário por ID: {e}")
             return None
@@ -77,15 +129,15 @@ class ProntuarioController:
         Returns:
             Tupla (sucesso, id_prontuario ou mensagem de erro).
         """
-        # Verificar campos obrigatórios
-        campos_obrigatorios = ['paciente_id', 'medico_id', 'conteudo']
+        # Verificar campos obrigatórios (agora usando usuario_id do médico)
+        campos_obrigatorios = ['paciente_id', 'usuario_id', 'conteudo']
         for campo in campos_obrigatorios:
             if campo not in dados or not dados[campo]:
                 return False, f"O campo {campo} é obrigatório."
         
-        # Adicionar data de criação se não existir
+        # Adicionar data (somente data, conforme schema) se não existir
         if 'data' not in dados:
-            dados['data'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            dados['data'] = datetime.now().strftime('%Y-%m-%d')
         
         # Inserir no banco de dados
         campos = ', '.join(dados.keys())
@@ -97,8 +149,11 @@ class ProntuarioController:
         """
         
         try:
-            resultado = self.db.execute_query(query, list(dados.values()))
-            return True, resultado.get('lastrowid', 0)
+            resultado = self._execute_query(query, list(dados.values()))
+            # Se conexão nativa, resultado é lastrowid (int/bool). Se wrapper, pode ser dict
+            if isinstance(resultado, dict):
+                return True, resultado.get('lastrowid', 0)
+            return True, (int(resultado) if isinstance(resultado, (int,)) else 0)
         except Exception as e:
             print(f"Erro ao criar prontuário: {e}")
             return False, f"Erro ao criar prontuário: {str(e)}"
@@ -142,7 +197,7 @@ class ProntuarioController:
         """
         
         try:
-            self.db.execute_query(query, tuple(valores))
+            self._execute_query(query, tuple(valores))
             return True, "Prontuário atualizado com sucesso."
         except Exception as e:
             print(f"Erro ao atualizar prontuário: {e}")
@@ -161,7 +216,7 @@ class ProntuarioController:
         query = "DELETE FROM prontuarios WHERE id = %s"
         
         try:
-            self.db.execute_query(query, (prontuario_id,))
+            self._execute_query(query, (prontuario_id,))
             return True, "Prontuário excluído com sucesso."
         except Exception as e:
             print(f"Erro ao excluir prontuário: {e}")
@@ -169,26 +224,23 @@ class ProntuarioController:
     
     # Métodos para gerenciamento de modelos de texto
     
-    def listar_modelos_texto(self, medico_id: int) -> List[Dict[str, Any]]:
+    def listar_modelos_texto(self, usuario_id: int) -> List[Dict[str, Any]]:
         """
-        Lista todos os modelos de texto de um médico.
-        
-        Args:
-            medico_id: ID do médico.
-            
-        Returns:
-            Lista de dicionários com os modelos de texto do médico.
+        Lista todos os modelos de texto de um usuário (médico) pelo usuario_id.
         """
         query = """
             SELECT id, nome, conteudo, data_criacao, data_atualizacao
             FROM modelos_texto
-            WHERE medico_id = %s
+            WHERE usuario_id = %s
             ORDER BY nome
         """
         try:
-            cursor = self.db.cursor(dictionary=True)
-            cursor.execute(query, (medico_id,))
-            return cursor.fetchall()
+            if hasattr(self.db, 'cursor'):
+                cursor = self.db.cursor(dictionary=True)
+                cursor.execute(query, (usuario_id,))
+                return cursor.fetchall()
+            # Fallback API
+            return self.db.execute_query(query, (usuario_id,))
         except Exception as e:
             print(f"Erro ao listar modelos de texto: {e}")
             return []
@@ -207,16 +259,19 @@ class ProntuarioController:
             Dicionário com os dados do modelo ou None se não encontrado.
         """
         query = """
-            SELECT id, nome, conteudo, data_criacao, data_atualizacao, medico_id
+            SELECT id, nome, conteudo, data_criacao, data_atualizacao, usuario_id
             FROM modelos_texto
             WHERE id = %s
         """
         try:
-            cursor = self.db.cursor(dictionary=True)
-            cursor.execute(query, (modelo_id,))
-            resultado = cursor.fetchone()
-            cursor.close()
-            return resultado
+            if hasattr(self.db, 'cursor'):
+                cursor = self.db.cursor(dictionary=True)
+                cursor.execute(query, (modelo_id,))
+                resultado = cursor.fetchone()
+                cursor.close()
+                return resultado
+            # Fallback API
+            return self.db.execute_query(query, (modelo_id,), fetch_all=False)
         except Exception as e:
             print(f"Erro ao buscar modelo de texto: {e}")
             if 'cursor' in locals():
@@ -226,15 +281,9 @@ class ProntuarioController:
     def criar_modelo_texto(self, dados: Dict[str, Any]) -> Tuple[bool, Union[int, str]]:
         """
         Cria um novo modelo de texto.
-        
-        Args:
-            dados: Dicionário com os dados do modelo.
-                Deve conter: nome, conteudo, medico_id
-                
-        Returns:
-            Tupla (sucesso, resultado) onde resultado é o ID do modelo ou mensagem de erro.
+        Exclusivamente com usuario_id (sem compatibilidade com medico_id).
         """
-        campos_obrigatorios = ['nome', 'conteudo', 'medico_id']
+        campos_obrigatorios = ['nome', 'conteudo', 'usuario_id']
         for campo in campos_obrigatorios:
             if campo not in dados or not dados[campo]:
                 return False, f"O campo {campo} é obrigatório."
@@ -254,12 +303,16 @@ class ProntuarioController:
         """
         
         try:
-            cursor = self.db.cursor()
-            cursor.execute(query, valores)
-            modelo_id = cursor.lastrowid  # Obtém o ID do registro inserido
-            self.db.commit()  # Confirma a transação
-            cursor.close()
-            return True, modelo_id
+            if hasattr(self.db, 'cursor'):
+                cursor = self.db.cursor()
+                cursor.execute(query, valores)
+                modelo_id = cursor.lastrowid
+                self.db.commit()
+                cursor.close()
+                return True, modelo_id
+            # Fallback API
+            resultado = self.db.execute_query(query, valores)
+            return True, (resultado.get('lastrowid', 0) if isinstance(resultado, dict) else 0)
         except Exception as e:
             print(f"Erro ao criar modelo de texto: {e}")
             if 'cursor' in locals():
@@ -296,10 +349,14 @@ class ProntuarioController:
         """
         
         try:
-            cursor = self.db.cursor()
-            cursor.execute(query, tuple(valores))
-            self.db.commit()  # Confirma a transação
-            cursor.close()
+            if hasattr(self.db, 'cursor'):
+                cursor = self.db.cursor()
+                cursor.execute(query, tuple(valores))
+                self.db.commit()
+                cursor.close()
+                return True, "Modelo atualizado com sucesso"
+            # Fallback API
+            self.db.execute_query(query, tuple(valores))
             return True, "Modelo atualizado com sucesso"
         except Exception as e:
             print(f"Erro ao atualizar modelo de texto: {e}")
@@ -320,10 +377,14 @@ class ProntuarioController:
         query = "DELETE FROM modelos_texto WHERE id = %s"
         
         try:
-            cursor = self.db.cursor()
-            cursor.execute(query, (modelo_id,))
-            self.db.commit()  # Confirma a transação
-            cursor.close()
+            if hasattr(self.db, 'cursor'):
+                cursor = self.db.cursor()
+                cursor.execute(query, (modelo_id,))
+                self.db.commit()
+                cursor.close()
+                return True, "Modelo excluído com sucesso"
+            # Fallback API
+            self.db.execute_query(query, (modelo_id,))
             return True, "Modelo excluído com sucesso"
         except Exception as e:
             print(f"Erro ao excluir modelo de texto: {e}")
@@ -338,14 +399,17 @@ class ProntuarioController:
         Returns:
             Lista de dicionários com os dados dos médicos.
         """
+        # Alguns bancos não possuem coluna usuario_id em medicos.
+        # Passamos a listar pelos usuários que possuem modelos (criadores dos modelos),
+        # mantendo a ideia de "médicos com modelos".
         query = """
-            SELECT DISTINCT m.id, m.nome, m.crm, m.especialidade
-            FROM medicos m
-            INNER JOIN modelos_texto mt ON m.id = mt.medico_id
-            ORDER BY m.nome
+            SELECT DISTINCT u.id AS usuario_id, u.nome AS nome
+            FROM usuarios u
+            INNER JOIN modelos_texto mt ON u.id = mt.usuario_id
+            ORDER BY u.nome
         """
         try:
-            return self.db.execute_query(query)
+            return self._execute_query(query) or []
         except Exception as e:
             print(f"Erro ao listar médicos com modelos: {e}")
             return []
