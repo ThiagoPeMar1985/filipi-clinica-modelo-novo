@@ -41,6 +41,11 @@ ESTILOS_BOTAO = {
         "activeforeground": CORES["texto_claro"],
         "cursor": "hand2",
         "highlightthickness": 0,
+        "highlightbackground": CORES["fundo"],
+        "highlightcolor": CORES["fundo"],
+        # Padding interno para padronizar tamanho visual
+        "padx": 20,
+        "pady": 12,
     },
     # Botão de perigo (Vermelho)
     "perigo": {
@@ -49,8 +54,14 @@ ESTILOS_BOTAO = {
         "font": FONTES["normal"],
         "relief": "flat",
         "bd": 0,
+        "padx": 20,
+        "pady": 15,
         "cursor": "hand2",
         "highlightthickness": 0,
+        "activebackground": "#e53935",
+        "activeforeground": CORES["texto_claro"],
+        "highlightbackground": CORES["fundo"],
+        "highlightcolor": CORES["fundo"]
     },
     # Botão de sucesso (Verde)
     "sucesso": {

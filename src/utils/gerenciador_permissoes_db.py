@@ -40,6 +40,7 @@ class GerenciadorPermissoesDB:
                 'contas_pagar': 'contas_pagar',
                 'contas_receber': 'contas_receber',
                 'relatorios': 'relatorios',
+                'estoque': 'estoque',
                 # Módulo Configuração (ID 4)
                 'nfe': 'nfe',
                 'backup': 'backup',
@@ -84,17 +85,15 @@ class GerenciadorPermissoesDB:
         """Verifica permissão para o módulo"""
         try:
             query = """
-                SELECT pp.permitido
+                SELECT MAX(CASE WHEN pp.permitido = 1 THEN 1 ELSE 0 END) AS permitido
                 FROM perfil_permissao pp
                 JOIN modulos m ON pp.modulo_id = m.id
-                WHERE pp.perfil_id = %s 
-                AND m.chave = %s 
-                AND pp.botao_id IS NULL
-                LIMIT 1
+                WHERE pp.perfil_id = %s
+                  AND m.chave = %s
             """
-           
+            
             resultado = self.db.execute_query(query, (perfil_id, modulo), fetch_all=False)
-           
+            
             return bool(resultado and resultado.get('permitido'))
         except Exception as e:
             print(f"[ERRO] Erro ao verificar permissão de módulo: {e}")
@@ -129,21 +128,10 @@ class GerenciadorPermissoesDB:
         permissoes = {'modulos': {}}
         
         try:
-            # Obtém todos os perfis
-            perfis = self.db.execute_query("SELECT id, nome FROM perfil", fetch_all=True)
+            # Obtém todos os perfis (ordenados por ID, sem criar/alterar registros)
+            perfis = self.db.execute_query("SELECT id, nome FROM perfil ORDER BY id", fetch_all=True)
             if not perfis:
                 return permissoes
-            
-            # Verifica se existe um perfil de administrador
-            admin_exists = any(p['nome'].lower() == 'administrador' for p in perfis)
-            if not admin_exists:
-                # Cria o perfil de administrador se não existir
-                self.db.execute_query("""
-                    INSERT INTO perfil (nome) 
-                    VALUES ('administrador')
-                """)
-                # Atualiza a lista de perfis
-                perfis = self.db.execute_query("SELECT id, nome FROM perfil", fetch_all=True)
             
             # Obtém todos os módulos
             modulos = self.db.execute_query("SELECT id, nome, chave FROM modulos", fetch_all=True)
@@ -173,6 +161,9 @@ class GerenciadorPermissoesDB:
                 chave = f"{perm['perfil_id']}_{perm['modulo_id']}_{perm['botao_id']}"
                 permissoes_dict[chave] = perm['permitido']
             
+            # Inclui metadados de perfis no payload para o frontend mapear corretamente
+            permissoes['perfis'] = perfis
+
             # Constrói a estrutura de permissões
             for modulo in modulos:
                 modulo_chave = modulo['chave']
@@ -191,9 +182,20 @@ class GerenciadorPermissoesDB:
                     # Adiciona as permissões para cada perfil
                     for perfil in perfis:
                         chave = f"{perfil['id']}_{modulo['id']}_{botao['id']}"
-                        permissoes['modulos'][modulo_chave]['botoes'][botao_chave][perfil['nome']] = bool(
-                            permissoes_dict.get(chave, False)
-                        )
+                        valor = bool(permissoes_dict.get(chave, False))
+                        # Disponibiliza por NOME do perfil (compatibilidade)
+                        nome = perfil['nome']
+                        permissoes['modulos'][modulo_chave]['botoes'][botao_chave][nome] = valor
+                        # E também por ID do perfil (evita desalinhamento por nomes)
+                        permissoes['modulos'][modulo_chave]['botoes'][botao_chave][str(perfil['id'])] = valor
+                        # Aliases comuns de exibição para tolerar variações no front-end
+                        aliases_map = {
+                            'dev': ['Desenvolvedor', 'DEV', 'Dev'],
+                            'medico': ['Médico', 'Medico', 'MÉDICO'],
+                            'funcionario': ['Funcionário', 'Funcionario', 'FUNCIONÁRIO']
+                        }
+                        for alias in aliases_map.get(nome.lower(), []):
+                            permissoes['modulos'][modulo_chave]['botoes'][botao_chave][alias] = valor
             
             return permissoes
             
@@ -217,7 +219,7 @@ class GerenciadorPermissoesDB:
             botoes = self._obter_botoes_por_modulo_e_chave()
             perfis = self._obter_perfis_por_nome()
             
-            # ID do perfil de administrador (fixo como 1)
+            # ID do perfil de dev(fixo como 1)
             ADMIN_ID = 1
             
             # Prepara as permissões para inserção
@@ -239,9 +241,9 @@ class GerenciadorPermissoesDB:
                             continue
                             
                         perfil_id = perfis[perfil_nome]['id']
-                        # Se for o perfil de administrador (ID 1), força permissão total
+                        # Perfil 1 (dev) é imutável: não grava alterações para ele
                         if perfil_id == ADMIN_ID:
-                            permitido = True
+                            continue
                         valores.append((perfil_id, modulo_id, botao_id, bool(permitido)))
             
             # Remove apenas as permissões que serão atualizadas

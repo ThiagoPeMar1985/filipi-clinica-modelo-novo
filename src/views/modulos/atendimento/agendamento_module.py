@@ -369,8 +369,21 @@ class AgendamentoModule:
         
         self.tabela_frame.pack_propagate(False)  # Impede que o frame seja redimensionado pelos filhos
         
+        # Toolbar da tabela (ações rápidas)
+        self.tabela_toolbar = tk.Frame(self.tabela_frame)
+        self.tabela_toolbar.pack(fill='x', side='top', pady=(0, 6))
+
+        btn_chegada = tk.Button(
+            self.tabela_toolbar,
+            text="Marcar Chegada",
+            command=self._marcar_chegada,
+            bg='#4a6fa5', fg='white', font=('Arial', 9, 'bold'), bd=0,
+            padx=10, pady=5, relief='flat', activebackground='#3b5a7f', activeforeground='white'
+        )
+        btn_chegada.pack(side='left')
+
         # Configurar a tabela de agendamentos
-        colunas = ('hora', 'paciente', 'medico', 'status', 'id')
+        colunas = ('hora', 'paciente', 'medico', 'tipo_agendamento', 'status', 'pagamento', 'chegada', 'id')
         self.tabela_agendamentos = ttk.Treeview(
             self.tabela_frame, 
             columns=colunas, 
@@ -382,14 +395,20 @@ class AgendamentoModule:
         self.tabela_agendamentos.heading('hora', text='Hora')
         self.tabela_agendamentos.heading('paciente', text='Paciente')
         self.tabela_agendamentos.heading('medico', text='Médico')
+        self.tabela_agendamentos.heading('tipo_agendamento', text='Tipo Agendamento')
         self.tabela_agendamentos.heading('status', text='Status')
+        self.tabela_agendamentos.heading('pagamento', text='Pagamento')
+        self.tabela_agendamentos.heading('chegada', text='Chegada')
         self.tabela_agendamentos.heading('id', text='ID')  # Coluna oculta para o ID
         
         # Configurar largura das colunas
         self.tabela_agendamentos.column('hora', width=80, anchor='center')
         self.tabela_agendamentos.column('paciente', width=150)
         self.tabela_agendamentos.column('medico', width=150)
+        self.tabela_agendamentos.column('tipo_agendamento', width=160)
         self.tabela_agendamentos.column('status', width=100, anchor='center')
+        self.tabela_agendamentos.column('pagamento', width=90, anchor='center')
+        self.tabela_agendamentos.column('chegada', width=150, anchor='center')
         self.tabela_agendamentos.column('id', width=0, stretch=False)  # Coluna oculta
         
         # Adicionar barra de rolagem
@@ -402,6 +421,11 @@ class AgendamentoModule:
         
         # Carregar dados iniciais
         self._carregar_dados_iniciais()
+        # Atualização periódica para refletir pagamentos/chegadas
+        try:
+            self.parent.after(30000, self._refresh_consultas_periodico)
+        except Exception:
+            pass
 
 
     
@@ -431,6 +455,23 @@ class AgendamentoModule:
         
         # Adicionar agendamentos à tabela
         for agendamento in self.consultas:
+            pago_flag = agendamento.get('status_pagameto')
+            pagamento_txt = 'Pago' if (str(pago_flag) == '1' or pago_flag == 1 or pago_flag is True) else 'Aberto'
+            chegada_raw = agendamento.get('horario_chegada')
+            chegada_txt = ''
+            try:
+                # suporta datetime/time/str e exibe HORA e DATA (HH:MM DD/MM)
+                if chegada_raw:
+                    s = str(chegada_raw)
+                    # ISO: "YYYY-MM-DD HH:MM:SS" ou "YYYY-MM-DDTHH:MM:SS"
+                    if len(s) >= 16 and s[4] == '-' and s[7] == '-' and (s[10] == ' ' or s[10] == 'T'):
+                        hora_pt = s[11:16]
+                        data_pt = f"{s[8:10]}/{s[5:7]}"
+                        chegada_txt = f"{hora_pt} {data_pt}"
+                    else:
+                        chegada_txt = s
+            except Exception:
+                chegada_txt = str(chegada_raw) if chegada_raw is not None else ''
             self.tabela_agendamentos.insert(
                 '', 
                 'end',
@@ -438,10 +479,95 @@ class AgendamentoModule:
                     agendamento['hora_consulta'],
                     agendamento['paciente_nome'],
                     agendamento['medico_nome'],
+                    agendamento.get('tipo_agendamento') or 'Consulta',
                     agendamento['status'],
+                    pagamento_txt,
+                    chegada_txt,
                     agendamento['id']  # ID da consulta
                 )
             )
+
+    def _marcar_chegada(self):
+        """Marca a chegada do paciente na consulta selecionada e sincroniza pagamento."""
+        try:
+            sel = self.tabela_agendamentos.selection()
+            if not sel:
+                messagebox.showinfo("Consultas", "Selecione uma consulta para marcar a chegada.")
+                return
+            item_id = sel[0]
+            valores = self.tabela_agendamentos.item(item_id, 'values')
+            consulta_id = int(valores[-1])  # última coluna é o ID
+
+            ok, msg = self.agenda_controller.marcar_chegada(consulta_id)
+            if not ok:
+                messagebox.showerror("Consultas", msg)
+                return
+
+            # Tenta sincronizar pagamento automaticamente com base no financeiro
+            try:
+                ok2, msg2, pago = self.agenda_controller.sincronizar_status_pagamento(consulta_id)
+                # Não precisa exibir mensagem sempre; apenas atualiza a tela
+            except Exception:
+                pass
+
+            # Recarrega a lista do dia atual mantendo filtro
+            try:
+                data_sel = self.calendario.selection_get()
+                data_fmt = data_sel.strftime('%Y-%m-%d')
+            except Exception:
+                data_fmt = datetime.now().strftime('%Y-%m-%d')
+
+            medico_nome = self.filtro_medico.get() if hasattr(self, 'filtro_medico') else 'Todos'
+            if medico_nome and medico_nome != 'Todos':
+                mid = self._obter_id_medico_por_nome(medico_nome)
+                self.consultas = self.agenda_controller.buscar_consultas_por_medico(mid, data_fmt, data_fmt)
+            else:
+                self.consultas = self._buscar_agendamentos(data_inicio=data_fmt, data_fim=data_fmt)
+            self._atualizar_tabela_agendamentos()
+        except Exception as e:
+            messagebox.showerror("Consultas", f"Falha ao marcar chegada: {e}")
+
+    def _refresh_consultas_periodico(self):
+        """Atualiza periodicamente a lista do dia para refletir pagamentos/chegadas."""
+        try:
+            try:
+                data_sel = self.calendario.selection_get()
+                data_fmt = data_sel.strftime('%Y-%m-%d')
+            except Exception:
+                data_fmt = datetime.now().strftime('%Y-%m-%d')
+
+            medico_nome = self.filtro_medico.get() if hasattr(self, 'filtro_medico') else 'Todos'
+            if medico_nome and medico_nome != 'Todos':
+                mid = self._obter_id_medico_por_nome(medico_nome)
+                if mid:
+                    self.consultas = self.agenda_controller.buscar_consultas_por_medico(mid, data_fmt, data_fmt)
+            else:
+                self.consultas = self._buscar_agendamentos(data_inicio=data_fmt, data_fim=data_fmt)
+            # Sincroniza status de pagamento das consultas visíveis (se necessário)
+            try:
+                for c in (self.consultas or []):
+                    pago_flag = c.get('status_pagameto')
+                    if not (str(pago_flag) == '1' or pago_flag == 1 or pago_flag is True):
+                        try:
+                            self.agenda_controller.sincronizar_status_pagamento(int(c['id']))
+                        except Exception:
+                            pass
+                # Recarrega após sincronização para refletir alterações
+                if medico_nome and medico_nome != 'Todos' and 'mid' in locals() and mid:
+                    self.consultas = self.agenda_controller.buscar_consultas_por_medico(mid, data_fmt, data_fmt)
+                else:
+                    self.consultas = self._buscar_agendamentos(data_inicio=data_fmt, data_fim=data_fmt)
+            except Exception:
+                pass
+            if hasattr(self, 'tabela_agendamentos'):
+                self._atualizar_tabela_agendamentos()
+        except Exception:
+            pass
+        finally:
+            try:
+                self.parent.after(30000, self._refresh_consultas_periodico)
+            except Exception:
+                pass
     
     def _buscar_medicos(self):
         """Busca todos os médicos no banco de dados"""
@@ -1236,6 +1362,49 @@ class AgendamentoModule:
         campo_hora = ttk.Combobox(campos_frame, textvariable=var_hora, values=[], width=17)
         campo_hora.grid(row=3, column=1, sticky='w', pady=5, padx=(10, 0))
 
+        # Campo de Tipo de Atendimento (edição)
+        ttk.Label(campos_frame, text="Tipo de Atendimento").grid(row=4, column=0, sticky='w', pady=5)
+        var_tipo = tk.StringVar()
+        campo_tipo = ttk.Combobox(campos_frame, textvariable=var_tipo, values=[], width=30, state='readonly')
+        campo_tipo.grid(row=4, column=1, sticky='w', pady=5, padx=(10, 0))
+
+        # Pré-carregar com valor atual se houver
+        try:
+            if consulta.get('tipo_atendimento'):
+                var_tipo.set(consulta['tipo_atendimento'])
+        except Exception:
+            pass
+
+        # Função para carregar exames pelo médico selecionado
+        def _carregar_tipos_para_medico_nome(nome_medico: str):
+            try:
+                if not nome_medico:
+                    campo_tipo['values'] = []
+                    return
+                medico_id_local = None
+                for m in getattr(self, 'medicos', []):
+                    if m.get('nome') == nome_medico:
+                        medico_id_local = m.get('id')
+                        break
+                if not medico_id_local:
+                    campo_tipo['values'] = []
+                    return
+                exames = self.agenda_controller.buscar_exames_por_medico(medico_id_local)
+                nomes = [e.get('nome') for e in (exames or [])]
+                campo_tipo['values'] = nomes
+                # Se o valor atual não pertence mais, limpa
+                if var_tipo.get() and var_tipo.get() not in nomes:
+                    var_tipo.set('')
+            except Exception:
+                campo_tipo['values'] = []
+
+        # Ao mudar médico, recarrega tipos
+        try:
+            _carregar_tipos_para_medico_nome(var_medico.get())
+            campo_medico.bind('<<ComboboxSelected>>', lambda e: _carregar_tipos_para_medico_nome(var_medico.get()))
+        except Exception:
+            pass
+
         # Modo de edição simplificada: limpar Data e Hora ao abrir
         if getattr(self, '_edicao_simplificada', False):
             try:
@@ -1443,6 +1612,7 @@ class AgendamentoModule:
             hora = var_hora.get()
             status = var_status.get()
             observacoes = var_obs.get('1.0', 'end-1c')
+            tipo_atendimento = var_tipo.get()
             
             # Validar campos obrigatórios
             if not all([paciente_nome, medico_nome, data, hora, status]):
@@ -1481,7 +1651,8 @@ class AgendamentoModule:
                 'data': data_formatada,
                 'hora': hora,
                 'status': status,
-                'observacoes': observacoes
+                'observacoes': observacoes,
+                'tipo_atendimento': tipo_atendimento or None
             }
             
             try:

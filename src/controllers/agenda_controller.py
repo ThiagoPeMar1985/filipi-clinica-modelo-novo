@@ -20,9 +20,16 @@ class AgendaController:
             cursor = self.db_connection.cursor()
             
             query = """
-                SELECT c.id, c.data as data_consulta, c.hora as hora_consulta, 
-                       p.nome as paciente_nome, m.nome as medico_nome,
-                       c.status
+                SELECT c.id,
+                       c.paciente_id,
+                       c.data AS data_consulta,
+                       c.hora AS hora_consulta,
+                       p.nome AS paciente_nome,
+                       m.nome AS medico_nome,
+                       c.status,
+                       c.tipo_atendimento AS tipo_agendamento,
+                       c.status_pagameto,
+                       c.horario_chegada
                 FROM consultas c
                 INNER JOIN pacientes p ON c.paciente_id = p.id
                 INNER JOIN medicos m ON c.medico_id = m.id
@@ -56,6 +63,39 @@ class AgendaController:
             if 'cursor' in locals():
                 cursor.close()
     
+    def buscar_consultas_por_medico(self, medico_id: int, data_inicio: Optional[str] = None, data_fim: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Busca consultas filtrando por médico e período (opcional)."""
+        try:
+            if not self.db_connection:
+                raise Exception("Sem conexão com o banco de dados")
+            cursor = self.db_connection.cursor()
+            query = (
+                "SELECT c.id, c.paciente_id, c.data AS data_consulta, c.hora AS hora_consulta, "
+                "p.nome AS paciente_nome, m.nome AS medico_nome, "
+                "c.status, c.tipo_atendimento AS tipo_agendamento, "
+                "c.status_pagameto, c.horario_chegada "
+                "FROM consultas c "
+                "INNER JOIN pacientes p ON c.paciente_id = p.id "
+                "INNER JOIN medicos m ON c.medico_id = m.id "
+                "WHERE c.medico_id = %s"
+            )
+            params: list[Any] = [medico_id]
+            if data_inicio:
+                query += " AND c.data >= %s"
+                params.append(data_inicio)
+            if data_fim:
+                query += " AND c.data <= %s"
+                params.append(data_fim)
+            query += " ORDER BY c.data, c.hora"
+            cursor.execute(query, tuple(params))
+            colunas = [c[0] for c in cursor.description]
+            return [dict(zip(colunas, row)) for row in cursor.fetchall()]
+        except Exception as e:
+            raise Exception(f"Erro ao buscar consultas por médico: {e}")
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+    
     def buscar_medicos(self) -> List[Dict[str, Any]]:
         """Busca todos os médicos."""
         try:
@@ -79,7 +119,7 @@ class AgendaController:
                     UPDATE consultas 
                     SET paciente_id = %s, medico_id = %s, 
                         data = %s, hora = %s, status = %s, 
-                        observacoes = %s
+                        observacoes = %s, tipo_atendimento = %s
                     WHERE id = %s
                 """
                 params = (
@@ -87,20 +127,22 @@ class AgendaController:
                     dados['data'], dados['hora'],
                     dados.get('status', 'Agendado'),
                     dados.get('observacoes', ''),
+                    dados.get('tipo_atendimento', None),
                     dados['id']
                 )
             else:
                 # Inserir
                 query = """
                     INSERT INTO consultas 
-                    (paciente_id, medico_id, data, hora, status, observacoes)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    (paciente_id, medico_id, data, hora, status, observacoes, tipo_atendimento)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """
                 params = (
                     dados['paciente_id'], dados['medico_id'],
                     dados['data'], dados['hora'],
                     dados.get('status', 'Agendado'),
-                    dados.get('observacoes', '')
+                    dados.get('observacoes', ''),
+                    dados.get('tipo_atendimento', None)
                 )
             
             cursor.execute(query, params)
@@ -145,7 +187,8 @@ class AgendaController:
                     data = %s, 
                     hora = %s, 
                     status = %s, 
-                    observacoes = %s
+                    observacoes = %s,
+                    tipo_atendimento = %s
                 WHERE id = %s
             """
             params = (
@@ -155,6 +198,7 @@ class AgendaController:
                 dados['hora'],
                 dados['status'],
                 dados.get('observacoes', ''),
+                dados.get('tipo_atendimento', None),
                 dados['id']
             )
             
@@ -207,6 +251,93 @@ class AgendaController:
         finally:
             if cursor:
                 cursor.close()
+
+    def marcar_chegada(self, consulta_id: int) -> tuple[bool, str]:
+        """Marca a chegada do paciente na consulta (define horario_chegada = NOW())."""
+        try:
+            if not self.db_connection:
+                raise Exception("Sem conexão com o banco de dados")
+            cursor = self.db_connection.cursor()
+            cursor.execute("UPDATE consultas SET horario_chegada = NOW() WHERE id = %s", (consulta_id,))
+            self.db_connection.commit()
+            return True, "Chegada registrada com sucesso."
+        except Exception as e:
+            if self.db_connection:
+                self.db_connection.rollback()
+            return False, f"Erro ao marcar chegada: {e}"
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+
+    def sincronizar_status_pagamento(self, consulta_id: int) -> tuple[bool, str, bool]:
+        """
+        Verifica na tabela financeiro se há entrada paga para a consulta e, se houver,
+        atualiza consultas.status_pagameto = 1 e define horario_chegada com a data do pagamento
+        (financeiro.data_pagamento) caso ainda não tenha sido registrada.
+        Retorna (ok, mensagem, pago_aplicado).
+        """
+        try:
+            if not self.db_connection:
+                raise Exception("Sem conexão com o banco de dados")
+            cur = self.db_connection.cursor()
+            # Busca o último pagamento (data_pagamento) para a consulta
+            cur.execute(
+                """
+                SELECT data_pagamento, data
+                FROM financeiro
+                WHERE consulta_id = %s AND tipo = 'entrada' AND status = 'pago'
+                ORDER BY COALESCE(data_pagamento, data) DESC, id DESC
+                LIMIT 1
+                """,
+                (consulta_id,)
+            )
+            row = cur.fetchone()
+            if row is None:
+                # Fallback: localizar pagamento pelo paciente no mesmo dia da consulta
+                # Busca paciente_id e data da consulta
+                cur.execute("SELECT paciente_id, data FROM consultas WHERE id=%s", (consulta_id,))
+                cinfo = cur.fetchone()
+                if not cinfo:
+                    return True, "Consulta não encontrada para sincronizar.", False
+                paciente_id, data_consulta = cinfo[0], cinfo[1]
+                # Procura último pagamento 'pago' desse paciente no mesmo dia (comparando data)
+                cur.execute(
+                    """
+                    SELECT data_pagamento, data
+                    FROM financeiro
+                    WHERE paciente_id = %s AND tipo = 'entrada' AND status = 'pago'
+                      AND DATE(COALESCE(data_pagamento, data)) = %s
+                    ORDER BY COALESCE(data_pagamento, data) DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (paciente_id, data_consulta)
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return True, "Sem pagamento localizado para esta consulta.", False
+
+            data_pagamento = row[0] or row[1]
+
+            # Atualiza status pago e define horario_chegada se ainda estiver vazio
+            # Usa COALESCE para não sobrescrever chegada já registrada manualmente
+            cur.execute(
+                """
+                UPDATE consultas
+                SET status_pagameto = 1,
+                    horario_chegada = COALESCE(horario_chegada, %s)
+                WHERE id = %s
+                """,
+                (data_pagamento, consulta_id)
+            )
+            self.db_connection.commit()
+            return True, "Status de pagamento sincronizado (pago) e chegada definida.", True
+        except Exception as e:
+            if self.db_connection:
+                self.db_connection.rollback()
+            return False, f"Erro ao sincronizar pagamento: {e}", False
+        finally:
+            if 'cur' in locals():
+                cur.close()
     
     def _carregar_exames_medico(self, medico_id):
         """Carrega os exames/consultas de um médico"""

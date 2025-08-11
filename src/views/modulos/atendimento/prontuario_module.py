@@ -18,6 +18,7 @@ from src.controllers.cliente_controller import ClienteController
 from src.controllers.prontuario_controller import ProntuarioController
 from src.controllers.auth_controller import AuthController
 from src.controllers.config_controller import ConfigController
+from src.controllers.cadastro_controller import CadastroController
 from src.utils.impressao import GerenciadorImpressao
 
 # Filtra prints de debug específicos deste módulo, sem afetar outros prints úteis
@@ -655,6 +656,8 @@ class ProntuarioModule(BaseModule):
                   command=self._salvar_novo_prontuario).pack(side=tk.LEFT, padx=(8, 4), pady=(0, 8))
         tk.Button(botoes, text="Inserir Modelo", bg="#4a6fa5", fg="white", relief=tk.FLAT, cursor='hand2',
                   command=self._selecionar_modelo).pack(side=tk.LEFT, padx=4, pady=(0, 8))
+        tk.Button(botoes, text="Inserir Receita", bg="#4a6fa5", fg="white", relief=tk.FLAT, cursor='hand2',
+                  command=self._selecionar_receita).pack(side=tk.LEFT, padx=4, pady=(0, 8))
         tk.Button(botoes, text="Limpar", bg="#6c757d", fg="white", relief=tk.FLAT, cursor='hand2',
                   command=lambda: self.editor_texto.delete(1.0, tk.END)).pack(side=tk.LEFT, padx=4, pady=(0, 8))
         # Botão Imprimir (abre pré-visualização)
@@ -719,7 +722,6 @@ class ProntuarioModule(BaseModule):
                 return
             # Chamada correta: (empresa, paciente, medico, laudo, impressora)
             self.impressao.imprimir_laudo_medico(empresa, paciente, medico, laudo, impressora=escolhido)
-            messagebox.showinfo("Impressão", "Documento enviado para impressão.")
             
         except Exception as e:
             messagebox.showerror("Erro ao imprimir", str(e))
@@ -1690,6 +1692,151 @@ class ProntuarioModule(BaseModule):
         # Seleciona o primeiro item da lista, se houver
         if listbox.size() > 0:
             listbox.selection_set(0)
+
+    def _selecionar_receita(self):
+        """Abre um diálogo para selecionar uma Receita cadastrada e inseri-la no novo prontuário.
+        Após inserir, adiciona a assinatura do médico (Nome e CRM) abaixo, como no padrão atual.
+        """
+        # Garantir edição ativa
+        if not self.modo_edicao:
+            messagebox.showinfo("Aviso", "É necessário estar em modo de edição para inserir receitas")
+            return
+        # Garantir um CadastroController válido (do controller principal ou on-demand)
+        cad = getattr(self, 'cadastro_controller', None)
+        if not cad:
+            try:
+                self.cadastro_controller = CadastroController()
+                # alinhar conexão de banco na instância criada
+                conn = self._obter_conexao_valida()
+                if conn and hasattr(self.cadastro_controller, 'db'):
+                    self.cadastro_controller.db = conn
+            except Exception:
+                messagebox.showerror("Erro", "Módulo de cadastro não disponível para listar receitas.")
+                return
+        
+        # Resolver medico_id para filtrar receitas
+        medico_id = self._resolver_medico_id_para_receitas()
+        if not medico_id:
+            messagebox.showinfo("Aviso", "Não foi possível identificar o médico logado para listar receitas.")
+            return
+        
+        # Listar receitas do médico
+        try:
+            receitas = self.cadastro_controller.listar_receitas_por_medico(medico_id) or []
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao listar receitas: {e}")
+            return
+        if not receitas:
+            messagebox.showinfo("Receitas", "Nenhuma receita cadastrada para este médico.")
+            return
+        
+        # Montar diálogo
+        dlg = tk.Toplevel(self.frame)
+        dlg.title("Selecionar Receita")
+        dlg.transient(self.frame)
+        dlg.grab_set()
+        dlg.configure(bg='#f0f2f5')
+        
+        container = tk.Frame(dlg, bg='#f0f2f5', padx=15, pady=15)
+        container.pack(fill=tk.BOTH, expand=True)
+        tk.Label(container, text="Selecione uma Receita para Inserir", font=('Arial', 14, 'bold'), bg='#f0f2f5', fg='#333').pack(fill=tk.X, pady=(0, 12))
+        
+        list_frame = tk.Frame(container, bg='#f0f2f5')
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        listbox = tk.Listbox(list_frame, font=('Arial', 11), selectbackground='#4a6fa5', selectforeground='white', activestyle='none', height=20)
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb = ttk.Scrollbar(list_frame, orient='vertical', command=listbox.yview)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        listbox.configure(yscrollcommand=sb.set)
+        
+        receita_ids = []
+        for r in receitas:
+            nome = r.get('nome') or f"Receita {r.get('id')}"
+            listbox.insert(tk.END, nome)
+            receita_ids.append(r.get('id'))
+        
+        def inserir_receita():
+            idxs = listbox.curselection()
+            if not idxs:
+                messagebox.showinfo("Aviso", "Selecione uma receita para inserir")
+                return
+            rid = receita_ids[idxs[0]]
+            try:
+                rec = self.cadastro_controller.obter_receita_por_id(rid)
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao obter receita: {e}")
+                return
+            if not rec:
+                return
+            texto = (rec.get('texto') or '').strip()
+            try:
+                existente = self.editor_texto.get("1.0", "end-1c").strip()
+                if existente:
+                    self.editor_texto.insert(tk.END, "\n\n")
+            except Exception:
+                pass
+            if texto:
+                self.editor_texto.insert(tk.END, texto)
+            # Assinatura do médico abaixo
+            try:
+                self._inserir_assinatura_medico()
+            except Exception:
+                pass
+            dlg.destroy()
+        
+        # Ações
+        btns = tk.Frame(container, bg='#f0f2f5')
+        btns.pack(fill=tk.X, pady=(8, 0))
+        tk.Button(btns, text="Inserir", command=inserir_receita, bg="#4a6fa5", fg="white", relief=tk.FLAT, cursor='hand2').pack(side=tk.RIGHT, padx=5)
+        tk.Button(btns, text="Cancelar", command=dlg.destroy, bg="#6c757d", fg="white", relief=tk.FLAT, cursor='hand2').pack(side=tk.RIGHT, padx=5)
+        
+        # Centralizar
+        try:
+            dlg.update_idletasks()
+            w, h = dlg.winfo_width(), dlg.winfo_height()
+            sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
+            x = (sw - w) // 2
+            y = (sh - h) // 2
+            dlg.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            pass
+        
+        if listbox.size() > 0:
+            listbox.selection_set(0)
+
+    def _resolver_medico_id_para_receitas(self):
+        """Tenta resolver o medico_id a partir do usuário logado para filtrar receitas.
+        Estratégia: procurar na tabela medicos por usuario_id; fallback por nome.
+        """
+        try:
+            conn = self._obter_conexao_valida()
+            if not conn:
+                return None
+            usr = getattr(self, 'usuario_dict', None) or {}
+            user_id = usr.get('id')
+            nome_usr = (usr.get('nome') or '').strip()
+            cur = conn.cursor()
+            # 1) por usuario_id
+            if user_id:
+                try:
+                    cur.execute("SELECT id FROM medicos WHERE usuario_id = %s LIMIT 1", (user_id,))
+                    r = cur.fetchone()
+                    if r:
+                        return r[0]
+                except Exception:
+                    pass
+            # 2) por nome
+            if nome_usr:
+                try:
+                    cur.execute("SELECT id FROM medicos WHERE LOWER(nome) = LOWER(%s) LIMIT 1", (nome_usr,))
+                    r = cur.fetchone()
+                    if r:
+                        return r[0]
+                except Exception:
+                    pass
+        except Exception:
+            return None
+        return None
     
     def _gerenciar_modelos(self):
         """Abre uma janela para gerenciar modelos de texto."""

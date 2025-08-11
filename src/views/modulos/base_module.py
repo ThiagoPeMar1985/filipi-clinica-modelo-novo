@@ -33,6 +33,8 @@ class BaseModule:
         
         # Aplica os estilos iniciais
         self.aplicar_estilos()
+        # Controller financeiro (cache em módulos não-financeiros)
+        self._fin_controller = None
 
     # ------------------------- Utilitário: Corretor ortográfico -------------------------
     def _get_spellchecker(self, language: str = 'pt'):
@@ -451,3 +453,76 @@ class BaseModule:
             font=('Arial', 14, 'bold')
         ).pack(pady=10)
         return titulo_frame
+
+    # ------------------------- Utilitário: Status do Caixa (Badge) -------------------------
+    def _get_financeiro_controller_base(self):
+        """Obtém uma instância do FinanceiroController para ler o status do caixa."""
+        try:
+            if getattr(self, '_fin_controller', None):
+                return self._fin_controller
+            try:
+                from src.controllers.financeiro_controller import FinanceiroController
+            except Exception:
+                return None
+            db_conn = None
+            for attr in ('db_connection', 'db'):
+                if hasattr(self.controller, attr):
+                    db_conn = getattr(self.controller, attr)
+                    if db_conn:
+                        break
+            if db_conn is None:
+                try:
+                    from src.db.database import db as default_db
+                    db_conn = default_db
+                except Exception:
+                    db_conn = None
+            self._fin_controller = FinanceiroController(db_conn)
+            try:
+                uid = getattr(self.controller, 'usuario_id', None)
+                uname = getattr(self.controller, 'usuario_nome', None)
+                if hasattr(self._fin_controller, 'set_usuario'):
+                    self._fin_controller.set_usuario(uid, uname)
+            except Exception:
+                pass
+            return self._fin_controller
+        except Exception:
+            return None
+
+    def create_caixa_status_badge(self, parent, pady=(10, 10)):
+        """Cria e retorna um Label no topo com o status do caixa (verde/vermelho)."""
+        try:
+            badge = tk.Label(
+                parent,
+                text="",
+                font=("Arial", 16, 'bold'),
+                bg=self.cores.get('fundo_conteudo', '#ffffff'),
+                fg=self.cores.get('texto_claro', '#ffffff'),
+                padx=40,
+                pady=12,
+                bd=0,
+                relief='flat',
+            )
+            badge.pack(pady=pady)
+            self.refresh_caixa_status_badge(badge)
+            return badge
+        except Exception:
+            return None
+
+    def refresh_caixa_status_badge(self, badge: tk.Label):
+        """Atualiza o label do badge conforme status atual do caixa."""
+        try:
+            if badge is None or not hasattr(badge, 'winfo_exists') or not badge.winfo_exists():
+                return
+            fc = self._get_financeiro_controller_base()
+            aberto = False
+            try:
+                sessao = fc.get_sessao_aberta() if fc else None
+                aberto = bool(sessao)
+            except Exception:
+                aberto = False
+            if aberto:
+                badge.config(text='CAIXA ABERTO', bg=self.cores.get('destaque', '#4CAF50'), fg=self.cores.get('texto_claro', '#ffffff'))
+            else:
+                badge.config(text='CAIXA FECHADO', bg=self.cores.get('alerta', '#f44336'), fg=self.cores.get('texto_claro', '#ffffff'))
+        except Exception:
+            pass

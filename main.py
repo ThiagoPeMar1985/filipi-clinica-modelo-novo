@@ -168,7 +168,19 @@ def mostrar_sistema_pdv(usuario, login_window):
     
     # Configura a janela principal
     login_window.title("Clinica Medica")
-    login_window.state('zoomed')  # Maximiza a janela
+    # Abrir em 1766x768 centralizado (sem fullscreen)
+    try:
+        window_width = 1766
+        window_height = 768
+        screen_width = login_window.winfo_screenwidth()
+        screen_height = login_window.winfo_screenheight()
+        x = max(0, (screen_width - window_width) // 2)
+        y = max(0, (screen_height - window_height) // 2)
+        login_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        login_window.resizable(True, True)
+    except Exception:
+        # Fallback: apenas define a geometria sem centralizar
+        login_window.geometry("1766x768")
     
     # Configura o que acontece ao fechar a janela
     def on_closing():

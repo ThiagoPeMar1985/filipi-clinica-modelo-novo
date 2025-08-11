@@ -65,7 +65,9 @@ class PermissionController:
     
     def obter_todos_os_perfis(self) -> List[Dict]:
         """Obtém todos os perfis do sistema"""
-        return self.gerenciador._obter_perfis_por_nome().values()
+        perfis_map = self.gerenciador._obter_perfis_por_nome()
+        # Ordena por ID para manter alinhamento estável no front-end
+        return sorted(perfis_map.values(), key=lambda p: p['id'])
     
     def obter_todos_os_modulos(self) -> List[Dict]:
         """Obtém todos os módulos do sistema"""
@@ -175,9 +177,9 @@ class PermissionController:
         if nivel in ['admin', 'administrador']:
             return itens_menu
             
-        # Obtém o tipo de usuário (basico ou master)
+        # Obtém o tipo de usuário (funcionario ou medico)
         nivel = getattr(usuario, 'nivel', '').lower()
-        tipo_usuario = 'master' if nivel in ['gerente', 'master'] else 'basico'
+        tipo_usuario = 'medico' if nivel in ['medico'] else 'funcionario'
         
         # Obtém as permissões do usuário
         permissoes = self.gerenciador.obter_permissoes(tipo_usuario)

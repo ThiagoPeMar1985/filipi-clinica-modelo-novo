@@ -58,6 +58,13 @@ class AtendimentoModule(BaseModule):
             bg='#f0f2f5',
             fg='#333333'
         ).pack(pady=20)
+
+        # Badge do status do caixa abaixo da frase
+        try:
+            # BaseModule fornece o helper reutilizável
+            self.create_caixa_status_badge(self.conteudo_frame, pady=(0, 0))
+        except Exception:
+            pass
     
     def mostrar_agenda(self):
         """Mostra a tela de agenda"""

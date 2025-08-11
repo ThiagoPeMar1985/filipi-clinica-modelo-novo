@@ -75,6 +75,12 @@ class CadastroModule(BaseModule):
             font=('Arial', 12),
             bg='#f0f2f5'
         ).pack(pady=20)
+
+        # Badge de status do caixa abaixo da frase
+        try:
+            self.create_caixa_status_badge(self.conteudo_frame, pady=(0, 0))
+        except Exception:
+            pass
     
     def mostrar_empresa(self):
         """Mostra a tela de cadastro da empresa"""

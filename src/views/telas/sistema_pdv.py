@@ -12,6 +12,8 @@ from tkinter import messagebox
 from datetime import datetime
 import sys
 import os
+from src.controllers.financeiro_controller import FinanceiroController
+from src.controllers.estoque_controller import EstoqueController
 
 # Adiciona o diretório raiz ao path para garantir que os imports funcionem
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -26,27 +28,17 @@ class SistemaPDV:
         self.usuario = usuario
         self.root.title("Clinica Medica")
         
-        # Configura o tamanho da janela
-        largura = 1920
-        altura = 1080
-        
-        self.db_connection = getattr(usuario, 'db_connection', None)  
+        # Conexão (mantida)
+        self.db_connection = getattr(usuario, 'db_connection', None)
 
-
-        # Obtém as dimensões da tela
-        largura_tela = root.winfo_screenwidth()
-        altura_tela = root.winfo_screenheight()
-        
-        # Calcula a posição para centralizar
-        pos_x = (largura_tela // 2) - (largura // 2)
-        pos_y = (altura_tela // 2) - (altura // 2)
-        
-        # Define a geometria da janela e desativa tela cheia
-        self.root.state('normal')  # Garante que não está maximizado
-        self.root.attributes('-fullscreen', True) # Desativa tela cheia
-        self.root.geometry(f'{largura}x{altura}+{pos_x}+{pos_y}')
-        self.root.resizable(True, True)  # Permite redimensionamento
-        self.root.bind('<Escape>', lambda e: self.root.attributes('-fullscreen', False))
+        # Não sobrescrever a geometry definida em main.py.
+        # Garantir janela em estado normal e sem fullscreen.
+        self.root.state('normal')
+        try:
+            self.root.attributes('-fullscreen', False)
+        except Exception:
+            pass
+        self.root.resizable(True, True)
         
         # Cores do tema
         self.cores = {
@@ -90,6 +82,18 @@ class SistemaPDV:
         
         # Configurar módulos
         self.configurar_modulos()
+        # Atualiza status do caixa logo na inicialização
+        try:
+            self._atualizar_status_caixa()
+        except Exception:
+            pass
+        
+        # Verifica alerta de estoque baixo na abertura da tela principal
+        try:
+            # Aguarda alguns ms para garantir que os widgets foram renderizados
+            self.root.after(300, self._verificar_alerta_estoque)
+        except Exception:
+            pass
         
         # Configurar manipulador de fechamento
         self.root.protocol("WM_DELETE_WINDOW", self.sair)
@@ -207,6 +211,20 @@ class SistemaPDV:
         )
         date_label.pack()
         
+        # Badge do status do caixa (abaixo da data)
+        self.caixa_badge = tk.Label(
+            self.content_frame,
+            text="CAIXA FECHADO",
+            font=("Arial", 16, 'bold'),
+            bg=self.cores.get('alerta', '#f44336'),
+            fg=self.cores.get('texto_claro', '#ffffff'),
+            padx=40,
+            pady=12,
+            bd=0,
+            relief='flat',
+        )
+        self.caixa_badge.pack(pady=(10, 0))
+        
         # Créditos do software
         credits_label = tk.Label(
             self.content_frame,
@@ -236,6 +254,167 @@ class SistemaPDV:
         
         # Iniciar a atualização do relógio
         self._atualizar_relogio()
+
+    def _verificar_alerta_estoque(self):
+        """Verifica itens com estoque baixo e mostra um painel fixo no canto da tela
+        com a lista de produtos e quantidades atuais. Mantém visível até normalizar.
+        Também agenda nova verificação periódica.
+        """
+        try:
+            # Garantir conexão com o banco
+            if not getattr(self, 'db_connection', None):
+                try:
+                    from src.db.database import db
+                    self.db_connection = db.get_connection()
+                except Exception:
+                    return
+
+            ec = EstoqueController(self.db_connection)
+            itens_baixos = []
+            try:
+                itens_baixos = ec.baixo() or []
+            except Exception:
+                itens_baixos = []
+
+            if not itens_baixos:
+                # Se existir painel/badge anterior, remove
+                if hasattr(self, 'estoque_painel') and self.estoque_painel is not None:
+                    try:
+                        self.estoque_painel.destroy()
+                    except Exception:
+                        pass
+                    self.estoque_painel = None
+                if hasattr(self, 'estoque_badge') and self.estoque_badge is not None:
+                    try:
+                        self.estoque_badge.destroy()
+                    except Exception:
+                        pass
+                    self.estoque_badge = None
+                # Agenda próxima verificação
+                try:
+                    self.root.after(60000, self._verificar_alerta_estoque)
+                except Exception:
+                    pass
+                return
+
+            # Monta linhas detalhadas para exibição
+            linhas = []
+            for item in itens_baixos:
+                nome = (item.get('nome') if isinstance(item, dict) else str(item)) or 'Produto'
+                qtd_atual = item.get('qtd_atual') if isinstance(item, dict) else None
+                qtd_min = item.get('qtd_minima') if isinstance(item, dict) else None
+                if qtd_atual is not None and qtd_min is not None:
+                    linhas.append(f"- {nome}: {qtd_atual} (mín: {qtd_min})")
+                else:
+                    linhas.append(f"- {nome}")
+
+            # Cria/atualiza um painel centralizado logo abaixo do badge do caixa com a lista
+            try:
+                if not hasattr(self, 'estoque_painel') or self.estoque_painel is None:
+                    self.estoque_painel = tk.Frame(
+                        self.content_frame,
+                        bg=self.cores.get('alerta', '#f44336'),
+                        bd=0,
+                        highlightthickness=0,
+                    )
+                    # Posiciona centralizado abaixo do badge do caixa
+                    try:
+                        self.estoque_painel.place_forget()
+                    except Exception:
+                        pass
+                    self.estoque_painel.pack(pady=(8, 0))
+
+                    self._estoque_title = tk.Label(
+                        self.estoque_painel,
+                        text='Estoque baixo',
+                        font=("Arial", 12, 'bold'),
+                        bg=self.cores.get('alerta', '#f44336'),
+                        fg=self.cores.get('texto_claro', '#ffffff'),
+                        padx=10, pady=6,
+                    )
+                    self._estoque_title.pack(fill='x')
+
+                    self._estoque_lista = tk.Frame(
+                        self.estoque_painel,
+                        bg=self.cores.get('alerta', '#f44336'),
+                    )
+                    self._estoque_lista.pack(fill='both', expand=True, padx=10, pady=(0, 8))
+                else:
+                    # Limpa lista para repovoar
+                    try:
+                        # Garante que está usando pack (centralizado)
+                        self.estoque_painel.place_forget()
+                    except Exception:
+                        pass
+                    try:
+                        # Se já estava empacotado, ignore erro
+                        self.estoque_painel.pack_configure(pady=(8, 0))
+                    except Exception:
+                        try:
+                            self.estoque_painel.pack(pady=(8, 0))
+                        except Exception:
+                            pass
+                    for w in list(self._estoque_lista.winfo_children()):
+                        w.destroy()
+
+                # Popula a lista
+                for linha in linhas:
+                    lbl = tk.Label(
+                        self._estoque_lista,
+                        text=linha,
+                        font=("Arial", 11),
+                        bg=self.cores.get('alerta', '#f44336'),
+                        fg=self.cores.get('texto_claro', '#ffffff'),
+                        anchor='w',
+                        justify='left',
+                    )
+                    lbl.pack(fill='x')
+
+            except Exception:
+                pass
+            
+            # Agenda próxima verificação periódica (60s)
+            try:
+                self.root.after(60000, self._verificar_alerta_estoque)
+            except Exception:
+                pass
+        except Exception:
+            # Silencia erros para não bloquear a abertura do sistema
+            pass
+
+    def _atualizar_status_caixa(self):
+        """Atualiza o badge do status do caixa na tela inicial do PDV."""
+        try:
+            if not hasattr(self, 'caixa_badge') or self.caixa_badge is None:
+                return
+            # Garante conexão com o banco antes de consultar o status
+            if not getattr(self, 'db_connection', None):
+                try:
+                    from src.db.database import db
+                    self.db_connection = db.get_connection()
+                except Exception:
+                    return
+            fc = FinanceiroController(self.db_connection)
+            sessao = None
+            try:
+                sessao = fc.get_sessao_aberta()
+            except Exception:
+                sessao = None
+            aberto = bool(sessao)
+            if aberto:
+                self.caixa_badge.config(
+                    text='CAIXA ABERTO',
+                    bg=self.cores.get('destaque', '#4CAF50'),
+                    fg=self.cores.get('texto_claro', '#ffffff')
+                )
+            else:
+                self.caixa_badge.config(
+                    text='CAIXA FECHADO',
+                    bg=self.cores.get('alerta', '#f44336'),
+                    fg=self.cores.get('texto_claro', '#ffffff')
+                )
+        except Exception:
+            pass
     
     def _atualizar_relogio(self):
         """Atualiza o relógio a cada segundo"""
@@ -276,7 +455,7 @@ class SistemaPDV:
         return [
             {"nome": "📅 Agenda", "metodo": "agenda"},
             {"nome": "📋 Consultas", "metodo": "consultas"},
-            {"nome": "🏥 Exames", "metodo": "exames"},
+            {"nome": "🏥 Exames", "metodo": "exames"}
         ]
 
     def _get_opcoes_financeiro(self):
@@ -285,7 +464,8 @@ class SistemaPDV:
             {"nome": "💵 Caixa", "metodo": "caixa"},
             {"nome": "📝 Contas a Pagar", "metodo": "contas_pagar"},
             {"nome": "📋 Contas a Receber", "metodo": "contas_receber"},
-            {"nome": "📊 Relatórios", "metodo": "relatorios"}
+            {"nome": "📊 Relatórios", "metodo": "relatorios"},
+            {"nome": "📦 Estoque", "metodo": "estoque"}
         ]
         
     def configurar_modulos(self):
@@ -379,12 +559,17 @@ class SistemaPDV:
         # Adiciona as opções do módulo na barra lateral
         for opcao in modulo.get("opcoes", []):
             # Verifica se o usuário tem permissão para ver esta opção
-            tem_permissao = self.permission_controller.verificar_permissao(
-                self.usuario,
-                modulo_id,  # módulo
-                opcao.get("acao")  # ação
-            )
-        
+            try:
+                tem_permissao = self.permission_controller.verificar_permissao(
+                    self.usuario,
+                    modulo_id,  # módulo
+                    opcao.get("acao")  # ação
+                ) if hasattr(self, 'permission_controller') and self.permission_controller else True
+            except Exception:
+                tem_permissao = True
+
+            # Removida exceção temporária de liberação do "estoque"; respeitar permissões do banco
+
             # Se não tiver permissão, pula para a próxima opção
             if not tem_permissao:
                 continue

@@ -115,11 +115,16 @@ class ConfiguracaoModule(BaseModule):
         
         label = tk.Label(
             self.current_view, 
-            text="Selecione uma opção de configuração no menu lateral", 
+            text="Selecione uma opção no menu lateral para começar.", 
             font=('Arial', 12),
             bg='#f0f2f5'
         )
-        label.place(relx=0.5, rely=0.5, anchor='center')
+        label.pack(pady=20)
+        # Badge do status do caixa abaixo da frase
+        try:
+            self.create_caixa_status_badge(self.current_view, pady=(0, 0))
+        except Exception:
+            pass
     
     def _show_nfe(self):
         # Tela de configuração de NF-e
@@ -1323,15 +1328,15 @@ class ConfiguracaoModule(BaseModule):
                         # Usa os valores das variáveis Tkinter
                         permissoes_para_salvar['modulos'][modulo_id]['botoes'][botao_id] = {
                             'nome': botao_data['nome'],
-                            'basico': modulo_data['variaveis'][botao_id]['basico'].get(),
-                            'master': modulo_data['variaveis'][botao_id]['master'].get()
+                            'funcionario': modulo_data['variaveis'][botao_id]['funcionario'].get(),
+                            'medico': modulo_data['variaveis'][botao_id]['medico'].get()
                         }
                     else:
                         # Usa os valores padrão se não houver variáveis
                         permissoes_para_salvar['modulos'][modulo_id]['botoes'][botao_id] = {
                             'nome': botao_data['nome'],
-                            'basico': botao_data.get('basico', False),
-                            'master': botao_data.get('master', True)
+                            'funcionario': botao_data.get('funcionario', False),
+                            'medico': botao_data.get('medico', True)
                         }
             
             # Usa o PermissionController para salvar as permissões
@@ -1518,17 +1523,17 @@ class ConfiguracaoModule(BaseModule):
                 # Adiciona os botões do módulo ao frame
                 for botao_id, botao_data in modulo_data['botoes'].items():
                     # Garante que os valores sejam booleanos
-                    valor_basico = bool(botao_data.get('basico', False))
-                    valor_master = bool(botao_data.get('master', True))
+                    valor_funcionario = bool(botao_data.get('funcionario', False))
+                    valor_medico = bool(botao_data.get('medico', True))
                     
                     # Cria as variáveis para os checkboxes com os valores corretos
-                    var_basico = tk.BooleanVar(value=valor_basico)
-                    var_master = tk.BooleanVar(value=valor_master)
+                    var_funcionario = tk.BooleanVar(value=valor_funcionario)
+                    var_medico = tk.BooleanVar(value=valor_medico)
                     
                     # Armazena as variáveis para uso posterior
                     modulo_data['variaveis'][botao_id] = {
-                        'basico': var_basico,
-                        'master': var_master
+                        'funcionario': var_funcionario,
+                        'medico': var_medico
                     }
                     
                     # Frame para a linha do botão
@@ -1551,16 +1556,16 @@ class ConfiguracaoModule(BaseModule):
                         padx=10
                     ).grid(row=0, column=0, sticky='w')
                     
-                    # Frame para centralizar o checkbox do usuário master
-                    master_frame = tk.Frame(botao_frame, bg='white', width=180)
-                    master_frame.grid(row=0, column=1, sticky='nsew')
-                    master_frame.grid_propagate(False)
-                    master_frame.columnconfigure(0, weight=1)
+                    # Frame para centralizar o checkbox do usuário medico
+                    medico_frame = tk.Frame(botao_frame, bg='white', width=180)
+                    medico_frame.grid(row=0, column=1, sticky='nsew')
+                    medico_frame.grid_propagate(False)
+                    medico_frame.columnconfigure(0, weight=1)
                     
-                    # Checkbox para usuário master
-                    check_master = tk.Checkbutton(
-                        master_frame,
-                        variable=var_master,
+                    # Checkbox para usuário medico
+                    check_medico = tk.Checkbutton(
+                        medico_frame,
+                        variable=var_medico,
                         bg='white',
                         activebackground='white',
                         onvalue=True,
@@ -1568,18 +1573,18 @@ class ConfiguracaoModule(BaseModule):
                         bd=0,
                         highlightthickness=0
                     )
-                    check_master.place(relx=0.5, rely=0.5, anchor='center')
+                    check_medico.place(relx=0.5, rely=0.5, anchor='center')
                     
-                    # Frame para centralizar o checkbox do usuário básico
-                    basico_frame = tk.Frame(botao_frame, bg='white', width=180)
-                    basico_frame.grid(row=0, column=2, sticky='nsew')
-                    basico_frame.grid_propagate(False)
-                    basico_frame.columnconfigure(0, weight=1)
+                    # Frame para centralizar o checkbox do usuário funcionario
+                    funcionario_frame = tk.Frame(botao_frame, bg='white', width=180)
+                    funcionario_frame.grid(row=0, column=2, sticky='nsew')
+                    funcionario_frame.grid_propagate(False)
+                    funcionario_frame.columnconfigure(0, weight=1)
                     
-                    # Checkbox para usuário básico
-                    check_basico = tk.Checkbutton(
-                        basico_frame,
-                        variable=var_basico,
+                    # Checkbox para usuário funcionario
+                    check_funcionario = tk.Checkbutton(
+                        funcionario_frame,
+                        variable=var_funcionario,
                         bg='white',
                         activebackground='white',
                         onvalue=True,
@@ -1587,7 +1592,7 @@ class ConfiguracaoModule(BaseModule):
                         bd=0,
                         highlightthickness=0
                     )
-                    check_basico.place(relx=0.5, rely=0.5, anchor='center')
+                    check_funcionario.place(relx=0.5, rely=0.5, anchor='center')
             
             # Dicionário para armazenar os botões de módulos
             self.botoes_modulos = {}
@@ -1600,7 +1605,7 @@ class ConfiguracaoModule(BaseModule):
                 
                 # Destaca o botão selecionado com amarelo
                 if modulo_id in self.botoes_modulos:
-                    self.botoes_modulos[modulo_id].config(bg='#28b5f4')  # Cor amarela do backup
+                    self.botoes_modulos[modulo_id].config(bg='#28b5f4') 
                 
                 # Mostra o conteúdo do módulo
                 mostrar_modulo(modulo_id)
