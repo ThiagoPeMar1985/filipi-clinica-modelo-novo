@@ -13,7 +13,7 @@ import sys
 # Adiciona o diretório raiz ao path para permitir importações absolutas
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from src.db.config import get_db_config, DB_CONFIG
+from src.db.config import get_db_config, DB_CONFIG, is_server_machine
 
 class TelaConexaoDB:
     """Classe para a tela de configuração de conexão com o banco de dados."""
@@ -87,6 +87,28 @@ class TelaConexaoDB:
         # Configura o grid
         content_frame.columnconfigure(1, weight=1, minsize=300)  # Coluna dos campos
         
+        # Opção para detectar se é servidor ou cliente
+        self.is_server = tk.BooleanVar(value=False)
+        try:
+            # Tenta importar a função is_server_machine
+            self.is_server.set(is_server_machine())
+        except:
+            # Se não conseguir importar, assume que não é servidor
+            self.is_server.set(False)
+            
+        server_frame = tk.Frame(content_frame, bg='#f0f2f5')
+        server_frame.grid(row=0, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+        
+        self.server_check = tk.Checkbutton(
+            server_frame, 
+            text="Esta máquina é o servidor do banco de dados", 
+            variable=self.is_server,
+            bg='#f0f2f5',
+            font=('Arial', 10),
+            command=self._atualizar_campos_servidor
+        )
+        self.server_check.pack(side='left', padx=5)
+        
         # Servidor
         tk.Label(content_frame, text="Servidor:", **label_style).grid(row=1, column=0, padx=10, pady=5, sticky='w')
         self.db_host = tk.Entry(content_frame, **entry_style)
@@ -115,7 +137,7 @@ class TelaConexaoDB:
         tk.Label(content_frame, text="Nome do Banco:", **label_style).grid(row=5, column=0, padx=10, pady=5, sticky='w')
         self.db_nome = tk.Entry(content_frame, **entry_style)
         self.db_nome.grid(row=5, column=1, padx=10, pady=5, sticky='ew')
-        self.db_nome.insert(0, self.config.get('database', 'pdv_bar'))
+        self.db_nome.insert(0, self.config.get('database', 'clinica_filipi'))
         
         # Status da conexão
         self.status_label = tk.Label(
@@ -189,6 +211,19 @@ class TelaConexaoDB:
         )
         self.btn_sair.pack(side='left', padx=5)
     
+    def _atualizar_campos_servidor(self):
+        """Atualiza os campos de servidor e porta com base na opção de servidor."""
+        if self.is_server.get():
+            self.db_host.delete(0, tk.END)
+            self.db_host.insert(0, 'localhost')
+            self.db_porta.delete(0, tk.END)
+            self.db_porta.insert(0, '3306')
+        else:
+            self.db_host.delete(0, tk.END)
+            self.db_host.insert(0, self.config.get('host', 'localhost'))
+            self.db_porta.delete(0, tk.END)
+            self.db_porta.insert(0, str(self.config.get('port', '3306')))
+    
     def _testar_conexao(self):
         """Testa a conexão com o banco de dados usando os parâmetros informados."""
         # Obtém os valores dos campos
@@ -215,7 +250,7 @@ class TelaConexaoDB:
                 'port': int(porta),
                 'user': usuario,
                 'password': senha,
-                'database': banco,
+                'database': "clinica_filipi",
                 'connection_timeout': 5,
                 'connect_timeout': 5
             }
@@ -282,15 +317,34 @@ class TelaConexaoDB:
                 'porta': self.db_porta.get().strip(),
                 'usuario': self.db_usuario.get().strip(),
                 'senha': self.db_senha.get(),
-                'nome_bd': self.db_nome.get().strip()
+                'nome_bd': self.db_nome.get().strip(),
+                'is_server': self.is_server.get()  # Salva a informação se é servidor
             }
             
             # Salva as configurações
-            ctrl.salvar_config_banco_dados(dados)
+            resultado = ctrl.salvar_config_db(
+                host=dados['host'],
+                porta=dados['porta'],
+                usuario=dados['usuario'],
+                senha=dados['senha'],
+                banco=dados['nome_bd']
+            )
+            
+            if not resultado:
+                messagebox.showwarning(
+                    "Aviso", 
+                    "As configurações foram aplicadas, mas não foi possível salvá-las permanentemente.\n"
+                    "Você precisará configurar novamente ao reiniciar o sistema."
+                )
             
         except Exception as e:
             print(f"Erro ao salvar configurações em arquivo: {e}")
-            # Não exibe mensagem de erro para o usuário, pois já salvamos na memória
+            messagebox.showwarning(
+                "Aviso", 
+                "As configurações foram aplicadas, mas não foi possível salvá-las permanentemente.\n"
+                f"Erro: {str(e)}\n"
+                "Você precisará configurar novamente ao reiniciar o sistema."
+            )
     
     def _sair(self):
         """Fecha a aplicação."""

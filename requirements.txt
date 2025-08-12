@@ -2,11 +2,12 @@
 # Versões mínimas recomendadas
 
 # Interface Gráfica
-tkinter  # Já incluído na instalação padrão do Python
+# tkinter  # Já incluído na instalação padrão do Python (não precisa instalar via pip)
+tkcalendar>=1.6.1
 
 # Banco de Dados
 # Para outros bancos de dados, descomente as linhas abaixo conforme necessário
-# mysql-connector-python>=8.0.0
+mysql-connector-python==8.3.0
 # psycopg2-binary>=2.9.0
 
 # Geração de Relatórios
@@ -14,6 +15,8 @@ tkinter  # Já incluído na instalação padrão do Python
 # xlsxwriter>=3.0.0
 
 # Utilitários
+requests>=2.31.0
+pywin32>=306  # Necessário para impressão no Windows (win32print/win32api)
 python-dateutil>=2.8.0
 pytz>=2021.1
 
@@ -21,6 +24,7 @@ pytz>=2021.1
 pylint>=2.12.0
 black>=22.3.0
 flake8>=4.0.0
+pyinstaller>=6.5.0  # Para gerar o executável (.exe)
 
 # Para testes
 pytest>=7.0.0

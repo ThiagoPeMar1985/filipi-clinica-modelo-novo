@@ -8,15 +8,15 @@ import json
 import os
 import sys
 from pathlib import Path
+import platform
+import logging
 
-# Adiciona o diretório raiz do projeto ao path para importar módulos
-sys.path.append(str(Path(__file__).parent.parent.parent))
-
-# Importa as configurações do banco de dados
-from db.config import get_db_config
+# Importa as configurações do banco de dados (caminho absoluto do pacote src)
+from src.db.config import get_db_config
 
 # Caminho para o arquivo de configuração
 CONFIG_FILE = "login_config.json"
+
 
 class Usuario:
     """Classe que representa um usuário"""
@@ -33,12 +33,41 @@ class TelaLogin:
     def __init__(self, root, on_login_sucesso):
         self.root = root
         self.on_login_sucesso = on_login_sucesso
+        # Configura logger para diagnosticar comportamento no executável
+        try:
+            logs_dir = Path.home() / '.clinicas'
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            self._log_path = logs_dir / 'clinica_app.log'
+            logging.basicConfig(
+                filename=self._log_path,
+                level=logging.INFO,
+                format='%(asctime)s %(levelname)s %(message)s'
+            )
+            logging.info('=== App iniciado: TelaLogin.__init__ ===')
+        except Exception:
+            self._log_path = None
         
         # Configuração do banco de dados a partir do config.py
         self.db_config = get_db_config()
         # Remove chaves que não são necessárias para a conexão
-        for key in ['raise_on_warnings', 'use_pure', 'autocommit', 'charset', 'collation', 'connection_timeout', 'connect_timeout']:
+        for key in ['raise_on_warnings', 'charset', 'collation', 'connect_timeout']:
             self.db_config.pop(key, None)
+        # Força parâmetros que melhoram compatibilidade no executável
+        self.db_config['use_pure'] = True
+        self.db_config['autocommit'] = True
+        self.db_config.setdefault('connection_timeout', 5)
+        # Garante tipo correto da porta
+        if 'port' in self.db_config:
+            try:
+                self.db_config['port'] = int(self.db_config['port'])
+            except Exception:
+                self.db_config.pop('port', None)
+        # Log da configuração (sem senha)
+        try:
+            cfg_log = {k: ('***' if k == 'password' and v is not None else v) for k, v in self.db_config.items()}
+            logging.info(f'DB config aplicada: {cfg_log}')
+        except Exception:
+            pass
         
         # Configura a janela
         self.root.title("Login -Clinicas")
@@ -152,13 +181,28 @@ class TelaLogin:
     def _verificar_credenciais(self, usuario, senha):
         """Verifica se o usuário e senha estão corretos"""
         try:
+            logging.info(f'Tentando conexão MySQL para login de usuario={usuario!r}')
             conn = mysql.connector.connect(**self.db_config)
             cursor = conn.cursor(dictionary=True)
             
+            # Diagnóstico: descobrir o schema atual e existência do login
+            try:
+                cursor.execute("SELECT DATABASE() AS db")
+                row_db = cursor.fetchone() or {}
+                current_db = row_db.get('db')
+            except Exception:
+                current_db = None
+            
+            try:
+                cursor.execute("SELECT COUNT(*) AS c FROM usuarios WHERE login = %s", (usuario,))
+                row_cnt = cursor.fetchone() or {}
+                login_count = row_cnt.get('c')
+            except Exception:
+                login_count = None
+            
+            # Autenticação
             query = "SELECT * FROM usuarios WHERE login = %s AND senha = %s"
-            
             cursor.execute(query, (usuario, senha))
-            
             resultado = cursor.fetchone()
             
             if resultado:
@@ -166,17 +210,68 @@ class TelaLogin:
                 # Fecha a conexão após obter os dados
                 cursor.close()
                 conn.close()
+                logging.info(f'Login bem-sucedido para usuario={usuario.login!r} (id={usuario.id})')
                 return usuario
             else:
+                logging.warning(f'Falha de login para usuario={usuario!r}: credenciais inválidas')
+                # Mostra diagnóstico útil para identificar divergência de banco/schema ou credenciais
+                try:
+                    messagebox.showerror(
+                        "Erro",
+                        f"Usuário ou senha inválidos!\n\n"
+                        f"Banco (DATABASE): {current_db}\n"
+                        f"Login informado: {usuario}\n"
+                        f"Existe login neste banco? {'sim' if (login_count and int(login_count) > 0) else 'não'}"
+                    )
+                except Exception:
+                    pass
                 cursor.close()
                 conn.close()
                 return None
-            
+        
         except Exception as e:
             import traceback
             erro = traceback.format_exc()
+            try:
+                logging.exception(f'Erro ao conectar/autenticar no banco: {e}')
+            except Exception:
+                pass
             messagebox.showerror("Erro", f"Erro ao conectar ao banco de dados: {str(e)}")
             return None
+    
+    def _registrar_chat_sessao(self, usuario_obj, dispositivo: str | None = None):
+        """Registra (insere) uma sessão de chat para o usuário logado.
+        Usa o nome do host como dispositivo quando não informado.
+        """
+        try:
+            dispositivo_detectado = (
+                dispositivo
+                or platform.node()
+                or os.getenv('COMPUTERNAME')
+                or 'desconhecido'
+            )
+            conn = mysql.connector.connect(**self.db_config)
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO chat_sessoes (usuario_id, usuario_nome, dispositivo, ultimo_heartbeat)
+                VALUES (%s, %s, %s, NOW())
+                ON DUPLICATE KEY UPDATE
+                    usuario_nome = VALUES(usuario_nome),
+                    dispositivo = VALUES(dispositivo),
+                    ultimo_heartbeat = VALUES(ultimo_heartbeat)
+                """,
+                (usuario_obj.id, usuario_obj.nome, dispositivo_detectado),
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            # Evita quebrar o fluxo de login por falha não-crítica de auditoria
+            try:
+                print(f"[chat_sessoes] Falha ao registrar sessão: {e}")
+            except Exception:
+                pass
     
     def _fazer_login(self, event=None):
         """Tenta fazer o login"""
@@ -195,9 +290,22 @@ class TelaLogin:
                 self.salvar_credenciais(usuario)
             else:
                 self.remover_credenciais()
-                
-            # Chama a função de callback para continuar para o sistema
-            self.on_login_sucesso(usuario_encontrado, self.root)
+            try:
+                # Registra a sessão do chat para o usuário logado
+                self._registrar_chat_sessao(usuario_encontrado)
+                # Chama a função de callback para continuar para o sistema
+                self.on_login_sucesso(usuario_encontrado, self.root)
+            except Exception as e:
+                try:
+                    import traceback
+                    logging.exception("Falha ao abrir a tela principal após login")
+                    detalhe = traceback.format_exc()
+                    messagebox.showerror(
+                        "Erro ao abrir o sistema",
+                        f"Ocorreu um erro ao abrir a tela principal.\n\nDetalhes:\n{e}\n\nTraceback:\n{detalhe}"
+                    )
+                except Exception:
+                    pass
         else:
             messagebox.showerror("Erro", "Usuário ou senha inválidos!")
             self.entry_senha.delete(0, 'end')

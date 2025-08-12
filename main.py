@@ -20,25 +20,35 @@ from src.db.config import get_db_config
 
 def _conectar_banco_dados():
     """Função interna para testar a conexão com o banco de dados."""
-    # Obtém as configurações do banco de dados
-    db_config = get_db_config()
-    
-    # Remove chaves que não são necessárias para a conexão
-    for key in ['raise_on_warnings', 'use_pure', 'autocommit', 'charset', 'collation', 'connection_timeout', 'connect_timeout']:
-        db_config.pop(key, None)
-    
-    # Configura timeout reduzido para a conexão
-    db_config['connection_timeout'] = 3
-    db_config['connect_timeout'] = 3
-    
-    # Tenta conectar ao banco de dados
     try:
+        # Obtém as configurações do banco de dados
+        db_config = get_db_config()
+        
+        # Remove chaves que não são necessárias para a conexão
+        for key in ['raise_on_warnings', 'use_pure', 'autocommit', 'charset', 'collation', 'connection_timeout', 'connect_timeout']:
+            db_config.pop(key, None)
+        
+        # Configura timeout aumentado para a conexão
+        db_config['connection_timeout'] = 10
+        db_config['connect_timeout'] = 10
+        
+        # Imprime informações de diagnóstico (será removido no executável final)
+        print(f"Tentando conectar ao banco: {db_config.get('host')}:{db_config.get('port')}/{db_config.get('database')}")
+        
+        # Tenta conectar ao banco de dados
         conn = mysql.connector.connect(**db_config)
         if conn.is_connected():
             conn.close()
             return True, "Conexão com o banco de dados estabelecida com sucesso!"
         return False, "Falha ao conectar ao banco de dados."
+    except ImportError as e:
+        print(f"Erro de importação: {str(e)}")
+        return False, f"Erro ao importar módulos necessários: {str(e)}"
+    except mysql.connector.Error as e:
+        print(f"Erro MySQL: {str(e)}")
+        return False, f"Erro de conexão MySQL: {str(e)}"
     except Exception as e:
+        print(f"Erro geral: {str(e)}")
         return False, f"Erro ao conectar ao banco de dados: {str(e)}"
 
 def testar_conexao_banco_dados(root=None):
@@ -205,19 +215,24 @@ def main():
             
             if sucesso:
                 # Se a conexão for bem-sucedida, mostra a tela de login
+                print("Conexão com banco de dados bem-sucedida. Exibindo tela de login.")
                 mostrar_tela_login(root)
             else:
                 # Se a conexão falhar, mostra a tela de configuração do banco de dados
+                print(f"Falha na conexão com banco de dados: {mensagem}")
+                print("Exibindo tela de configuração de conexão.")
                 mostrar_tela_conexao_db(root)
                     
         except Exception as e:
             # Em caso de erro inesperado, mostra a tela de configuração do banco
             print(f"Erro ao conectar ao banco de dados: {str(e)}")
+            print("Exibindo tela de configuração de conexão devido a erro.")
             mostrar_tela_conexao_db(root)
         
         # Configura o que acontece ao fechar a janela principal
         def on_closing():
-            root.destroy()
+            if messagebox.askokcancel("Sair", "Deseja realmente sair do sistema?"):
+                root.destroy()
         
         root.protocol("WM_DELETE_WINDOW", on_closing)
         
@@ -227,8 +242,7 @@ def main():
         
     except Exception as e:
         messagebox.showerror("Erro", f"Erro ao iniciar o sistema: {str(e)}")
-        print(f"Erro: {str(e)}")
-        sys.exit(1)
+        print(f"Erro fatal: {str(e)}")
 
 if __name__ == "__main__":
     main()

@@ -238,7 +238,7 @@ class AgendaController:
         try:
             cursor = self.db_connection.cursor(dictionary=True)
             cursor.execute("""
-                SELECT id, nome, tempo 
+                SELECT id, nome, tempo, valor
                 FROM exames_consultas 
                 WHERE medico_id = %s
                 ORDER BY nome

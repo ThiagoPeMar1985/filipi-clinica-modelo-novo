@@ -26,6 +26,17 @@ class HorarioDisponivelModule:
         main_frame = tk.Frame(self.frame, bg=CORES['fundo'], padx=10, pady=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
+        # Título da tela
+        title_frame = tk.Frame(main_frame, bg='#f0f2f5')
+        title_frame.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(
+            title_frame,
+            text="Lista de Horários Médicos",
+            font=('Arial', 16, 'bold'),
+            bg='#f0f2f5',
+            fg='#000000'
+        ).pack(side='left')
+        
         # Seletor de Médico
         tk.Label(main_frame, text="Médico:", bg=CORES['fundo'], font=FONTES['normal']).pack(anchor='w')
         self.combo_medico = ttk.Combobox(main_frame, state="readonly", font=FONTES['normal'])
@@ -51,7 +62,7 @@ class HorarioDisponivelModule:
         for i, (dia, _) in enumerate(self.dias_semana):
             var = tk.BooleanVar()
             cb = tk.Checkbutton(dias_frame, text=dia, variable=var, bg=CORES['fundo'],
-                              fg=CORES['texto'], selectcolor=CORES['fundo'],
+                              fg=CORES['texto'], selectcolor='white',
                               activebackground=CORES['fundo'], activeforeground=CORES['texto'],
                               font=FONTES['normal'])
             cb.grid(row=i//4, column=i%4, sticky='w', padx=5, pady=2)

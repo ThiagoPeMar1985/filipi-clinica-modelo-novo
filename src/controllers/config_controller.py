@@ -17,21 +17,21 @@ class ConfigController:
     def __init__(self, view=None):
         """Inicializa o controlador com a view opcional."""
         self.view = view
-        self.config_dir = Path.home() / '.pdv_aquarius'
+        self.config_dir = Path.home() / '.clinicas'
         self.config_file = self.config_dir / 'config.json'
         self.db_config_file = Path(__file__).parent.parent / 'db' / 'config.py'
         self._criar_estrutura_padrao()
     
     def configurar_view(self, view):
         """Configura a view para este controlador."""
-        self.view = view
+        self.view = view    
     
     def _criar_estrutura_padrao(self):
         """Cria a estrutura de diretórios e arquivos de configuração padrão."""
         try:
             self.config_dir.mkdir(exist_ok=True)
             if not self.config_file.exists():
-                self._salvar_config({})
+                self._salvar_config('config', {})
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao criar estrutura de configuração: {e}")
     
@@ -146,7 +146,7 @@ class ConfigController:
     'host': '{dados.get('host', '127.0.0.1')}',
     'user': '{dados.get('usuario', 'root')}',
     'password': '{dados.get('senha', '')}',
-    'database': '{dados.get('nome_bd', 'pdv_bar')}',
+    'database': '{dados.get('nome_bd', 'clinica_filipi')}',
     'port': {dados.get('porta', 3306)},
     'raise_on_warnings': True,
     'use_pure': True,
@@ -247,7 +247,7 @@ class ConfigController:
                     'porta': str(db_config.get('port', 3306)),
                     'usuario': db_config.get('user', 'root'),
                     'senha': db_config.get('password', ''),
-                    'nome_bd': db_config.get('database', 'pdv_bar')
+                    'nome_bd': db_config.get('database', 'clinica_filipi')
                 }
         except Exception as e:
             print(f"Erro ao carregar configurações do banco de dados: {e}")
@@ -258,7 +258,7 @@ class ConfigController:
             'porta': '3306',
             'usuario': 'root',
             'senha': '',
-            'nome_bd': 'pdv_bar'
+            'nome_bd': 'clinica_filipi'
         })
         
     def carregar_config_impressoras(self):
@@ -888,4 +888,56 @@ class ConfigController:
             
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao alterar senha: {e}")
+            return False
+
+    def salvar_config_db(self, host, porta, usuario, senha, banco):
+        """
+        Salva as configurações do banco de dados.
+        
+        Args:
+            host (str): Endereço do servidor do banco de dados
+            porta (int): Porta do servidor do banco de dados
+            usuario (str): Nome de usuário para conexão
+            senha (str): Senha para conexão
+            banco (str): Nome do banco de dados
+            
+        Returns:
+            bool: True se as configurações foram salvas com sucesso, False caso contrário
+        """
+        try:
+            # Converte a porta para inteiro
+            try:
+                porta = int(porta)
+            except:
+                porta = 3306
+                
+            # Prepara os dados para salvar no arquivo JSON
+            dados = {
+                'host': host,
+                'porta': porta,
+                'usuario': usuario,
+                'senha': senha,
+                'nome_bd': banco
+            }
+            
+            # Salva no arquivo JSON
+            resultado = self._salvar_config('banco_dados', dados)
+            
+            # Também salva no arquivo de configuração do banco de dados
+            try:
+                # Cria um dicionário no formato esperado pelo método salvar_config_banco_dados
+                dados_db = {
+                    'host': host,
+                    'porta': porta,
+                    'usuario': usuario,
+                    'senha': senha,
+                    'nome_bd': banco
+                }
+                self.salvar_config_banco_dados(dados_db)
+            except Exception as e:
+                print(f"Aviso: Não foi possível atualizar o arquivo config.py: {e}")
+                
+            return resultado
+        except Exception as e:
+            print(f"Erro ao salvar configurações do banco de dados: {e}")
             return False

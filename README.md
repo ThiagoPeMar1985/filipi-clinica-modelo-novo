@@ -63,6 +63,7 @@ Quiosque-Aquarius/
 - **Delivery**: Gestão de pedidos para entrega
 - **Financeiro**: Controle de caixa e relatórios financeiros
 - **Configurações**: Personalização do sistema e gerenciamento de usuários
+- **Chat**: Chat em tempo real entre usuários
 
 ## 📝 Licença
 

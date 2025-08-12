@@ -61,6 +61,8 @@ class CadastroController:
             return False, "Sem conexão com o banco de dados"
         
         try:
+            # Garante que a coluna 'valor' existe
+            self._ensure_exames_consultas_valor()
             cursor = self.db.cursor()
             
             # Validações
@@ -397,6 +399,25 @@ class CadastroController:
         """Exclui uma receita."""
         if not self.db:
             return False
+
+    def _ensure_exames_consultas_valor(self):
+        """Garante que a tabela exames_consultas possui a coluna 'valor'."""
+        if not self.db:
+            return
+        try:
+            cursor = self.db.cursor()
+            cursor.execute("SHOW COLUMNS FROM exames_consultas LIKE 'valor'")
+            col = cursor.fetchone()
+            if not col:
+                cursor.execute("ALTER TABLE exames_consultas ADD COLUMN valor DECIMAL(10,2) NOT NULL DEFAULT 0.00")
+                self.db.commit()
+        except Exception as e:
+            # Em caso de falha, apenas loga; operações subsequentes podem falhar e serão tratadas
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+            print(f"Aviso: não foi possível garantir a coluna 'valor' em exames_consultas: {e}")
         try:
             cursor = self.db.cursor()
             cursor.execute("DELETE FROM receitas WHERE id = %s", (receita_id,))
@@ -455,13 +476,14 @@ class CadastroController:
             return False
 
 
-    def criar_exame_consulta(self, medico_id: int, nome: str, tempo: int) -> Optional[int]:
+    def criar_exame_consulta(self, medico_id: int, nome: str, tempo: int, valor: float) -> Optional[int]:
         """Cria um novo exame/consulta.
         
         Args:
             medico_id: ID do médico
             nome: Nome do exame/consulta
             tempo: Tempo em minutos
+            valor: Valor do exame/consulta
             
         Returns:
             int: ID do exame/consulta criado ou None em caso de erro
@@ -470,10 +492,12 @@ class CadastroController:
             return None
             
         try:
+            # Garante que a coluna 'valor' existe
+            self._ensure_exames_consultas_valor()
             cursor = self.db.cursor()
             cursor.execute(
-                "INSERT INTO exames_consultas (medico_id, nome, tempo) VALUES (%s, %s, %s)",
-                (medico_id, nome, tempo)
+                "INSERT INTO exames_consultas (medico_id, nome, tempo, valor) VALUES (%s, %s, %s, %s)",
+                (medico_id, nome, tempo, valor)
             )
             self.db.commit()
             return cursor.lastrowid
@@ -497,7 +521,7 @@ class CadastroController:
         try:
             cursor = self.db.cursor(dictionary=True)
             cursor.execute("""
-                SELECT id, medico_id, nome, tempo 
+                SELECT id, medico_id, nome, tempo, valor
                 FROM exames_consultas 
                 WHERE medico_id = %s 
                 ORDER BY nome

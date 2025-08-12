@@ -1080,7 +1080,7 @@ class ConfiguracaoModule(BaseModule):
             tk.Label(content_frame, text="Usuário:", **label_style).grid(row=3, column=0, padx=10, pady=5, sticky='w')
             self.db_usuario = tk.Entry(content_frame, **entry_style)
             self.db_usuario.grid(row=3, column=1, padx=10, pady=5, sticky='ew')
-            self.db_usuario.insert(0, config.get('usuario', 'postgres'))
+            self.db_usuario.insert(0, config.get('usuario', 'root'))
             
             # Senha
             tk.Label(content_frame, text="Senha:", **label_style).grid(row=4, column=0, padx=10, pady=5, sticky='w')
@@ -1092,7 +1092,7 @@ class ConfiguracaoModule(BaseModule):
             tk.Label(content_frame, text="Nome do Banco:", **label_style).grid(row=5, column=0, padx=10, pady=5, sticky='w')
             self.db_nome = tk.Entry(content_frame, **entry_style)
             self.db_nome.grid(row=5, column=1, padx=10, pady=5, sticky='ew')
-            self.db_nome.insert(0, config.get('nome_bd', 'pdv_aquarius'))
+            self.db_nome.insert(0, config.get('nome_bd', 'clinica_filipi'))
             
             # Frame para os botões
             btn_frame = tk.Frame(content_frame, bg='#f0f2f5', pady=20)

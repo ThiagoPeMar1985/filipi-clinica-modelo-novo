@@ -573,6 +573,7 @@ class FinanceiroModule:
                         'paciente_nome': c.get('paciente_nome'),
                         'medico_nome': c.get('medico_nome'),
                         'tipo_atendimento': ta,
+                        'valor_exame': c.get('valor_exame'),
                     }
                 has_consultas = len(consulta_opts) > 0
             except Exception:
@@ -603,6 +604,14 @@ class FinanceiroModule:
                 medico_id_var.set(str(info.get('medico_id') or ''))      # oculto
                 paciente_nome_var.set(str(info.get('paciente_nome') or ''))
                 medico_nome_var.set(str(info.get('medico_nome') or ''))
+                # Auto-preenche o valor do exame/consulta, se disponível
+                try:
+                    v = info.get('valor_exame')
+                    if v is not None:
+                        # Formata para padrão BR (vírgula)
+                        valor_var.set(f"{float(v):.2f}".replace('.', ','))
+                except Exception:
+                    pass
 
             consulta_cb.bind('<<ComboboxSelected>>', on_consulta_change)
             # Seleciona a primeira consulta por padrão e preenche os campos ocultos

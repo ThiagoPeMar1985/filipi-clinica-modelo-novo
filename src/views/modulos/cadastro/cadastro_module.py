@@ -104,7 +104,7 @@ class CadastroModule(BaseModule):
             
             tk.Label(
                 title_frame, 
-                text="CADASTRO DA EMPRESA", 
+                text="Cadastro da Empresa", 
                 font=('Arial', 16, 'bold'),
                 bg='#f0f2f5',
                 fg='#000000'
@@ -249,7 +249,7 @@ class CadastroModule(BaseModule):
             
             tk.Label(
                 title_frame, 
-                text="LISTA DE USUÁRIOS", 
+                text="Lista de Usuários", 
                 font=('Arial', 16, 'bold'),
                 bg='#f0f2f5',
                 fg='#000000'
@@ -634,7 +634,7 @@ class CadastroModule(BaseModule):
             
             tk.Label(
                 title_frame, 
-                text="LISTA DE MÉDICOS", 
+                text="Lista de Médicos", 
                 font=('Arial', 16, 'bold'),
                 bg='#f0f2f5',
                 fg='#000000'
@@ -1563,7 +1563,7 @@ class CadastroModule(BaseModule):
             
             tk.Label(
                 title_frame, 
-                text="LISTA DE PACIENTES", 
+                text="Lista de Pacientes", 
                 font=('Arial', 16, 'bold'),
                 bg='#f0f2f5',
                 fg='#000000'
@@ -1842,40 +1842,7 @@ class CadastroModule(BaseModule):
         
         # Texto da receita
         ttk.Label(vis_frame, text="Receita:", font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 5))
-        # Barra rápida para fonte (6-8) - insere/atualiza <<font:N>> na 1ª linha do texto
-        def _aplicar_fonte_receita(n: int):
-            try:
-                txt = getattr(self, 'texto_receita', None)
-                if not txt:
-                    return
-                conteudo = txt.get('1.0', 'end-1c')
-                linhas = conteudo.splitlines()
-                nova_dir = f"<<font:{n}>>"
-                if not linhas:
-                    txt.insert('1.0', nova_dir + "\n")
-                    return
-                primeira = linhas[0].strip()
-                if primeira.lower().startswith('<<font:') and primeira.endswith('>>'):
-                    linhas[0] = nova_dir
-                    novo = "\n".join(linhas)
-                    txt.delete('1.0', tk.END)
-                    txt.insert('1.0', novo)
-                else:
-                    txt.insert('1.0', nova_dir + "\n")
-                # Ajusta a fonte na tela para pré-visualização imediata
-                try:
-                    tam = max(6, min(12, int(n)))
-                    txt.configure(font=('Arial', tam))
-                except Exception:
-                    pass
-            except Exception:
-                pass
-        fonte_bar = tk.Frame(vis_frame, bg='#ffffff')
-        fonte_bar.pack(fill=tk.X, pady=(0, 6))
-        tk.Label(fonte_bar, text="Fonte:", bg='#ffffff', fg='#333333', font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 6))
-        for n in (6, 7, 8):
-            tk.Button(fonte_bar, text=str(n), bg="#495057", fg="white", relief=tk.FLAT, cursor='hand2',
-                      command=lambda v=n: _aplicar_fonte_receita(v)).pack(side=tk.LEFT, padx=2)
+        # Fonte fixa: Arial 8 (remove barra de seleção de fonte)
 
         # Frame para o texto com barra de rolagem
         text_frame = ttk.Frame(vis_frame)
@@ -1893,6 +1860,11 @@ class CadastroModule(BaseModule):
             yscrollcommand=scrollbar.set
         )
         self.texto_receita.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Fonte fixa Arial 8 na visualização/edição
+        try:
+            self.texto_receita.configure(font=('Arial', 8))
+        except Exception:
+            pass
         # Corretor ortográfico (opcional)
         try:
             self._enable_spellcheck(self.texto_receita)
@@ -2057,6 +2029,12 @@ class CadastroModule(BaseModule):
         # Limpa os campos
         self.nome_receita_var.set('')
         self.texto_receita.delete(1.0, tk.END)
+        # Insere diretiva de fonte 8 e aplica fonte no widget
+        try:
+            self.texto_receita.insert('1.0', '<<font:8>>\n')
+            self.texto_receita.configure(font=('Arial', 8))
+        except Exception:
+            pass
         
         # Habilita/desabilita botões
         self.btn_novo.config(state=tk.DISABLED)
@@ -2078,6 +2056,25 @@ class CadastroModule(BaseModule):
         # Habilita os campos para edição
         self.entry_nome.config(state='normal')
         self.texto_receita.config(state='normal')
+        # Garante diretiva de fonte 8 e aplica fonte no widget
+        try:
+            conteudo = self.texto_receita.get('1.0', 'end-1c')
+            linhas = conteudo.splitlines()
+            nova_dir = '<<font:8>>'
+            if not linhas:
+                self.texto_receita.insert('1.0', nova_dir + "\n")
+            else:
+                primeira = linhas[0].strip()
+                if primeira.lower().startswith('<<font:') and primeira.endswith('>>'):
+                    linhas[0] = nova_dir
+                    novo = "\n".join(linhas)
+                    self.texto_receita.delete('1.0', tk.END)
+                    self.texto_receita.insert('1.0', novo)
+                else:
+                    self.texto_receita.insert('1.0', nova_dir + "\n")
+            self.texto_receita.configure(font=('Arial', 8))
+        except Exception:
+            pass
         # Força checagem do corretor ao entrar em modo de edição
         try:
             self._spellcheck_now(self.texto_receita)
@@ -2102,6 +2099,21 @@ class CadastroModule(BaseModule):
             medico_nome = self.medico_cb.get()
             nome = self.nome_receita_var.get().strip()
             texto = self.texto_receita.get("1.0", tk.END).strip()
+            # Garante diretiva de fonte 8 na primeira linha
+            try:
+                linhas = texto.splitlines()
+                nova_dir = '<<font:8>>'
+                if not linhas:
+                    texto = nova_dir
+                else:
+                    primeira = linhas[0].strip() if linhas else ''
+                    if primeira.lower().startswith('<<font:') and primeira.endswith('>>'):
+                        linhas[0] = nova_dir
+                        texto = "\n".join(linhas)
+                    else:
+                        texto = nova_dir + "\n" + "\n".join(linhas)
+            except Exception:
+                pass
             
             # Validação básica
             if not medico_nome or not nome or not texto:
@@ -2228,6 +2240,11 @@ class CadastroModule(BaseModule):
                 self.texto_receita.config(state='normal')
                 self.texto_receita.delete(1.0, tk.END)
                 self.texto_receita.insert(tk.END, receita['texto'])
+                # Exibe sempre com fonte 8
+                try:
+                    self.texto_receita.configure(font=('Arial', 8))
+                except Exception:
+                    pass
                 # Força checagem do corretor após carregar o texto
                 try:
                     self._spellcheck_now(self.texto_receita)

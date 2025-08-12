@@ -204,139 +204,47 @@ class ModeloProntuarioModule(BaseModule):
         )
         self.nome_modelo.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # Área de visualização/edição do modelo dentro de uma PÁGINA A4 real
-        canvas = tk.Canvas(self.visualizacao_frame, bg='#cccccc')
-        canvas.pack(fill=tk.BOTH, expand=True)
-
-        # Cria o widget de texto (com scrollbar) mas NÃO faz pack; ele será inserido no canvas
-        self.texto_modelo = scrolledtext.ScrolledText(
-            self.visualizacao_frame,
+        # Texto do modelo
+        ttk.Label(self.visualizacao_frame, text="Modelo:", font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 5))
+        
+        # Frame para o texto com barra de rolagem
+        text_frame = ttk.Frame(self.visualizacao_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Barra de rolagem vertical
+        scrollbar = ttk.Scrollbar(text_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Widget Text
+        self.texto_modelo = tk.Text(
+            text_frame,
             wrap=tk.WORD,
-            font=('Arial', 11),
-            height=20
+            height=15,
+            yscrollcommand=scrollbar.set
         )
-
-        # Conversão mm->px com DPI real da tela
-        def mm_to_px(mm: float) -> int:
-            try:
-                dpi = float(canvas.winfo_fpixels('1i'))  # pixels por polegada
-            except Exception:
-                dpi = 96.0
-            return int(mm * dpi / 25.4)
-
-        # IDs gráficos
-        state = {
-            'page_id': None,
-            'win_id': None,
-        }
-
-        def desenhar_pagina():
-            # Tamanho A4: 210 x 297 mm e margens de 10 mm
-            page_w = mm_to_px(210)
-            page_h = mm_to_px(297)
-            margem = 10
-            m_esq = mm_to_px(margem)
-            m_dir = mm_to_px(margem)
-            m_top = mm_to_px(margem)
-            m_bot = mm_to_px(margem)
-
-            cw = max(1, canvas.winfo_width())
-            ch = max(1, canvas.winfo_height())
-            x0 = max(10, (cw - page_w)//2)
-            y0 = max(10, (ch - page_h)//2)
-
-            # Página
-            if state['page_id'] is None:
-                state['page_id'] = canvas.create_rectangle(x0, y0, x0+page_w, y0+page_h, fill='white', outline='#888')
-            else:
-                canvas.coords(state['page_id'], x0, y0, x0+page_w, y0+page_h)
-
-            # Área útil onde o texto deve ficar
-            x_left = x0 + m_esq
-            y_top = y0 + m_top
-            largura_util = max(50, page_w - m_esq - m_dir)
-            altura_util = max(50, page_h - m_top - m_bot)
-
-            if state['win_id'] is None:
-                state['win_id'] = canvas.create_window(
-                    x_left, y_top,
-                    anchor='nw',
-                    window=self.texto_modelo,
-                    width=largura_util,
-                    height=altura_util
-                )
-            else:
-                canvas.coords(state['win_id'], x_left, y_top)
-                canvas.itemconfigure(state['win_id'], width=largura_util, height=altura_util)
-
-        # Redesenha quando o canvas mudar de tamanho
-        canvas.bind('<Configure>', lambda e: desenhar_pagina())
-        # Desenha inicialmente após o pack
-        self.visualizacao_frame.after(50, desenhar_pagina)
+        self.texto_modelo.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Fonte fixa Arial 8 na visualização/edição
+        try:
+            self.texto_modelo.configure(font=('Arial', 8))
+        except Exception:
+            pass
+        
         # Corretor ortográfico (opcional)
         try:
             self._enable_spellcheck(self.texto_modelo)
         except Exception:
             pass
-        self.texto_modelo.config(state=tk.DISABLED)  # Inicia como somente leitura
-
-        # Barra rápida para fonte (6-8) - atua sobre self.texto_modelo
-        def _aplicar_fonte_modelo(n: int):
-            try:
-                txt = self.texto_modelo
-                # Guarda estado atual
-                prev_state = str(txt.cget('state'))
-                if prev_state == tk.DISABLED:
-                    txt.config(state=tk.NORMAL)
-                conteudo = txt.get('1.0', 'end-1c')
-                linhas = conteudo.splitlines()
-                nova_dir = f"<<font:{n}>>"
-                if not linhas:
-                    txt.insert('1.0', nova_dir + "\n")
-                else:
-                    primeira = linhas[0].strip()
-                    if primeira.lower().startswith('<<font:') and primeira.endswith('>>'):
-                        linhas[0] = nova_dir
-                        novo = "\n".join(linhas)
-                        txt.delete('1.0', tk.END)
-                        txt.insert('1.0', novo)
-                    else:
-                        txt.insert('1.0', nova_dir + "\n")
-                # Ajusta a fonte na tela para pré-visualização imediata
-                try:
-                    tam = max(6, min(12, int(n)))
-                    txt.configure(font=('Arial', tam))
-                except Exception:
-                    pass
-                # Restaura estado
-                if prev_state == tk.DISABLED:
-                    txt.config(state=tk.DISABLED)
-            except Exception:
-                pass
-        fonte_bar = tk.Frame(self.visualizacao_frame, bg='#ffffff')
-        fonte_bar.pack(fill=tk.X, pady=(6, 6))
-        tk.Label(fonte_bar, text="Fonte:", bg='#ffffff', fg='#333333', font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 6))
-        for n in (6, 7, 8):
-            tk.Button(fonte_bar, text=str(n), bg="#495057", fg="white", relief=tk.FLAT, cursor='hand2',
-                      command=lambda v=n: _aplicar_fonte_modelo(v)).pack(side=tk.LEFT, padx=2)
         
-        # Frame de botões de ação (salvar/cancelar)
+        # Configurar a scrollbar
+        scrollbar.config(command=self.texto_modelo.yview)
+        
+        # Inicia como somente leitura
+        self.texto_modelo.config(state=tk.DISABLED)
+        
+        # Frame de botões de ação
         self.botoes_acao_frame = ttk.Frame(self.visualizacao_frame)
         self.botoes_acao_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        # Botão Cancelar
-        self.btn_cancelar = tk.Button(
-            self.botoes_acao_frame,
-            text="Cancelar",
-            command=self._cancelar_edicao,
-            bg="#f44336",  # Vermelho
-            fg="white",
-            bd=0,
-            padx=15,
-            pady=5,
-            state=tk.DISABLED
-        )
-        self.btn_cancelar.pack(side=tk.RIGHT, padx=5)
         
         # Botão Salvar
         self.btn_salvar = tk.Button(
@@ -471,12 +379,17 @@ class ModeloProntuarioModule(BaseModule):
         # Habilita a edição do texto
         self.texto_modelo.config(state=tk.NORMAL)
         self.texto_modelo.delete(1.0, tk.END)
+        # Insere diretiva de fonte 8 e aplica fonte no widget
+        try:
+            self.texto_modelo.insert('1.0', '<<font:8>>\n')
+            self.texto_modelo.configure(font=('Arial', 8))
+        except Exception:
+            pass
         
         # Atualiza o estado dos botões
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
         self.btn_salvar.config(state=tk.NORMAL)
-        self.btn_cancelar.config(state=tk.NORMAL)
         
         # Define o modo de edição e armazena o nome do modelo
         self.modo_edicao = 'criar'
@@ -514,12 +427,30 @@ class ModeloProntuarioModule(BaseModule):
             
             # Habilita a edição do texto
             self.texto_modelo.config(state=tk.NORMAL)
+            # Garante diretiva de fonte 8 e aplica fonte no widget
+            try:
+                conteudo = self.texto_modelo.get('1.0', 'end-1c')
+                linhas = conteudo.splitlines()
+                nova_dir = '<<font:8>>'
+                if not linhas:
+                    self.texto_modelo.insert('1.0', nova_dir + "\n")
+                else:
+                    primeira = linhas[0].strip()
+                    if primeira.lower().startswith('<<font:') and primeira.endswith('>>'):
+                        linhas[0] = nova_dir
+                        novo = "\n".join(linhas)
+                        self.texto_modelo.delete('1.0', tk.END)
+                        self.texto_modelo.insert('1.0', novo)
+                    else:
+                        self.texto_modelo.insert('1.0', nova_dir + "\n")
+                self.texto_modelo.configure(font=('Arial', 8))
+            except Exception:
+                pass
             
             # Atualiza o estado dos botões
             self.btn_editar.config(state=tk.DISABLED)
             self.btn_excluir.config(state=tk.DISABLED)
             self.btn_salvar.config(state=tk.NORMAL)
-            self.btn_cancelar.config(state=tk.NORMAL)
             
             # Define o modo de edição
             self.modo_edicao = 'editar'
@@ -608,13 +539,17 @@ class ModeloProntuarioModule(BaseModule):
             self.texto_modelo.config(state=tk.NORMAL)
             self.texto_modelo.delete(1.0, tk.END)
             self.texto_modelo.insert(tk.END, modelo.get('conteudo', ''))
+            # Exibe sempre com fonte 8
+            try:
+                self.texto_modelo.configure(font=('Arial', 8))
+            except Exception:
+                pass
             self.texto_modelo.config(state=tk.DISABLED)  # Desabilita a edição
             
             # Atualiza o estado dos botões
             self.btn_editar.config(state=tk.NORMAL)
             self.btn_excluir.config(state=tk.NORMAL)
             self.btn_salvar.config(state=tk.DISABLED)
-            self.btn_cancelar.config(state=tk.DISABLED)
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar o modelo: {str(e)}")
@@ -626,8 +561,22 @@ class ModeloProntuarioModule(BaseModule):
             messagebox.showwarning("Aviso", "Selecione um profissional com usuário vinculado antes de salvar o modelo.")
             return
         
-        # Obtém o conteúdo do texto
+        # Obtém e garante diretiva de fonte 8 no conteúdo
         conteudo = self.texto_modelo.get("1.0", tk.END).strip()
+        try:
+            linhas = conteudo.splitlines()
+            nova_dir = '<<font:8>>'
+            if not linhas:
+                conteudo = nova_dir
+            else:
+                primeira = linhas[0].strip() if linhas else ''
+                if primeira.lower().startswith('<<font:') and primeira.endswith('>>'):
+                    linhas[0] = nova_dir
+                    conteudo = "\n".join(linhas)
+                else:
+                    conteudo = nova_dir + "\n" + "\n".join(linhas)
+        except Exception:
+            pass
         
         # Verifica se o conteúdo não está vazio
         if not conteudo:
@@ -704,8 +653,7 @@ class ModeloProntuarioModule(BaseModule):
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
         self.btn_salvar.config(state=tk.DISABLED)
-        self.btn_cancelar.config(state=tk.DISABLED)
-        
+            
         # Limpa a seleção na lista
         self.lista_modelos.selection_remove(self.lista_modelos.selection())
 

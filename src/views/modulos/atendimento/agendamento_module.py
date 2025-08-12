@@ -294,41 +294,72 @@ class AgendamentoModule:
         
         # Adicionar o widget de calendário com tamanho adaptativo
         cal_font_size = 8 if is_short_height else 9
-        self.calendario = MedicoCalendar(
-            self.calendario_inner,
-            modo='livre',
-            selectmode='day',
-            date_pattern='dd/mm/yyyy',
-            locale='pt_BR',
-            cursor='hand2',
-            showweeknumbers=False,
-            firstweekday='sunday',
-            showothermonthdays=True,
-            # Cores dos dias da semana (segunda a sexta)
-            normalbackground='#ffffff',    # Fundo branco
-            normalforeground='#000000',   # Texto preto
-            # Cores do fim de semana (sábado e domingo)
-            weekendbackground='#e0e0e0',  # Fundo cinza claro
-            weekendforeground='#000000',  # Texto preto
-            # Cores dos dias de outros meses
-            othermonthbackground='#f9f9f9',
-            othermonthwebackground='#f9f9f9',
-            othermonthforeground='#888888',
-            othermonthweforeground='#888888',
-            # Cores de borda
-            bordercolor='#000000',        # Linhas pretas
-            # Cores do cabeçalho
-            headersbackground='#f0f0f0',
-            headersforeground='#000000',
-            # Cores de seleção
-            selectbackground='#4a90e2',   # Azul para dia selecionado
-            selectforeground='#ffffff',   # Texto branco no dia selecionado
-            # Configurações gerais
-            background='#ffffff',
-            foreground='#000000',
-            relief='flat',
-            font=('Arial', cal_font_size)
-        )
+        try:
+            self.calendario = MedicoCalendar(
+                self.calendario_inner,
+                modo='livre',
+                selectmode='day',
+                date_pattern='dd/mm/yyyy',
+                locale='pt_BR',
+                cursor='hand2',
+                showweeknumbers=False,
+                firstweekday='sunday',
+                showothermonthdays=True,
+                # Cores dos dias da semana (segunda a sexta)
+                normalbackground='#ffffff',    # Fundo branco
+                normalforeground='#000000',   # Texto preto
+                # Cores do fim de semana (sábado e domingo)
+                weekendbackground='#e0e0e0',  # Fundo cinza claro
+                weekendforeground='#000000',  # Texto preto
+                # Cores dos dias de outros meses
+                othermonthbackground='#f9f9f9',
+                othermonthwebackground='#f9f9f9',
+                othermonthforeground='#888888',
+                othermonthweforeground='#888888',
+                # Cores de borda
+                bordercolor='#000000',        # Linhas pretas
+                # Cores do cabeçalho
+                headersbackground='#f0f0f0',
+                headersforeground='#000000',
+                # Cores de seleção
+                selectbackground='#4a90e2',   # Azul para dia selecionado
+                selectforeground='#ffffff',   # Texto branco no dia selecionado
+                # Configurações gerais
+                background='#ffffff',
+                foreground='#000000',
+                relief='flat',
+                font=('Arial', cal_font_size)
+            )
+        except Exception:
+            # Fallback de locale para ambientes empacotados sem recursos de locale
+            self.calendario = MedicoCalendar(
+                self.calendario_inner,
+                modo='livre',
+                selectmode='day',
+                date_pattern='dd/mm/yyyy',
+                locale='en_US',
+                cursor='hand2',
+                showweeknumbers=False,
+                firstweekday='sunday',
+                showothermonthdays=True,
+                normalbackground='#ffffff',
+                normalforeground='#000000',
+                weekendbackground='#e0e0e0',
+                weekendforeground='#000000',
+                othermonthbackground='#f9f9f9',
+                othermonthwebackground='#f9f9f9',
+                othermonthforeground='#888888',
+                othermonthweforeground='#888888',
+                bordercolor='#000000',
+                headersbackground='#f0f0f0',
+                headersforeground='#000000',
+                selectbackground='#4a90e2',
+                selectforeground='#ffffff',
+                background='#ffffff',
+                foreground='#000000',
+                relief='flat',
+                font=('Arial', cal_font_size)
+            )
 
         self.calendario.pack(fill='x', expand=False)
         self.calendario.bind('<<CalendarSelected>>', self._on_date_selected)
@@ -875,7 +906,7 @@ class AgendamentoModule:
 
             if not self.tipos_atendimento_map:
                 messagebox.showerror("Erro", "Não foi possível carregar os tipos de atendimento.")
-                janela_agendamento.destroy()
+                self.janela_agendamento.destroy()
                 return
 
             # Campo de Tipo de Atendimento (já existe, apenas mostrando o contexto)
@@ -1336,13 +1367,23 @@ class AgendamentoModule:
             data_obj = datetime.strptime(str(consulta['data']), '%Y-%m-%d')
             var_data.set(data_obj.strftime('%d/%m/%Y'))
         
-        campo_data = DateEntry(
-            campos_frame,
-            textvariable=var_data,
-            date_pattern='dd/mm/yyyy',
-            locale='pt_BR',
-            width=17
-        )
+        try:
+            campo_data = DateEntry(
+                campos_frame,
+                textvariable=var_data,
+                date_pattern='dd/mm/yyyy',
+                locale='pt_BR',
+                width=17
+            )
+        except Exception:
+            # Fallback de locale para ambientes empacotados sem recursos de locale
+            campo_data = DateEntry(
+                campos_frame,
+                textvariable=var_data,
+                date_pattern='dd/mm/yyyy',
+                locale='en_US',
+                width=17
+            )
         campo_data.grid(row=2, column=1, sticky='w', pady=5, padx=(10, 0))
         
         # Campo de Hora
@@ -1751,7 +1792,7 @@ class AgendamentoModule:
             if medico_id:
                 # Buscar apenas os tipos de atendimento associados ao médico
                 cursor.execute("""
-                    SELECT e.id, e.nome, e.tempo 
+                    SELECT e.id, e.nome, e.tempo, e.valor 
                     FROM exames_consultas e
                     INNER JOIN medico_exames me ON e.id = me.exame_id
                     WHERE me.medico_id = %s
@@ -1760,7 +1801,7 @@ class AgendamentoModule:
             else:
                 # Buscar todos os tipos de atendimento
                 cursor.execute("""
-                    SELECT id, nome, tempo 
+                    SELECT id, nome, tempo, valor 
                     FROM exames_consultas 
                     ORDER BY nome
                 """)
@@ -1781,7 +1822,8 @@ class AgendamentoModule:
                 self.tipos_atendimento_map = {
                     tipo['nome']: {
                         'id': tipo['id'],
-                        'tempo': tipo['tempo']
+                        'tempo': tipo['tempo'],
+                        'valor': tipo.get('valor', 0)
                     } 
                     for tipo in tipos
                 }

@@ -19,6 +19,19 @@ class ExamesConsultasModule:
         
     def _criar_interface(self):
         """Cria a interface do módulo de exames/consultas."""
+        # Frame de título
+        title_frame = tk.Frame(self.frame, bg='#f0f2f5')
+        title_frame.pack(fill=tk.X, padx=5, pady=(5, 5))
+
+        # Título da tela
+        tk.Label(
+                title_frame,
+                text="Lista de Exames & Consultas",
+                font=('Arial', 16, 'bold'),
+                bg='#f0f2f5',
+                fg='#000000'
+            ).pack(side='left')
+        
         # Frame superior (controles)
         frame_superior = ttk.LabelFrame(self.frame, text="tempo médio do Exame/Consulta", padding=10)
         frame_superior.pack(fill=tk.X, padx=5, pady=5)
@@ -41,9 +54,15 @@ class ExamesConsultasModule:
         self.entry_tempo = ttk.Spinbox(frame_superior, from_=1, to=480, width=10, textvariable=self.tempo_var)
         self.entry_tempo.grid(row=2, column=1, sticky=tk.W, padx=5, pady=2)
         
+        # Valor (R$)
+        ttk.Label(frame_superior, text="Valor (R$):").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.valor_var = tk.StringVar()
+        self.entry_valor = ttk.Entry(frame_superior, textvariable=self.valor_var, width=15)
+        self.entry_valor.grid(row=3, column=1, sticky=tk.W, padx=5, pady=2)
+        
         # Frame dos botões
         frame_botoes = ttk.Frame(frame_superior)
-        frame_botoes.grid(row=3, column=0, columnspan=2, pady=10)
+        frame_botoes.grid(row=4, column=0, columnspan=2, pady=10)
         
         # Botão Salvar
         self.btn_salvar = tk.Button(
@@ -106,7 +125,7 @@ class ExamesConsultasModule:
         frame_lista.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Treeview para listar os exames
-        colunas = ('id', 'nome', 'tempo')
+        colunas = ('id', 'nome', 'tempo', 'valor')
         self.tree = ttk.Treeview(frame_lista, columns=colunas, show='headings')
         
         # Configuração das colunas
@@ -118,6 +137,9 @@ class ExamesConsultasModule:
         
         self.tree.heading('tempo', text='Tempo (min)')
         self.tree.column('tempo', width=100)
+        
+        self.tree.heading('valor', text='Valor (R$)')
+        self.tree.column('valor', width=120)
         
         # Scrollbar
         scrollbar = ttk.Scrollbar(frame_lista, orient=tk.VERTICAL, command=self.tree.yview)
@@ -178,10 +200,17 @@ class ExamesConsultasModule:
             
             # Preenche a lista
             for exame in exames:
+                # Formata valor com 2 casas decimais
+                valor_fmt = None
+                try:
+                    valor_fmt = f"{float(exame.get('valor', 0)):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                except Exception:
+                    valor_fmt = str(exame.get('valor', '0,00'))
                 self.tree.insert('', tk.END, values=(
                     exame['id'],
                     exame['nome'],
-                    exame['tempo']
+                    exame['tempo'],
+                    valor_fmt
                 ))
                 
         except Exception as e:
@@ -197,6 +226,7 @@ class ExamesConsultasModule:
         # Habilita a edição
         self.entry_nome.config(state="normal")
         self.entry_tempo.config(state="normal")
+        self.entry_valor.config(state="normal")
         
         # Atualiza o estado dos botões
         self.btn_editar.config(state=tk.DISABLED)
@@ -213,6 +243,7 @@ class ExamesConsultasModule:
         self.medico_cb.config(state="readonly")
         self.entry_nome.config(state="normal")
         self.entry_tempo.config(state="normal")
+        self.entry_valor.config(state="normal")
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
         self.btn_salvar.config(state=tk.NORMAL)
@@ -226,10 +257,16 @@ class ExamesConsultasModule:
             # Se está editando um exame existente, volta para o modo de visualização
             self.nome_var.set(self.exame_atual['nome'])
             self.tempo_var.set(str(self.exame_atual['tempo']))
+            # Restaura valor formatado
+            if 'valor_str' in self.exame_atual:
+                self.valor_var.set(self.exame_atual['valor_str'])
+            else:
+                self.valor_var.set('')
             
             # Volta para o modo de visualização
             self.entry_nome.config(state="readonly")
             self.entry_tempo.config(state="readonly")
+            self.entry_valor.config(state="readonly")
             
             # Atualiza o estado dos botões
             self.btn_editar.config(state=tk.NORMAL)
@@ -247,6 +284,7 @@ class ExamesConsultasModule:
             medico_nome = self.medico_cb.get()
             nome = self.nome_var.get().strip()
             tempo = self.tempo_var.get().strip()
+            valor_txt = self.valor_var.get().strip()
             
             # Validações
             if not medico_nome or medico_nome == 'Selecione um médico...':
@@ -263,6 +301,20 @@ class ExamesConsultasModule:
                 messagebox.showwarning("Aviso", "Informe um tempo válido em minutos (número maior que zero).")
                 self.entry_tempo.focus()
                 return
+            
+            # Validação do valor
+            if not valor_txt:
+                messagebox.showwarning("Aviso", "Informe o valor do exame/consulta.")
+                self.entry_valor.focus()
+                return
+            try:
+                valor_float = float(valor_txt.replace('.', '').replace(',', '.'))
+                if valor_float < 0:
+                    raise ValueError()
+            except Exception:
+                messagebox.showwarning("Aviso", "Informe um valor numérico válido. Use vírgula para centavos (ex.: 120,50).")
+                self.entry_valor.focus()
+                return
                 
             # Verifica se é uma edição ou novo cadastro
             if self.exame_atual:
@@ -271,7 +323,8 @@ class ExamesConsultasModule:
                     self.exame_atual['id'],
                     {
                         'nome': nome,
-                        'tempo': int(tempo)
+                        'tempo': int(tempo),
+                        'valor': valor_float
                     }
                 )
                 mensagem = "atualizado"
@@ -280,7 +333,8 @@ class ExamesConsultasModule:
                 sucesso = self.controller.criar_exame_consulta(
                     medico_id=self.medicos_dict.get(medico_nome),
                     nome=nome,
-                    tempo=int(tempo)
+                    tempo=int(tempo),
+                    valor=valor_float
                 )
                 mensagem = "criado"
             
@@ -331,15 +385,18 @@ class ExamesConsultasModule:
         self.exame_atual = {
             'id': valores[0],
             'nome': valores[1],
-            'tempo': valores[2]
+            'tempo': valores[2],
+            'valor_str': valores[3]
         }
         
         self.nome_var.set(valores[1])
         self.tempo_var.set(valores[2])
+        self.valor_var.set(valores[3])
         
         # Desabilita a edição direta e ativa os botões de ação
         self.entry_nome.config(state="readonly")
         self.entry_tempo.config(state="readonly")
+        self.entry_valor.config(state="readonly")
         self.btn_editar.config(state=tk.NORMAL)
         self.btn_excluir.config(state=tk.NORMAL)
         self.btn_salvar.config(state=tk.DISABLED)
@@ -350,6 +407,7 @@ class ExamesConsultasModule:
         self.exame_atual = None
         self.nome_var.set('')
         self.tempo_var.set('')
+        self.valor_var.set('')
         
         # Configura o estado dos botões
         self.btn_editar.config(state=tk.DISABLED)
@@ -361,8 +419,7 @@ class ExamesConsultasModule:
         self.medico_cb.config(state="readonly")
         self.entry_nome.config(state="readonly")
         self.entry_tempo.config(state="readonly")
+        self.entry_valor.config(state="readonly")
         
         # Foca no campo de seleção de médico
         self.medico_cb.focus()
-
-    

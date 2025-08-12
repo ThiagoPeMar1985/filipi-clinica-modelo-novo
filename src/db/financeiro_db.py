@@ -669,7 +669,7 @@ class FinanceiroDB:
     def listar_consultas_do_dia(self, data: Optional[str] = None) -> list[dict]:
         """Lista consultas do dia (ou de uma data AAAA-MM-DD se informada),
         incluindo paciente e médico.
-        Retorna: [{consulta_id, paciente_id, paciente_nome, medico_id, medico_nome, hora, data}]
+        Retorna: [{consulta_id, paciente_id, paciente_nome, medico_id, medico_nome, hora, data, tipo_atendimento, valor_exame}]
         """
         cursor = self.db.cursor(dictionary=True)
         try:
@@ -677,10 +677,14 @@ class FinanceiroDB:
                 cursor.execute(
                     """
                     SELECT c.id AS consulta_id, c.paciente_id, p.nome AS paciente_nome,
-                           c.medico_id, m.nome AS medico_nome, c.hora, c.data, c.tipo_atendimento
+                           c.medico_id, m.nome AS medico_nome, c.hora, c.data, c.tipo_atendimento,
+                           ec.valor AS valor_exame
                     FROM consultas c
                     JOIN pacientes p ON p.id = c.paciente_id
                     JOIN medicos m ON m.id = c.medico_id
+                    LEFT JOIN exames_consultas ec
+                           ON ec.medico_id = c.medico_id
+                          AND ec.nome = c.tipo_atendimento
                     WHERE DATE(c.data) = %s
                       AND COALESCE(c.status_pagameto, 0) = 0
                     ORDER BY c.hora ASC, c.id ASC
@@ -691,10 +695,14 @@ class FinanceiroDB:
                 cursor.execute(
                     """
                     SELECT c.id AS consulta_id, c.paciente_id, p.nome AS paciente_nome,
-                           c.medico_id, m.nome AS medico_nome, c.hora, c.data, c.tipo_atendimento
+                           c.medico_id, m.nome AS medico_nome, c.hora, c.data, c.tipo_atendimento,
+                           ec.valor AS valor_exame
                     FROM consultas c
                     JOIN pacientes p ON p.id = c.paciente_id
                     JOIN medicos m ON m.id = c.medico_id
+                    LEFT JOIN exames_consultas ec
+                           ON ec.medico_id = c.medico_id
+                          AND ec.nome = c.tipo_atendimento
                     WHERE DATE(c.data) = CURDATE()
                       AND COALESCE(c.status_pagameto, 0) = 0
                     ORDER BY c.hora ASC, c.id ASC

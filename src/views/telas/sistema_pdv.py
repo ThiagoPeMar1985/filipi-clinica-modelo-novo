@@ -31,7 +31,6 @@ class SistemaPDV:
         # Conexão (mantida)
         self.db_connection = getattr(usuario, 'db_connection', None)
 
-        # Não sobrescrever a geometry definida em main.py.
         # Garantir janela em estado normal e sem fullscreen.
         self.root.state('normal')
         try:
@@ -39,6 +38,12 @@ class SistemaPDV:
         except Exception:
             pass
         self.root.resizable(True, True)
+        
+        # Inicialização das variáveis de controle do chat
+        self._chat_unread_count = 0
+        self._chat_blink_job = None
+        self._chat_blink_on = False
+        self._modulo_labels = {}
         
         # Cores do tema
         self.cores = {
@@ -65,7 +70,8 @@ class SistemaPDV:
 
         # Inicializa o controlador de permissões
         self.permission_controller = PermissionController()
-        
+
+
         # Inicializa o controlador de configurações
         try:
             from src.controllers.config_controller import ConfigController
@@ -94,7 +100,10 @@ class SistemaPDV:
             self.root.after(300, self._verificar_alerta_estoque)
         except Exception:
             pass
-        
+
+        if hasattr(self, 'root'):
+            self.root.after(1000, self._iniciar_verificacao_chat)
+    
         # Configurar manipulador de fechamento
         self.root.protocol("WM_DELETE_WINDOW", self.sair)
     
@@ -468,6 +477,12 @@ class SistemaPDV:
             {"nome": "📦 Estoque", "metodo": "estoque"}
         ]
         
+    def _get_opcoes_chat(self):
+        """Retorna as opções do módulo de chat"""
+        return [
+            {"nome": "💬 mensagens", "metodo": "mensagens"}
+        ]
+        
     def configurar_modulos(self):
         """Configura os módulos do sistema"""
         # Obtém as opções dos módulos
@@ -475,6 +490,7 @@ class SistemaPDV:
         opcoes_configuracao = self._get_opcoes_configuracao()
         opcoes_atendimento = self._get_opcoes_atendimento()
         opcoes_financeiro = self._get_opcoes_financeiro()
+        opcoes_chat = self._get_opcoes_chat()
 
         
         # Configura os comandos para cada opção do cadastro
@@ -505,6 +521,13 @@ class SistemaPDV:
             opcao["acao"] = metodo
             opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('financeiro', m)
         
+        # Configura os comandos para cada opção de chat
+        for opcao in opcoes_chat:
+            metodo = opcao["metodo"]
+            opcao["modulo"] = 'chat'
+            opcao["acao"] = metodo
+            opcao["comando"] = lambda m=metodo: self.mostrar_conteudo_modulo('chat', m)
+        
         # Configura os módulos disponíveis
         self.modulos = {
             "cadastro": {
@@ -526,9 +549,20 @@ class SistemaPDV:
                 "nome": "CONFIGURAÇÃO",
                 "icone": "⚙️",
                 "opcoes": opcoes_configuracao
+            },
+            "chat": {
+                "nome": "CHAT",
+                "icone": "💬",
+                "opcoes": opcoes_chat
             }
         }
         
+        # Mantém referência para os botões de módulos (para piscar o Chat)
+        self._modulo_labels = {}
+        self._chat_blink_job = None
+        self._chat_blink_on = False
+        self._chat_unread_count = 0
+
         for modulo_id, modulo in self.modulos.items():
             # Cria um Label que funcionará como botão
             lbl = tk.Label(
@@ -545,6 +579,7 @@ class SistemaPDV:
             # Adiciona o evento de clique sem mudar a cor
             lbl.bind("<Button-1>", lambda e, m=modulo_id: self.selecionar_modulo(m))
             lbl.pack(side="left", padx=5)
+            self._modulo_labels[modulo_id] = lbl
         
     def selecionar_modulo(self, modulo_id):
         """Seleciona um módulo para exibição"""
@@ -705,6 +740,38 @@ class SistemaPDV:
                     modulo.show(metodo_nome)
                 else:
                     modulo.show()
+            
+            elif modulo_id == 'chat':
+                # Cria um frame para o módulo que ocupa todo o espaço
+                modulo_frame = tk.Frame(self.content_frame, bg='#f0f2f5')
+                modulo_frame.pack(fill='both', expand=True)
+                
+                # Importa o módulo de chat
+                from src.views.modulos.chat.chat_module import ChatModule
+                
+                # Cria a instância do módulo
+                modulo = ChatModule(modulo_frame, self)
+                
+                # Configura o frame do módulo para ocupar todo o espaço
+                modulo.frame.pack(fill='both', expand=True, padx=10, pady=10)
+                
+                # Exibe o conteúdo principal do chat (respeitando ação)
+                if hasattr(modulo, 'show'):
+                    if metodo_nome and metodo_nome != 'mostrar_inicio':
+                        modulo.show(metodo_nome)
+                    else:
+                        modulo.show()
+                else:
+                    try:
+                        modulo.render(modulo_frame)
+                    except Exception:
+                        pass
+
+                # Ao abrir o chat, limpar notificação de não lidas
+                try:
+                    self.notify_chat_unread(0)
+                except Exception:
+                    pass
                     
             # Força a atualização da interface
             self.content_frame.update_idletasks()
@@ -720,8 +787,78 @@ class SistemaPDV:
                 justify="left"
             )
             error_label.pack(pady=20, padx=20, anchor='w')
+
+   
+    def notify_chat_unread(self, count: int):
+        """Atualiza contagem de mensagens não lidas e acende o botão Chat quando > 0."""
+        # Garante que count seja um número inteiro não negativo
+        self._chat_unread_count = max(0, int(count or 0))
+        
+        # Atualiza o botão de chat
+        lbl = self._modulo_labels.get('chat')
+        if lbl:
+            try:
+                if self._chat_unread_count > 0:
+                    # Mantém o botão verde (aceso) quando há mensagens não lidas
+                    lbl.config(bg=self.cores.get('destaque', '#4CAF50'))
+                else:
+                    # Restaura a cor original quando não há mensagens não lidas
+                    lbl.config(bg=self.cores.get('primaria', lbl.cget('bg')))
+            except Exception:
+                pass
+                
+        # Cancela qualquer job de piscar que possa estar ativo
+        if self._chat_blink_job is not None:
+            try:
+                self.root.after_cancel(self._chat_blink_job)
+                self._chat_blink_job = None
+            except Exception:
+                pass
     
     def sair(self):
         """Fecha a aplicação"""
-        if True:
-            self.root.destroy()
+        """Fecha a aplicação"""
+        # Cancela a verificação de mensagens
+        if hasattr(self, '_chat_check_job') and self._chat_check_job:
+            self.root.after_cancel(self._chat_check_job)
+        
+        # Fecha a janela
+        self.root.destroy()
+
+    def _iniciar_verificacao_chat(self):
+        """Inicia a verificação periódica de mensagens não lidas"""
+        def verificar_mensagens():
+            try:
+                if hasattr(self, 'usuario') and hasattr(self.usuario, 'id'):
+                    from src.db.chat_db import ChatDB
+                    from src.db.database import db
+                    
+                    # Usa a conexão existente se disponível
+                    conn = getattr(self, 'db_connection', None) or db.get_connection()
+                    try:
+                        chat_db = ChatDB(conn)
+                        contagem = chat_db.contar_nao_lidas_para(
+                            self.usuario.id,
+                            getattr(self.usuario, 'nome', 'Usuário')
+                        )
+                        
+                        # Atualiza a interface
+                        if hasattr(self, 'notify_chat_unread'):
+                            self.notify_chat_unread(contagem)
+                            
+                    finally:
+                        # Fecha a conexão apenas se não for a conexão compartilhada
+                        if conn is not getattr(self, 'db_connection', None):
+                            try:
+                                conn.close()
+                            except:
+                                pass
+                                
+            except Exception as e:
+                print(f"Erro ao verificar mensagens: {e}")
+            
+            # Agenda próxima verificação em 5 segundos
+            if hasattr(self, 'root'):
+                self.root.after(5000, self._iniciar_verificacao_chat)
+        
+        verificar_mensagens()
