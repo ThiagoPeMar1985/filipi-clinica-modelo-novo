@@ -5,6 +5,7 @@ Fornece funcionalidades comuns e estilos padronizados.
 import tkinter as tk
 from tkinter import ttk
 import re
+import sys
 try:
     # Corretor ortográfico opcional
     from spellchecker import SpellChecker
@@ -39,6 +40,9 @@ class BaseModule:
     # ------------------------- Utilitário: Corretor ortográfico -------------------------
     def _get_spellchecker(self, language: str = 'pt'):
         """Obtém (cache) uma instância do SpellChecker para o idioma informado."""
+        # Em executável (PyInstaller), desativa para evitar erros de locale/language
+        if getattr(sys, 'frozen', False):
+            return None
         if SpellChecker is None:
             return None
         try:

@@ -56,7 +56,6 @@ class DatabaseConnection:
             db_config.pop(key, None)
             
         self._connection = mysql.connector.connect(
-            use_pure=True,
             **db_config
         )
     

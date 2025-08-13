@@ -53,7 +53,7 @@ class ChatDB:
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """
                 )
-                print("Tabela chat_sessoes criada com sucesso.")
+               
             except Exception as e:
                 print(f"Erro ao criar tabela chat_sessoes: {e}")
         
@@ -114,19 +114,119 @@ class ChatDB:
             self.conn.rollback()
             raise
 
-    def listar_online(self, janela_segundos: int = 120) -> List[Dict[str, Any]]:
+    def obter_sessao_id(self, usuario_id: Optional[int] = None, usuario_nome: Optional[str] = None, dispositivo: Optional[str] = None) -> Optional[int]:
+        """Obtém o id da sessão atual em chat_sessoes.
+        Prioriza busca por (usuario_id, dispositivo); em seguida (usuario_nome, dispositivo); por fim apenas por nome.
+        Retorna None se não encontrar.
+        """
+        try:
+            cur = self.conn.cursor()
+            if usuario_id is not None and dispositivo:
+                cur.execute(
+                    """
+                    SELECT id FROM chat_sessoes
+                    WHERE usuario_id = %s AND dispositivo = %s
+                    ORDER BY ultimo_heartbeat DESC
+                    LIMIT 1
+                    """,
+                    (usuario_id, dispositivo)
+                )
+            elif usuario_nome and dispositivo:
+                cur.execute(
+                    """
+                    SELECT id FROM chat_sessoes
+                    WHERE usuario_nome = %s AND dispositivo = %s
+                    ORDER BY ultimo_heartbeat DESC
+                    LIMIT 1
+                    """,
+                    (usuario_nome, dispositivo)
+                )
+            elif usuario_nome:
+                cur.execute(
+                    """
+                    SELECT id FROM chat_sessoes
+                    WHERE usuario_nome = %s
+                    ORDER BY ultimo_heartbeat DESC
+                    LIMIT 1
+                    """,
+                    (usuario_nome,)
+                )
+            else:
+                return None
+            row = cur.fetchone()
+            sess_id = row[0] if row else None
+            return sess_id
+        except Exception as e:
+            print(f"[ChatDB] Erro ao buscar sessão id: {e}")
+            return None
+
+    def remover_sessao_por_id(self, sessao_id: Optional[int]) -> int:
+        """Remove uma sessão pelo id. Retorna número de linhas afetadas."""
+        if not sessao_id:
+            print("[ChatDB] remover_sessao_por_id chamado com id vazio")
+            return 0
+        try:
+            cur = self.conn.cursor()
+            cur.execute("DELETE FROM chat_sessoes WHERE id = %s", (sessao_id,))
+            afetadas = cur.rowcount
+            self.conn.commit()
+            return afetadas
+        except Exception as e:
+            print(f"[ChatDB] Erro ao remover sessão por id: {e}")
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
+            raise
+
+    def listar_online(self) -> List[Dict[str, Any]]:
+        """Lista todas as sessões presentes em chat_sessoes (sem filtro de tempo)."""
         cur = self.conn.cursor(dictionary=True)
         cur.execute(
             """
             SELECT usuario_id, COALESCE(usuario_nome,'Usuário') AS usuario_nome, dispositivo, ultimo_heartbeat
             FROM chat_sessoes
-            WHERE ultimo_heartbeat >= NOW() - INTERVAL %s SECOND
             ORDER BY usuario_nome ASC
-            """,
-            (janela_segundos,)
+            """
         )
         rows = cur.fetchall() or []
         return rows
+    
+    def remover_sessao_por_nome_dispositivo(self, usuario_nome: Optional[str], dispositivo: Optional[str] = None):
+        """Remove uma sessão pelo nome do usuário e (opcionalmente) dispositivo.
+        OBS: o esquema tem UNIQUE(usuario_id, dispositivo), então nome pode não ser único.
+        Este método atende ao requisito de remoção por nome + dispositivo.
+        """
+        try:
+            cur = self.conn.cursor()
+            if usuario_nome is None:
+                return 0
+            if dispositivo:
+                cur.execute(
+                    """
+                    DELETE FROM chat_sessoes
+                    WHERE usuario_nome = %s AND dispositivo = %s
+                    """,
+                    (usuario_nome, dispositivo)
+                )
+            else:
+                cur.execute(
+                    """
+                    DELETE FROM chat_sessoes
+                    WHERE usuario_nome = %s
+                    """,
+                    (usuario_nome,)
+                )
+            afetadas = cur.rowcount
+            self.conn.commit()
+            return afetadas
+        except Exception as e:
+            print(f"[ChatDB] Erro ao remover sessão por nome/dispositivo: {e}")
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
+            raise
 
     # --- Mensagens ---
     def enviar_mensagem(
@@ -218,22 +318,3 @@ class ChatDB:
         sql = f"UPDATE chat_mensagens SET lido_em = NOW() WHERE id IN ({placeholders})"
         cur.execute(sql, tuple(ids))
         self.conn.commit()
-
-
-    def contar_nao_lidas_para(self, usuario_id, usuario_nome=None, dispositivo=None):
-        """Retorna apenas a contagem de mensagens não lidas para o usuário"""
-        try:
-            cursor = self.conn.cursor(dictionary=True)
-            query = """
-                SELECT COUNT(*) as total 
-                FROM chat_mensagens 
-                WHERE destinatario_id = %s 
-                AND lido_em IS NULL
-                AND remetente_id != destinatario_id
-            """
-            cursor.execute(query, (usuario_id,))
-            resultado = cursor.fetchone()
-            return resultado['total'] if resultado else 0
-        except Exception as e:
-            print(f"Erro ao contar mensagens não lidas: {e}")
-            return 0

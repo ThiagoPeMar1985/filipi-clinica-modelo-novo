@@ -31,6 +31,7 @@ class SistemaPDV:
         # Conexão (mantida)
         self.db_connection = getattr(usuario, 'db_connection', None)
 
+        # Não sobrescrever a geometry definida em main.py.
         # Garantir janela em estado normal e sem fullscreen.
         self.root.state('normal')
         try:
@@ -70,8 +71,7 @@ class SistemaPDV:
 
         # Inicializa o controlador de permissões
         self.permission_controller = PermissionController()
-
-
+        
         # Inicializa o controlador de configurações
         try:
             from src.controllers.config_controller import ConfigController
@@ -100,12 +100,34 @@ class SistemaPDV:
             self.root.after(300, self._verificar_alerta_estoque)
         except Exception:
             pass
-
-        if hasattr(self, 'root'):
-            self.root.after(1000, self._iniciar_verificacao_chat)
-    
+        
         # Configurar manipulador de fechamento
         self.root.protocol("WM_DELETE_WINDOW", self.sair)
+        
+        # [LOGIN->SESSÃO] Registra a sessão de chat imediatamente após login (um heartbeat único)
+        try:
+            if hasattr(self, 'usuario') and hasattr(self.usuario, 'id') and self.usuario.id is not None:
+                from src.db.chat_db import ChatDB
+                from src.db.database import db
+                import socket
+                self._chat_dispositivo = socket.gethostname()
+                with db.get_connection() as conn:
+                    chat_db = ChatDB(conn)
+                    chat_db.heartbeat(self.usuario.id, getattr(self.usuario, 'nome', 'Usuário'), self._chat_dispositivo)
+                    # Busca e guarda o id da sessão para remoção precisa no sair()
+                    self._chat_sessao_id = chat_db.obter_sessao_id(
+                        usuario_id=self.usuario.id,
+                        usuario_nome=getattr(self.usuario, 'nome', None),
+                        dispositivo=self._chat_dispositivo,
+                    )
+                    # Inicia heartbeat global periódico (mesmo fora da tela de chat)
+                    try:
+                        self._chat_hb_job = None
+                        self._start_global_chat_heartbeat()
+                    except Exception as e_hb:
+                        print(f"[CHAT] Falha ao iniciar heartbeat global: {e_hb}")
+        except Exception as e:
+            print(f"Erro ao registrar sessão de chat no login: {e}")
     
     def criar_layout(self):
         """Cria o layout principal da aplicação"""
@@ -788,77 +810,154 @@ class SistemaPDV:
             )
             error_label.pack(pady=20, padx=20, anchor='w')
 
-   
+    # =========================
+    # Chat Notifications (Blink)
+    # =========================
     def notify_chat_unread(self, count: int):
-        """Atualiza contagem de mensagens não lidas e acende o botão Chat quando > 0."""
-        # Garante que count seja um número inteiro não negativo
+        """Atualiza contagem de mensagens não lidas e pisca o botão Chat quando > 0."""
         self._chat_unread_count = max(0, int(count or 0))
-        
-        # Atualiza o botão de chat
-        lbl = self._modulo_labels.get('chat')
-        if lbl:
-            try:
-                if self._chat_unread_count > 0:
-                    # Mantém o botão verde (aceso) quando há mensagens não lidas
-                    lbl.config(bg=self.cores.get('destaque', '#4CAF50'))
-                else:
-                    # Restaura a cor original quando não há mensagens não lidas
-                    lbl.config(bg=self.cores.get('primaria', lbl.cget('bg')))
-            except Exception:
-                pass
-                
-        # Cancela qualquer job de piscar que possa estar ativo
+        if self._chat_unread_count > 0:
+            self._start_chat_blink()
+        else:
+            self._stop_chat_blink()
+
+    def _start_chat_blink(self):
+        if self._chat_blink_job is not None:
+            return
+        self._chat_blink_on = False
+        self._blink_chat_label()
+
+    def _stop_chat_blink(self):
         if self._chat_blink_job is not None:
             try:
                 self.root.after_cancel(self._chat_blink_job)
-                self._chat_blink_job = None
             except Exception:
                 pass
+            self._chat_blink_job = None
+        self._chat_blink_on = False
+        # Restaura cor do botão Chat
+        lbl = self._modulo_labels.get('chat')
+        if lbl:
+            try:
+                lbl.config(bg=self.cores.get("primaria", lbl.cget('bg')))
+            except Exception:
+                pass
+
+    def _blink_chat_label(self):
+        lbl = self._modulo_labels.get('chat')
+        if not lbl:
+            return
+        self._chat_blink_on = not self._chat_blink_on
+        try:
+            bg1 = self.cores.get('destaque', '#4CAF50')
+            bg2 = self.cores.get('primaria', lbl.cget('bg'))
+            lbl.config(bg=bg1 if self._chat_blink_on else bg2)
+        except Exception:
+            pass
+        # agenda próximo toggle
+        try:
+            self._chat_blink_job = self.root.after(600, self._blink_chat_label)
+        except Exception:
+            self._chat_blink_job = None
     
     def sair(self):
         """Fecha a aplicação"""
-        """Fecha a aplicação"""
-        # Cancela a verificação de mensagens
-        if hasattr(self, '_chat_check_job') and self._chat_check_job:
-            self.root.after_cancel(self._chat_check_job)
-        
-        # Fecha a janela
-        self.root.destroy()
-
-    def _iniciar_verificacao_chat(self):
-        """Inicia a verificação periódica de mensagens não lidas"""
-        def verificar_mensagens():
+        # [LOGOUT->SESSÃO] Remove a sessão do chat ao sair
+        try:
+            # Cancela heartbeat global se estiver agendado
             try:
-                if hasattr(self, 'usuario') and hasattr(self.usuario, 'id'):
+                if hasattr(self, '_chat_hb_job') and self._chat_hb_job:
+                    self.root.after_cancel(self._chat_hb_job)
+                    self._chat_hb_job = None
+            except Exception:
+                pass
+            usuario_nome = getattr(getattr(self, 'usuario', None), 'nome', None)
+            dispositivo = getattr(self, '_chat_dispositivo', None)
+            sessao_id = getattr(self, '_chat_sessao_id', None)
+            conn = getattr(self, 'db_connection', None)
+            if conn is not None and getattr(conn, 'is_connected', lambda: True)():
+                from src.db.chat_db import ChatDB
+                chat_db = ChatDB(conn)
+                try:
+                    if sessao_id:
+                        chat_db.remover_sessao_por_id(sessao_id)
+                    else:
+                        chat_db.remover_sessao_por_nome_dispositivo(usuario_nome, dispositivo)
+                except Exception as e2:
+                    print(f"[SAIR] Erro ao remover sessão com conexão existente: {e2}")
+            else:
+                try:
+                    import mysql.connector
+                    from src.db.config import get_db_config
                     from src.db.chat_db import ChatDB
-                    from src.db.database import db
-                    
-                    # Usa a conexão existente se disponível
-                    conn = getattr(self, 'db_connection', None) or db.get_connection()
+                    cfg = get_db_config()
+                    for k in ['pool_name', 'pool_size', 'pool_reset_session']:
+                        cfg.pop(k, None)
+                    conn2 = mysql.connector.connect(**cfg)
                     try:
-                        chat_db = ChatDB(conn)
-                        contagem = chat_db.contar_nao_lidas_para(
-                            self.usuario.id,
-                            getattr(self.usuario, 'nome', 'Usuário')
-                        )
-                        
-                        # Atualiza a interface
-                        if hasattr(self, 'notify_chat_unread'):
-                            self.notify_chat_unread(contagem)
-                            
+                        chat_db2 = ChatDB(conn2)
+                        if sessao_id:
+                            chat_db2.remover_sessao_por_id(sessao_id)
+                        else:
+                            chat_db2.remover_sessao_por_nome_dispositivo(usuario_nome, dispositivo)
                     finally:
-                        # Fecha a conexão apenas se não for a conexão compartilhada
-                        if conn is not getattr(self, 'db_connection', None):
-                            try:
-                                conn.close()
-                            except:
-                                pass
-                                
-            except Exception as e:
-                print(f"Erro ao verificar mensagens: {e}")
-            
-            # Agenda próxima verificação em 5 segundos
-            if hasattr(self, 'root'):
-                self.root.after(5000, self._iniciar_verificacao_chat)
-        
-        verificar_mensagens()
+                        try:
+                            conn2.close()
+                        except Exception:
+                            pass
+                except Exception as e3:
+                    print(f"[SAIR][FB] Falha no fallback de conexão direta: {e3}")
+        except Exception as e:
+            print(f"Erro ao remover sessão de chat no sair(): {e}")
+        finally:
+            try:
+                self.root.destroy()
+            except Exception:
+                pass
+            # Força encerramento do processo para garantir fechamento
+            try:
+                import os
+                os._exit(0)
+            except Exception:
+                pass
+
+    # ------------------------- Heartbeat Global de Chat -------------------------
+    def _start_global_chat_heartbeat(self):
+        """Inicia o heartbeat global do chat (fora da tela de chat), a cada 10s."""
+        try:
+            # Cancela anterior se houver
+            if hasattr(self, '_chat_hb_job') and self._chat_hb_job:
+                self.root.after_cancel(self._chat_hb_job)
+        except Exception:
+            pass
+        # Agenda primeira execução imediata
+        self._do_global_chat_heartbeat()
+
+    def _do_global_chat_heartbeat(self):
+        try:
+            if hasattr(self, 'usuario') and getattr(self.usuario, 'id', None) is not None:
+                from src.db.chat_db import ChatDB
+                conn = getattr(self, 'db_connection', None)
+                if conn is not None and getattr(conn, 'is_connected', lambda: True)():
+                    chat_db = ChatDB(conn)
+                    uid = self.usuario.id
+                    uname = getattr(self.usuario, 'nome', 'Usuário')
+                    disp = getattr(self, '_chat_dispositivo', None)
+                    if not disp:
+                        import socket
+                        disp = socket.gethostname()
+                        self._chat_dispositivo = disp
+                    chat_db.heartbeat(uid, uname, disp)
+                    # mantém id da sessão atualizado
+                    self._chat_sessao_id = chat_db.obter_sessao_id(uid, uname, disp)
+                else:
+                    # Conexão indisponível: ignora e tenta novamente no próximo ciclo
+                    pass
+        except Exception as e:
+            print(f"[CHAT] Erro no heartbeat global: {e}")
+        finally:
+            try:
+                # Agenda próximo ciclo em 10s
+                self._chat_hb_job = self.root.after(10000, self._do_global_chat_heartbeat)
+            except Exception:
+                self._chat_hb_job = None

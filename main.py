@@ -32,8 +32,7 @@ def _conectar_banco_dados():
         db_config['connection_timeout'] = 10
         db_config['connect_timeout'] = 10
         
-        # Imprime informações de diagnóstico (será removido no executável final)
-        print(f"Tentando conectar ao banco: {db_config.get('host')}:{db_config.get('port')}/{db_config.get('database')}")
+        # Tentativa de conexão ao banco de dados
         
         # Tenta conectar ao banco de dados
         conn = mysql.connector.connect(**db_config)
@@ -215,7 +214,6 @@ def main():
             
             if sucesso:
                 # Se a conexão for bem-sucedida, mostra a tela de login
-                print("Conexão com banco de dados bem-sucedida. Exibindo tela de login.")
                 mostrar_tela_login(root)
             else:
                 # Se a conexão falhar, mostra a tela de configuração do banco de dados

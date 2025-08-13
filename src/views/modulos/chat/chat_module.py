@@ -103,30 +103,31 @@ class ChatModule(BaseModule):
         self.current_view.pack(fill='both', expand=True)
 
         # Cabeçalho
-        header = tk.Frame(self.current_view, bg='#ffffff')
+        header = tk.Frame(self.current_view, bg='#f0f2f5')
         header.pack(fill='x', padx=10, pady=(10, 0))
 
         titulo = tk.Label(
             header,
-            text='💬 Chat',
+            text='Chat',
             font=("Arial", 16, 'bold'),
-            bg='#ffffff',
+            bg='#f0f2f5',
             fg='#333333'
         )
         titulo.pack(side='left')
 
         # Corpo com 2 colunas: contatos | conversa
-        corpo = tk.Frame(self.current_view, bg='#ffffff')
+        corpo = tk.Frame(self.current_view, bg='#f0f2f5')
         corpo.pack(fill='both', expand=True, padx=10, pady=10)
 
         # Coluna esquerda (contatos online)
-        left = tk.Frame(corpo, width=240, bg='#ffffff')
+        left = tk.Frame(corpo, width=240, bg='#f0f2f5')
         left.pack(side='left', fill='y')
         left.pack_propagate(False)
 
-        left_header = tk.Label(left, text='Usuários Online', bg='#ffffff', fg='#333333', font=("Arial", 12, 'bold'))
-        left_header.pack(fill='x', padx=8, pady=(8, 4))
+        self.left_header = tk.Label(left, text='Usuários Online', bg='#f0f2f5', fg='#333333', font=("Arial", 12, 'bold'))
+        self.left_header.pack(fill='x', padx=8, pady=(8, 4))
 
+        # Área dos nomes (branca)
         self.lista_contatos = tk.Frame(left, bg='#ffffff')
         self.lista_contatos.pack(fill='both', expand=True, padx=8, pady=(0, 8))
 
@@ -148,10 +149,11 @@ class ChatModule(BaseModule):
         )
         self.txt_mensagens.pack(fill='both', expand=True, side='top')
 
+        # Base cinza; input branco
         entrada_frame = tk.Frame(right, bg='#f0f2f5')
         entrada_frame.pack(fill='x', side='bottom', pady=(8, 0))
 
-        self.entry_msg = tk.Entry(entrada_frame, font=("Arial", 12))
+        self.entry_msg = tk.Entry(entrada_frame, font=("Arial", 12), bg='#ffffff', fg='#000000')
         self.entry_msg.pack(fill='x', expand=True, side='left', padx=(0, 8))
         self.entry_msg.bind('<Return>', self._on_enter)
 
@@ -201,8 +203,7 @@ class ChatModule(BaseModule):
                         import socket
                         self.me_disp = socket.gethostname()
                     
-                    # Faz o heartbeat
-                    print(f"Fazendo heartbeat para usuário {self.me_id} ({self.me_nome})")
+                    # Faz o heartbeat (silencioso)
                     self.chatdb.heartbeat(self.me_id, self.me_nome, self.me_disp)
                     self.conn.commit()
                     return  # Sucesso, sai da função
@@ -331,9 +332,9 @@ class ChatModule(BaseModule):
             except Exception as e2:
                 print(f"Falha ao reconectar ao banco: {e2}")
         
-        # Agenda próxima verificação (3s)
+        # Agenda próxima verificação (1s)
         try:
-            self.frame.after(3000, self._poll_online)
+            self.frame.after(1000, self._poll_online)
         except Exception as e:
             print(f"Erro ao agendar verificação de online: {e}")
 
@@ -360,22 +361,41 @@ class ChatModule(BaseModule):
             for w in list(self.lista_contatos.winfo_children()):
                 w.destroy()
         try:
-            # Usa janela de tempo maior (2 minutos) para manter usuários visíveis por mais tempo
-            online = self.chatdb.listar_online(janela_segundos=120)
-            print(f"Usuários online encontrados: {len(online)}")
+            # Lista todas as sessões (sem filtro de tempo)
+            online = self.chatdb.listar_online()
             if len(online) == 0:
                 # Se não encontrou ninguém, pode ser um problema de conexão
                 # Tenta reconectar e buscar novamente
                 try:
                     self.conn = db.get_connection()
                     self.chatdb = ChatDB(self.conn)
-                    online = self.chatdb.listar_online(janela_segundos=120)
-                    print(f"Após reconexão: {len(online)} usuários online")
+                    online = self.chatdb.listar_online()
                 except Exception as e:
                     print(f"Erro ao reconectar para buscar usuários online: {e}")
         except Exception as e:
             print(f"Erro ao listar usuários online: {e}")
             online = []
+
+        # Atualiza contador no cabeçalho (exclui o próprio usuário)
+        try:
+            total_exibidos = 0
+            if online:
+                for u in online:
+                    uid = None
+                    try:
+                        uid = u.get('usuario_id')
+                    except Exception:
+                        try:
+                            uid = u[0] if len(u) > 0 else None
+                        except Exception:
+                            uid = None
+                    if self.me_id is not None and uid == self.me_id:
+                        continue
+                    total_exibidos += 1
+            if hasattr(self, 'left_header') and self.left_header:
+                self.left_header.config(text=f"Usuários Online ({total_exibidos})")
+        except Exception:
+            pass
 
         # Adiciona botões de contato (exceto eu mesmo)
         for user in online:
@@ -441,22 +461,14 @@ class ChatModule(BaseModule):
                     texto = msg.get('texto', '')
                     criado_em = msg.get('criado_em')
                     hora = criado_em.strftime('%H:%M') if criado_em else ''
-
-                    if msg.get('remetente_id') == self.me_id or msg.get('remetente_nome') == self.me_nome:
-                        # Minha mensagem (agora também à esquerda)
-                        self.txt_mensagens.insert('end', f'{hora}, {self.me_nome}:\n', 'nome_esq')
-                        self.txt_mensagens.insert('end', f'{texto}\n', 'msg_esq')
-                    else:
-                        # Mensagem do contato (esquerda)
-                        self.txt_mensagens.insert('end', f'{hora}, {remetente_nome}:\n', 'nome_esq')
-                        self.txt_mensagens.insert('end', f'{texto}\n', 'msg_esq')
-                    self.txt_mensagens.insert('end', '\n')
+                    # Linha única, tudo alinhado à esquerda, fundo branco e texto preto
+                    linha = f"{remetente_nome} {hora}: {texto}\n"
+                    self.txt_mensagens.insert('end', linha, 'linha_msg')
                 except Exception:
                     continue
 
-            # Configura tags
-            self.txt_mensagens.tag_configure('nome_esq', foreground='#000000', font=("Arial", 10, 'bold'))
-            self.txt_mensagens.tag_configure('msg_esq', foreground='#000000', background='#ffffff', lmargin1=20, lmargin2=20)
+            # Configura tag única para todas as mensagens (preto no branco, alinhado à esquerda)
+            self.txt_mensagens.tag_configure('linha_msg', foreground='#000000', background='#ffffff', justify='left', lmargin1=4, lmargin2=4, spacing1=2, spacing3=2)
 
             # Rola para o final
             self.txt_mensagens.config(state='disabled')
