@@ -40,9 +40,6 @@ class BaseModule:
     # ------------------------- Utilitário: Corretor ortográfico -------------------------
     def _get_spellchecker(self, language: str = 'pt'):
         """Obtém (cache) uma instância do SpellChecker para o idioma informado."""
-        # Em executável (PyInstaller), desativa para evitar erros de locale/language
-        if getattr(sys, 'frozen', False):
-            return None
         if SpellChecker is None:
             return None
         try:
@@ -493,24 +490,10 @@ class BaseModule:
             return None
 
     def create_caixa_status_badge(self, parent, pady=(10, 10)):
-        """Cria e retorna um Label no topo com o status do caixa (verde/vermelho)."""
-        try:
-            badge = tk.Label(
-                parent,
-                text="",
-                font=("Arial", 16, 'bold'),
-                bg=self.cores.get('fundo_conteudo', '#ffffff'),
-                fg=self.cores.get('texto_claro', '#ffffff'),
-                padx=40,
-                pady=12,
-                bd=0,
-                relief='flat',
-            )
-            badge.pack(pady=pady)
-            self.refresh_caixa_status_badge(badge)
-            return badge
-        except Exception:
-            return None
+        """(Desativado) Não cria mais o indicador de status do caixa.
+        Esta função foi tornada no-op para remover o visualizador de "Caixa Aberto/Fechado".
+        """
+        return None
 
     def refresh_caixa_status_badge(self, badge: tk.Label):
         """Atualiza o label do badge conforme status atual do caixa."""

@@ -269,16 +269,51 @@ class GerenciadorImpressao:
                     hdc.TextOut(margem_esq, y, "")
                     y += linha_h
                     return
-                # Detecta tag de alinhamento no início da linha
+                # Detecta tags no início da linha (alinhamento e fonte por linha)
                 align = align_hint or 'left'
-                s_strip = paragraph.strip()
-                lowered = s_strip.lower()
-                if lowered.startswith('<<center>>'):
-                    paragraph = paragraph.lower().replace('<<center>>', '', 1).lstrip()
-                    align = 'center'
-                elif lowered.startswith('<<right>>'):
-                    paragraph = paragraph.lower().replace('<<right>>', '', 1).lstrip()
-                    align = 'right'
+                s_strip = paragraph.lstrip()
+                # múltiplas tags de prefixo são permitidas, ex.: <<center>><<font:14>>
+                font_temp_pt = None
+                while True:
+                    _s = s_strip.strip()
+                    if _s.lower().startswith('<<center>>'):
+                        # remove a tag sem alterar o conteúdo em si
+                        # remove do início considerando espaços anteriores e posteriores
+                        s_strip = re.sub(r'^\s*<<center>>\s*', '', s_strip, count=1)
+                        align = 'center'
+                        continue
+                    if _s.lower().startswith('<<right>>'):
+                        s_strip = re.sub(r'^\s*<<right>>\s*', '', s_strip, count=1)
+                        align = 'right'
+                        continue
+                    # Tenta capturar uma tag de fonte no INÍCIO da linha, mesmo que existam caracteres após a tag
+                    try:
+                        m = re.match(r'^\s*<<font:(\d{1,2})>>\s*', s_strip, flags=re.IGNORECASE)
+                        if m:
+                            v = int(m.group(1))
+                            if 6 <= v <= 24:
+                                font_temp_pt = v
+                                s_strip = s_strip[m.end():]
+                                continue
+                    except Exception:
+                        pass
+                    break
+
+                paragraph = s_strip
+
+                # Se tiver fonte temporária, seleciona-a e calcula métricas locais
+                restore_font = None
+                local_linha_h = linha_h
+                if font_temp_pt is not None:
+                    try:
+                        altura_tmp = -int(font_temp_pt * dpi_y / 72)
+                        font_tmp = win32ui.CreateFont({'name': 'Times New Roman', 'height': altura_tmp, 'weight': 700})
+                        restore_font = hdc.SelectObject(font_tmp)
+                        tm_tmp = hdc.GetTextMetrics()
+                        local_linha_h = tm_tmp["tmHeight"] + tm_tmp["tmExternalLeading"]
+                    except Exception:
+                        restore_font = None
+                        local_linha_h = linha_h
 
                 words = paragraph.split()
                 linha_atual = ""
@@ -292,7 +327,7 @@ class GerenciadorImpressao:
                         linha_atual = tentativa
                     else:
                         # Desenha linha_atual e quebra
-                        if y > (margem_top + altura_util - linha_h):
+                        if y > (margem_top + altura_util - local_linha_h):
                             hdc.EndPage(); hdc.StartPage(); hdc.SelectObject(font); y = margem_top
                         # Calcula x conforme alinhamento
                         try:
@@ -306,11 +341,11 @@ class GerenciadorImpressao:
                         else:
                             x = margem_esq
                         hdc.TextOut(x, y, linha_atual)
-                        y += linha_h
+                        y += local_linha_h
                         linha_atual = w
                 # desenha resto
                 if linha_atual or paragraph.endswith(" "):
-                    if y > (margem_top + altura_util - linha_h):
+                    if y > (margem_top + altura_util - local_linha_h):
                         hdc.EndPage(); hdc.StartPage(); hdc.SelectObject(font); y = margem_top
                     try:
                         w_px = hdc.GetTextExtent(linha_atual)[0]
@@ -323,7 +358,14 @@ class GerenciadorImpressao:
                     else:
                         x = margem_esq
                     hdc.TextOut(x, y, linha_atual)
-                    y += linha_h
+                    y += local_linha_h
+
+                # Restaura a fonte original se foi temporariamente alterada
+                if restore_font is not None:
+                    try:
+                        hdc.SelectObject(restore_font)
+                    except Exception:
+                        pass
 
             linhas_full = texto.replace('\r\n', '\n').replace('\r', '\n').split('\n')
             # Heurística: se a linha contiver 'crm', ALINHA AO CENTRO e
@@ -381,20 +423,107 @@ class GerenciadorImpressao:
         pagamentos: lista de {forma, valor}
         itens: opcional lista de {descricao, qtd, valor}
         """
-        # Sem QUALQUER formatação: imprime apenas linhas simples derivadas das entradas
-        linhas = []
+        # Monta um texto legível e completo do comprovante
+        from datetime import datetime
+        def fmt_moeda(v):
+            try:
+                return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except Exception:
+                return str(v)
+
+        nome_emp = (empresa or {}).get('nome_fantasia') or (empresa or {}).get('razao_social') or 'Clínica'
+        cnpj_emp = (empresa or {}).get('cnpj')
+        tel_emp = (empresa or {}).get('telefone') or (empresa or {}).get('fone')
+        # Monta endereço completo se disponível
+        try:
+            end = (empresa or {}).get('endereco') or ''
+            num = (empresa or {}).get('numero') or ''
+            bairro = (empresa or {}).get('bairro') or ''
+            cidade = (empresa or {}).get('cidade') or ''
+            uf = (empresa or {}).get('estado') or (empresa or {}).get('uf') or ''
+            cep = (empresa or {}).get('cep') or ''
+            partes = []
+            if end:
+                partes.append(str(end).strip())
+            if num:
+                partes[-1] = f"{partes[-1]}, {num}" if partes else str(num)
+            if bairro:
+                partes.append(str(bairro).strip())
+            cidadeuf = "".join([str(cidade).strip(), f"/{uf}" if uf else ""]) if cidade or uf else ""
+            if cidadeuf:
+                partes.append(cidadeuf)
+            if cep:
+                partes.append(f"CEP: {cep}")
+            endereco_emp = " - ".join([p for p in partes if p]) if partes else None
+        except Exception:
+            endereco_emp = None
+        agora = datetime.now().strftime('%d/%m/%Y %H:%M')
+        nome_pac = (paciente or {}).get('nome') or (paciente or {}).get('paciente')
+        doc_pac = (paciente or {}).get('documento')
+        medico = (paciente or {}).get('medico')  # caso venha acoplado ao payload
+
+        linhas: list[str] = []
+        # Título centralizado e cabeçalho
+        # Nome da empresa em destaque (fonte 14) e centralizado
+        linhas.append('<<center>><<font:14>>' + str(nome_emp))
+        if cnpj_emp:
+            linhas.append('<<center>>CNPJ: ' + str(cnpj_emp))
+        if endereco_emp:
+            linhas.append('<<center>>' + endereco_emp)
+        if tel_emp:
+            linhas.append('<<center>>Tel: ' + str(tel_emp))
+        linhas.append('')
+        linhas.append(f"Data: {agora}")
+        if nome_pac:
+            linhas.append(f"Paciente: {nome_pac}")
+        if doc_pac:
+            linhas.append(f"Documento: {doc_pac}")
+        if medico:
+            linhas.append(f"Médico: {medico}")
+
+        # Itens (se houver) - sem cabeçalho "Itens:" e sem totalização
         if itens:
             for it in itens:
                 try:
-                    linhas.append(str(it))
+                    desc = str((it or {}).get('descricao') or (it or {}).get('nome') or '')
+                    qtd = (it or {}).get('qtd') or (it or {}).get('quantidade')
+                    val = (it or {}).get('valor') or (it or {}).get('preco')
+                    if qtd is not None and val is not None and desc:
+                        try:
+                            subtotal = float(qtd) * float(val)
+                        except Exception:
+                            subtotal = val
+                        linhas.append(f" - {desc}  {qtd} x {fmt_moeda(val)} = {fmt_moeda(subtotal)}")
+                    else:
+                        if desc:
+                            linhas.append(f" - {desc}")
                 except Exception:
-                    pass
-        if pagamentos:
-            for p in pagamentos:
+                    continue
+
+        # Pagamentos
+        linhas.append("")
+        linhas.append("Pagamentos:")
+        total_pago = 0.0
+        for p in (pagamentos or []):
+            try:
+                forma = str((p or {}).get('forma') or '-').replace('_', ' ').title()
+                val = (p or {}).get('valor')
                 try:
-                    linhas.append(str(p))
+                    total_pago += float(val)
                 except Exception:
                     pass
+                linhas.append(f" - {forma}: {fmt_moeda(val)}")
+            except Exception:
+                continue
+        linhas.append("")
+        try:
+            linhas.append(f"Total Pago: {fmt_moeda(total_pago)}")
+        except Exception:
+            pass
+
+        # Remove eco de descrições ao final para evitar duplicidade visual
+
+        # Define alvo e imprime
         texto = '\n'.join(linhas)
         alvo = impressora or self.impressoras.get('impressora 1') or win32print.GetDefaultPrinter()
         return self._imprimir_texto_a4(alvo, texto)

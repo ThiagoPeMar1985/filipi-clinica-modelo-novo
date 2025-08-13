@@ -5,6 +5,18 @@ Módulo de Agendamento - Gerencia agendamentos de consultas
 import tkinter as tk
 from tkinter import ttk, messagebox
 from tkcalendar import Calendar, DateEntry
+import sys
+
+# Locales candidatos para ambientes variados (Windows/Linux) e empacotados
+LOCALE_ATTEMPTS = (
+    # Português (Linux/Windows)
+    'pt_BR', 'pt_BR.UTF-8',
+    'Portuguese_Brazil', 'Portuguese_Brazil.1252', 'Portuguese_Brazilian', 'Portuguese',
+    'pt_PT', 'pt_PT.UTF-8', 'Portuguese_Portugal',
+    # Inglês (Linux/Windows)
+    'en_US', 'en_US.UTF-8',
+    'English_United States', 'English_United States.1252', 'English'
+)
 from datetime import datetime, timedelta
 
 from src.controllers.horario_controller import HorarioController
@@ -294,72 +306,61 @@ class AgendamentoModule:
         
         # Adicionar o widget de calendário com tamanho adaptativo
         cal_font_size = 8 if is_short_height else 9
-        try:
-            self.calendario = MedicoCalendar(
-                self.calendario_inner,
-                modo='livre',
-                selectmode='day',
-                date_pattern='dd/mm/yyyy',
-                locale='pt_BR',
-                cursor='hand2',
-                showweeknumbers=False,
-                firstweekday='sunday',
-                showothermonthdays=True,
-                # Cores dos dias da semana (segunda a sexta)
-                normalbackground='#ffffff',    # Fundo branco
-                normalforeground='#000000',   # Texto preto
-                # Cores do fim de semana (sábado e domingo)
-                weekendbackground='#e0e0e0',  # Fundo cinza claro
-                weekendforeground='#000000',  # Texto preto
-                # Cores dos dias de outros meses
-                othermonthbackground='#f9f9f9',
-                othermonthwebackground='#f9f9f9',
-                othermonthforeground='#888888',
-                othermonthweforeground='#888888',
-                # Cores de borda
-                bordercolor='#000000',        # Linhas pretas
-                # Cores do cabeçalho
-                headersbackground='#f0f0f0',
-                headersforeground='#000000',
-                # Cores de seleção
-                selectbackground='#4a90e2',   # Azul para dia selecionado
-                selectforeground='#ffffff',   # Texto branco no dia selecionado
-                # Configurações gerais
-                background='#ffffff',
-                foreground='#000000',
-                relief='flat',
-                font=('Arial', cal_font_size)
-            )
-        except Exception:
-            # Fallback de locale para ambientes empacotados sem recursos de locale
-            self.calendario = MedicoCalendar(
-                self.calendario_inner,
-                modo='livre',
-                selectmode='day',
-                date_pattern='dd/mm/yyyy',
-                locale='en_US',
-                cursor='hand2',
-                showweeknumbers=False,
-                firstweekday='sunday',
-                showothermonthdays=True,
-                normalbackground='#ffffff',
-                normalforeground='#000000',
-                weekendbackground='#e0e0e0',
-                weekendforeground='#000000',
-                othermonthbackground='#f9f9f9',
-                othermonthwebackground='#f9f9f9',
-                othermonthforeground='#888888',
-                othermonthweforeground='#888888',
-                bordercolor='#000000',
-                headersbackground='#f0f0f0',
-                headersforeground='#000000',
-                selectbackground='#4a90e2',
-                selectforeground='#ffffff',
-                background='#ffffff',
-                foreground='#000000',
-                relief='flat',
-                font=('Arial', cal_font_size)
-            )
+        # Construção do calendário
+        _kwargs_cal = dict(
+            modo='livre',
+            selectmode='day',
+            date_pattern='dd/mm/yyyy',
+            cursor='hand2',
+            showweeknumbers=False,
+            firstweekday='sunday',
+            showothermonthdays=True,
+            # Cores dos dias da semana (segunda a sexta)
+            normalbackground='#ffffff',    # Fundo branco
+            normalforeground='#000000',   # Texto preto
+            # Cores do fim de semana (sábado e domingo)
+            weekendbackground='#e0e0e0',  # Fundo cinza claro
+            weekendforeground='#000000',  # Texto preto
+            # Cores dos dias de outros meses
+            othermonthbackground='#f9f9f9',
+            othermonthwebackground='#f9f9f9',
+            othermonthforeground='#888888',
+            othermonthweforeground='#888888',
+            # Cores de borda
+            bordercolor='#000000',        # Linhas pretas
+            # Cores do cabeçalho
+            headersbackground='#f0f0f0',
+            headersforeground='#000000',
+            # Cores de seleção
+            selectbackground='#4a90e2',   # Azul para dia selecionado
+            selectforeground='#ffffff',   # Texto branco no dia selecionado
+            # Configurações gerais
+            background='#ffffff',
+            foreground='#000000',
+            relief='flat',
+            font=('Arial', cal_font_size)
+        )
+        if getattr(sys, 'frozen', False):
+            # Em executável: nunca passa locale para evitar erro de suporte a idiomas
+            self.calendario = MedicoCalendar(self.calendario_inner, **_kwargs_cal)
+        else:
+            self.calendario = None
+            for _loc in LOCALE_ATTEMPTS:
+                try:
+                    self.calendario = MedicoCalendar(self.calendario_inner, locale=_loc, **_kwargs_cal)
+                    break
+                except Exception:
+                    self.calendario = None
+                    continue
+            if self.calendario is None:
+                # Tenta locale universal 'C' antes de desistir
+                try:
+                    self.calendario = MedicoCalendar(self.calendario_inner, locale='C', **_kwargs_cal)
+                except Exception:
+                    self.calendario = None
+            if self.calendario is None:
+                # Fallback final: sem locale (evita erro em ambientes sem suporte)
+                self.calendario = MedicoCalendar(self.calendario_inner, **_kwargs_cal)
 
         self.calendario.pack(fill='x', expand=False)
         self.calendario.bind('<<CalendarSelected>>', self._on_date_selected)
@@ -404,14 +405,7 @@ class AgendamentoModule:
         self.tabela_toolbar = tk.Frame(self.tabela_frame)
         self.tabela_toolbar.pack(fill='x', side='top', pady=(0, 6))
 
-        btn_chegada = tk.Button(
-            self.tabela_toolbar,
-            text="Marcar Chegada",
-            command=self._marcar_chegada,
-            bg='#4a6fa5', fg='white', font=('Arial', 9, 'bold'), bd=0,
-            padx=10, pady=5, relief='flat', activebackground='#3b5a7f', activeforeground='white'
-        )
-        btn_chegada.pack(side='left')
+        # Removido botão "Marcar Chegada" (chegada deve ser vinculada ao pagamento)
 
         # Configurar a tabela de agendamentos
         colunas = ('hora', 'paciente', 'medico', 'tipo_agendamento', 'status', 'pagamento', 'chegada', 'id')
@@ -426,7 +420,7 @@ class AgendamentoModule:
         self.tabela_agendamentos.heading('hora', text='Hora')
         self.tabela_agendamentos.heading('paciente', text='Paciente')
         self.tabela_agendamentos.heading('medico', text='Médico')
-        self.tabela_agendamentos.heading('tipo_agendamento', text='Tipo Agendamento')
+        self.tabela_agendamentos.heading('tipo_agendamento', text='Agendamento')
         self.tabela_agendamentos.heading('status', text='Status')
         self.tabela_agendamentos.heading('pagamento', text='Pagamento')
         self.tabela_agendamentos.heading('chegada', text='Chegada')
@@ -518,45 +512,7 @@ class AgendamentoModule:
                 )
             )
 
-    def _marcar_chegada(self):
-        """Marca a chegada do paciente na consulta selecionada e sincroniza pagamento."""
-        try:
-            sel = self.tabela_agendamentos.selection()
-            if not sel:
-                messagebox.showinfo("Consultas", "Selecione uma consulta para marcar a chegada.")
-                return
-            item_id = sel[0]
-            valores = self.tabela_agendamentos.item(item_id, 'values')
-            consulta_id = int(valores[-1])  # última coluna é o ID
-
-            ok, msg = self.agenda_controller.marcar_chegada(consulta_id)
-            if not ok:
-                messagebox.showerror("Consultas", msg)
-                return
-
-            # Tenta sincronizar pagamento automaticamente com base no financeiro
-            try:
-                ok2, msg2, pago = self.agenda_controller.sincronizar_status_pagamento(consulta_id)
-                # Não precisa exibir mensagem sempre; apenas atualiza a tela
-            except Exception:
-                pass
-
-            # Recarrega a lista do dia atual mantendo filtro
-            try:
-                data_sel = self.calendario.selection_get()
-                data_fmt = data_sel.strftime('%Y-%m-%d')
-            except Exception:
-                data_fmt = datetime.now().strftime('%Y-%m-%d')
-
-            medico_nome = self.filtro_medico.get() if hasattr(self, 'filtro_medico') else 'Todos'
-            if medico_nome and medico_nome != 'Todos':
-                mid = self._obter_id_medico_por_nome(medico_nome)
-                self.consultas = self.agenda_controller.buscar_consultas_por_medico(mid, data_fmt, data_fmt)
-            else:
-                self.consultas = self._buscar_agendamentos(data_inicio=data_fmt, data_fim=data_fmt)
-            self._atualizar_tabela_agendamentos()
-        except Exception as e:
-            messagebox.showerror("Consultas", f"Falha ao marcar chegada: {e}")
+    # Removido método _marcar_chegada (lógica de chegada será tratada no fluxo de pagamento)
 
     def _refresh_consultas_periodico(self):
         """Atualiza periodicamente a lista do dia para refletir pagamentos/chegadas."""
@@ -1367,23 +1323,35 @@ class AgendamentoModule:
             data_obj = datetime.strptime(str(consulta['data']), '%Y-%m-%d')
             var_data.set(data_obj.strftime('%d/%m/%Y'))
         
-        try:
-            campo_data = DateEntry(
-                campos_frame,
-                textvariable=var_data,
-                date_pattern='dd/mm/yyyy',
-                locale='pt_BR',
-                width=17
-            )
-        except Exception:
-            # Fallback de locale para ambientes empacotados sem recursos de locale
-            campo_data = DateEntry(
-                campos_frame,
-                textvariable=var_data,
-                date_pattern='dd/mm/yyyy',
-                locale='en_US',
-                width=17
-            )
+        # DateEntry com tentativas de locale e fallback final sem locale
+        _kwargs_de = dict(
+            textvariable=var_data,
+            date_pattern='dd/mm/yyyy',
+            width=17
+        )
+        if getattr(sys, 'frozen', False):
+            campo_data = DateEntry(campos_frame, **_kwargs_de)
+        else:
+            campo_data = None
+            for _loc in LOCALE_ATTEMPTS:
+                try:
+                    campo_data = DateEntry(
+                        campos_frame,
+                        locale=_loc,
+                        **_kwargs_de
+                    )
+                    break
+                except Exception:
+                    campo_data = None
+                    continue
+            if campo_data is None:
+                # Tenta locale universal 'C' antes de desistir
+                try:
+                    campo_data = DateEntry(campos_frame, locale='C', **_kwargs_de)
+                except Exception:
+                    campo_data = None
+            if campo_data is None:
+                campo_data = DateEntry(campos_frame, **_kwargs_de)
         campo_data.grid(row=2, column=1, sticky='w', pady=5, padx=(10, 0))
         
         # Campo de Hora
@@ -2095,15 +2063,13 @@ class AgendamentoModule:
         def dia_permitido(date):
             # Verifica se o dia da semana está na lista de dias de atendimento
             return date.weekday() in dias_atendimento
-        
-        # Calendário
-        cal = MedicoCalendar(
-            main_frame,
+
+        # Calendário (restrito) com tentativas de locale e fallback sem locale
+        _kwargs_cal2 = dict(
             dias_atendimento=dias_atendimento,
             modo='restrito',
             selectmode='day',
             date_pattern='dd/mm/yyyy',
-            locale='pt_BR',
             cursor='hand2',
             showweeknumbers=False,
             firstweekday='sunday',
@@ -2118,13 +2084,31 @@ class AgendamentoModule:
             headersbackground='#f0f0f0',
             headersforeground='#333333',
             selectbackground='#4a90e2',
-            selectforeground='#ffffff',
-            normalbackground='#ffffff',
-            normalforeground='#000000',
-            background='#ffffff',
-            foreground='#000000',
-            font=('Arial', 10)
         )
+        if getattr(sys, 'frozen', False):
+            cal = MedicoCalendar(main_frame, **_kwargs_cal2)
+        else:
+            cal = None
+            for _loc in LOCALE_ATTEMPTS:
+                try:
+                    cal = MedicoCalendar(
+                        main_frame,
+                        locale=_loc,
+                        **_kwargs_cal2
+                    )
+                    break
+                except Exception:
+                    cal = None
+                    continue
+            if cal is None:
+                # Tenta locale universal 'C' antes de desistir
+                try:
+                    cal = MedicoCalendar(main_frame, locale='C', **_kwargs_cal2)
+                except Exception:
+                    cal = None
+            if cal is None:
+                cal = MedicoCalendar(main_frame, **_kwargs_cal2)
+
         cal.pack(fill='both', expand=True, pady=10)
         
         # Garante que, ao selecionar um dia neste calendário, o destaque azul fique no dia clicado

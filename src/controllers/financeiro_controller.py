@@ -189,18 +189,51 @@ class FinanceiroController:
         try:
             if (tipo in ('recebimento','entrada')) and (str(status).lower() == 'pago'):
                 from src.controllers.agenda_controller import AgendaController
+                from datetime import datetime
+                hoje = datetime.now().strftime('%Y-%m-%d')
                 agenda = AgendaController(db_connection=self.financeiro_db.db)
                 if consulta_id:
+                    # Apenas sincroniza (potencialmente marcando chegada) se a consulta for de hoje;
+                    # se NÃO for hoje, atualiza somente o status de pagamento na consulta, sem chegada.
                     try:
-                        agenda.sincronizar_status_pagamento(int(consulta_id))
+                        cur = self.financeiro_db.db.cursor()
+                        cur.execute("SELECT data FROM consultas WHERE id = %s", (int(consulta_id),))
+                        row = cur.fetchone()
+                        consulta_data = str(row[0]) if row and row[0] is not None else None
+                        if consulta_data == hoje:
+                            try:
+                                agenda.sincronizar_status_pagamento(int(consulta_id))
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                cur.execute(
+                                    """
+                                    UPDATE consultas
+                                    SET status_pagameto = 1
+                                    WHERE id = %s
+                                    """,
+                                    (int(consulta_id),)
+                                )
+                                self.financeiro_db.db.commit()
+                            except Exception:
+                                try:
+                                    self.financeiro_db.db.rollback()
+                                except Exception:
+                                    pass
                     except Exception:
-                        pass
+                        try:
+                            cur.close()
+                        except Exception:
+                            pass
+                    finally:
+                        try:
+                            cur.close()
+                        except Exception:
+                            pass
                 elif paciente_id:
-                    # Sincroniza todas as consultas do paciente no dia atual
+                    # Sincroniza todas as consultas do paciente SOMENTE no dia atual
                     try:
-                        from datetime import datetime
-                        hoje = datetime.now().strftime('%Y-%m-%d')
-                        # Buscar consultas do dia para o paciente
                         cur = self.financeiro_db.db.cursor()
                         cur.execute(
                             """

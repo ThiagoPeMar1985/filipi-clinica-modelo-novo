@@ -135,58 +135,20 @@ class ConfigController:
         return self._salvar_config('impressoras', dados)
     
     def salvar_config_banco_dados(self, dados):
-        """Salva as configurações do banco de dados no arquivo config.py."""
+        """Salva as configurações do banco de dados apenas no JSON do usuário.
+        Evita editar arquivos do código-fonte (compatível com executável PyInstaller).
+        """
         try:
-            # Atualiza o arquivo config.py com as novas configurações
-            with open(self.db_config_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Atualiza as configurações do DB_CONFIG
-            db_config_str = f"""DB_CONFIG = {{
-    'host': '{dados.get('host', '127.0.0.1')}',
-    'user': '{dados.get('usuario', 'root')}',
-    'password': '{dados.get('senha', '')}',
-    'database': '{dados.get('nome_bd', 'clinica_filipi')}',
-    'port': {dados.get('porta', 3306)},
-    'raise_on_warnings': True,
-    'use_pure': True,
-    'autocommit': True,
-    'charset': 'utf8mb4',
-    'collation': 'utf8mb4_unicode_ci',
-    'connection_timeout': 30
-}}"""
-            
-            # Atualiza o conteúdo do arquivo
-            content = re.sub(
-                r'DB_CONFIG\s*=\s*\{.*?\}(?=\s*(?:#|$|\n\w))',
-                db_config_str,
-                content,
-                flags=re.DOTALL
-            )
-            
-            # Atualiza as configurações de desenvolvimento
-            dev_config_str = f"""DEV_CONFIG = {{
-    **DB_CONFIG,
-    'host': '{dados.get('host', '127.0.0.1')}',
-    'connect_timeout': 30
-}}"""
-            
-            content = re.sub(
-                r'DEV_CONFIG\s*=\s*\{.*?\}(?=\s*(?:#|$|\n\w))',
-                dev_config_str,
-                content,
-                flags=re.DOTALL
-            )
-            
-            # Salva as alterações no arquivo
-            with open(self.db_config_file, 'w', encoding='utf-8') as f:
-                f.write(content)
-            
-            # Atualiza também o arquivo de configuração JSON para manter a compatibilidade
-            self._salvar_config('banco_dados', dados)
-            
+            # Normaliza chaves esperadas pela UI
+            payload = {
+                'host': dados.get('host') or dados.get('servidor') or '127.0.0.1',
+                'porta': str(dados.get('porta') or 3306),
+                'usuario': dados.get('usuario') or dados.get('user') or 'root',
+                'senha': dados.get('senha') if dados.get('senha') is not None else dados.get('password', ''),
+                'nome_bd': dados.get('nome_bd') or dados.get('database') or 'clinica_filipi',
+            }
+            self._salvar_config('banco_dados', payload)
             return True
-            
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao salvar configurações do banco de dados: {e}")
             return False
@@ -216,50 +178,48 @@ class ConfigController:
         return self.obter_config('integracoes', {})
 
     def carregar_config_banco_dados(self):
-        """Carrega as configurações do banco de dados do arquivo config.py."""
-        try:
-            # Tenta carregar do arquivo config.py
-            with open(self.db_config_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Extrai as configurações usando expressões regulares
-            db_config_match = re.search(
-                r"DB_CONFIG\s*=\s*\{\s*[\s\S]*?\}",
-                content
-            )
-            
-            if db_config_match:
-                db_config_str = db_config_match.group(0)
-                # Converte o dicionário em string para um dicionário Python
-                db_config = {}
-                for key in ['host', 'user', 'password', 'database', 'port']:
-                    match = re.search(rf"'{key}'\s*:\s*'([^']*)'", db_config_str)
-                    if match:
-                        db_config[key] = match.group(1)
-                    else:
-                        match = re.search(rf"'{key}'\s*:\s*(\d+)", db_config_str)
-                        if match:
-                            db_config[key] = int(match.group(1))
-                
-                # Formata no formato esperado pela interface
+        """Carrega as configurações do banco.
+        1) Prioriza JSON do usuário (~/.clinicas/config.json).
+        2) Fallback: usa src.db.config.get_db_config() e adapta para a UI.
+        Não depende de abrir o arquivo físico config.py, compatível com executável.
+        """
+        # 1) Tenta JSON do usuário
+        cfg_json = self.obter_config('banco_dados', None)
+        if isinstance(cfg_json, dict) and cfg_json:
+            # Garante tipos/nomes de chaves esperados pela UI
+            try:
                 return {
-                    'host': db_config.get('host', '127.0.0.1'),
-                    'porta': str(db_config.get('port', 3306)),
-                    'usuario': db_config.get('user', 'root'),
-                    'senha': db_config.get('password', ''),
-                    'nome_bd': db_config.get('database', 'clinica_filipi')
+                    'host': cfg_json.get('host', '127.0.0.1'),
+                    'porta': str(cfg_json.get('porta', cfg_json.get('port', 3306))),
+                    'usuario': cfg_json.get('usuario', cfg_json.get('user', 'root')),
+                    'senha': cfg_json.get('senha', cfg_json.get('password', '')),
+                    'nome_bd': cfg_json.get('nome_bd', cfg_json.get('database', 'clinica_filipi')),
                 }
-        except Exception as e:
-            print(f"Erro ao carregar configurações do banco de dados: {e}")
+            except Exception:
+                pass
         
-        # Se não conseguir carregar do config.py, tenta do arquivo JSON
-        return self.obter_config('banco_dados', {
+        # 2) Fallback: importar get_db_config
+        try:
+            from src.db.config import get_db_config
+            base = get_db_config() or {}
+            return {
+                'host': base.get('host', '127.0.0.1'),
+                'porta': str(base.get('port', 3306)),
+                'usuario': base.get('user', 'root'),
+                'senha': base.get('password', ''),
+                'nome_bd': base.get('database', 'clinica_filipi'),
+            }
+        except Exception as e:
+            print(f"Erro ao carregar configurações do banco de dados (fallback): {e}")
+        
+        # 3) Defaults finais
+        return {
             'host': '127.0.0.1',
             'porta': '3306',
             'usuario': 'root',
             'senha': '',
             'nome_bd': 'clinica_filipi'
-        })
+        }
         
     def carregar_config_impressoras(self):
         """

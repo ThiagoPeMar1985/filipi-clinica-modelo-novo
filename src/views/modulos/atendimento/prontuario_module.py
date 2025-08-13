@@ -1076,9 +1076,6 @@ class ProntuarioModule(BaseModule):
         Requer 'pyspellchecker'. Se ausente, ignora silenciosamente.
         Também ativa o menu de contexto de sugestões do BaseModule."""
         try:
-            # Em executável (PyInstaller), desativa para evitar erros de locale/language
-            if getattr(sys, 'frozen', False):
-                return
             txt = getattr(self, 'editor_texto', None)
             if not txt:
                 return

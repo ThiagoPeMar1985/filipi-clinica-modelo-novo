@@ -12,8 +12,106 @@ import os
 import mysql.connector
 from pathlib import Path
 
+# --- Mitigação global de locale Babel no executável ---
+# Evita erro: "No localization support for language 'eng'"
+try:
+    # Define um locale padrão seguro caso o Babel consulte env vars
+    os.environ.setdefault('BABEL_DEFAULT_LOCALE', 'pt_BR')
+    # Mapeia aliases não suportados para equivalentes válidos
+    try:
+        from babel.core import LOCALE_ALIASES  # type: ignore
+        # Garante que 'eng' (ISO-639-2) seja interpretado como 'en'
+        LOCALE_ALIASES.setdefault('eng', 'en')
+        LOCALE_ALIASES.setdefault('english', 'en')
+        # Observação: evitamos adicionar aliases com acentuação para não introduzir bytes inválidos
+    except Exception:
+        pass
+except Exception:
+    # Nunca deixa o app quebrar por causa desse ajuste preventivo
+    pass
+
+# --- Patch específico para MySQL Connector locales (eng -> en_US) ---
+# Evita ImportError em mysql.connector.locales.get_client_error
+try:
+    # Define variáveis de ambiente seguras para o conector
+    os.environ.setdefault('LANG', 'en_US')
+    os.environ.setdefault('LC_ALL', 'en_US')
+    os.environ.setdefault('MYSQLCONNECTOR_LOCALIZATION', 'en_US')
+
+    import mysql.connector.locales as _mc_locales  # type: ignore
+
+    _orig_mc_get_client_error = getattr(_mc_locales, 'get_client_error', None)
+    if callable(_orig_mc_get_client_error):
+        def _patched_mc_get_client_error(language=None):
+            try:
+                lang = language
+                if isinstance(lang, str):
+                    low = lang.lower()
+                    if low in ('eng', 'english', 'en', 'en-us', 'en_us'):
+                        lang = 'en_US'
+                if not isinstance(lang, str) or not lang:
+                    lang = 'en_US'
+                try:
+                    return _orig_mc_get_client_error(lang)
+                except ImportError:
+                    # Força fallback para en_US
+                    return _orig_mc_get_client_error('en_US')
+            except Exception:
+                # Em último caso, tenta en_US direto
+                return _orig_mc_get_client_error('en_US')
+
+        _mc_locales.get_client_error = _patched_mc_get_client_error  # type: ignore
+except Exception:
+    pass
+
 # Adiciona o diretório raiz ao path para garantir que os imports funcionem
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# --- Monkey patch adicional do Babel (eng -> en) ---
+# Cobre chamadas que usem babel.localedata.exists/load ou Locale.parse
+try:
+    import babel.localedata as _babel_localedata  # type: ignore
+    from babel.core import Locale as _BabelLocale  # type: ignore
+
+    # Patch em localedata.exists
+    _orig_babel_exists = getattr(_babel_localedata, 'exists', None)
+    if callable(_orig_babel_exists):
+        def _patched_exists(name):
+            try:
+                if isinstance(name, str) and name.lower() in ('eng', 'english'):
+                    return _orig_babel_exists('en')
+            except Exception:
+                pass
+            return _orig_babel_exists(name)
+        _babel_localedata.exists = _patched_exists  # type: ignore
+
+    # Patch em localedata.load
+    _orig_babel_load = getattr(_babel_localedata, 'load', None)
+    if callable(_orig_babel_load):
+        def _patched_load(name, merge_inherited=True):
+            try:
+                if isinstance(name, str) and name.lower() in ('eng', 'english'):
+                    name = 'en'
+            except Exception:
+                pass
+            return _orig_babel_load(name, merge_inherited=merge_inherited)
+        _babel_localedata.load = _patched_load  # type: ignore
+
+    # Patch em Locale.parse (classmethod)
+    _orig_locale_parse = getattr(_BabelLocale, 'parse', None)
+    if callable(_orig_locale_parse):
+        def _patched_parse(identifier, sep='_', resolve_likely_subtags=True):
+            try:
+                if isinstance(identifier, str) and identifier.lower() in ('eng', 'english'):
+                    identifier = 'en'
+            except Exception:
+                pass
+            return _orig_locale_parse(identifier, sep=sep, resolve_likely_subtags=resolve_likely_subtags)
+        # Mantém a assinatura de classmethod
+        _BabelLocale.parse = classmethod(lambda cls, identifier, sep='_', resolve_likely_subtags=True: _patched_parse(identifier, sep, resolve_likely_subtags))  # type: ignore
+except Exception:
+    # Silencioso: se Babel não estiver presente ou algo mudar, não quebra o app
+    pass
 
 # Importa as configurações do banco de dados
 from src.db.config import get_db_config

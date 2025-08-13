@@ -1,5 +1,10 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
+from datetime import datetime
+import webbrowser
+import tempfile
+import os
+from src.utils.impressao import GerenciadorImpressao
 from src.controllers.financeiro_controller import FinanceiroController
 from src.config.estilos import aplicar_estilo, CORES, FONTES
 from src.views.modulos.financeiro.contaspagar_module import ContasPagarModule
@@ -553,39 +558,74 @@ class FinanceiroModule:
             status_cb = ttk.Combobox(form, textvariable=status_var, values=["pago", "aberto"], state="readonly")
             status_cb.grid(row=3, column=1, sticky='ew', padx=8, pady=4)
 
-            # 5) Consultas do dia (preenche automaticamente Paciente/Médico; IDs ficam ocultos)
-            tk.Label(form, text="Consulta:", bg=bg_base, fg=CORES["texto"], font=FONTES["normal"]).grid(row=4, column=0, sticky='w', pady=4)
+            # 4) Data da consulta a listar no combo (permite lançar hoje pagamentos de datas futuras/passadas)
+            tk.Label(form, text="Data:", bg=bg_base, fg=CORES["texto"], font=FONTES["normal"]).grid(row=4, column=0, sticky='w', pady=4)
+            data_var = tk.StringVar(value=datetime.now().strftime('%d/%m/%Y'))
+            data_row = tk.Frame(form, bg=bg_base)
+            data_row.grid(row=4, column=1, sticky='ew', padx=8, pady=4)
+            data_entry = tk.Entry(data_row, textvariable=data_var, font=("Arial", 12))
+            data_entry.pack(side='left', fill='x', expand=True)
+            btn_carregar = tk.Button(data_row, text="Carregar", cursor='hand2')
+            aplicar_estilo(btn_carregar, 'primario') if 'aplicar_estilo' in globals() else None
+            btn_carregar.pack(side='left', padx=(6, 0))
+
+            # 5) Consultas da data escolhida (preenche automaticamente Paciente/Médico; IDs ficam ocultos)
+            tk.Label(form, text="Consulta:", bg=bg_base, fg=CORES["texto"], font=FONTES["normal"]).grid(row=5, column=0, sticky='w', pady=4)
             consultas_map = {}
             consulta_opts = []
-            has_consultas = False
-            try:
-                consultas = fc.listar_consultas_do_dia()
-                for c in consultas:
-                    # Exibição: 08:30 - Fulano - Dr. Beltrano - Abdômen total
-                    hora_str = str(c.get('hora')) if c.get('hora') is not None else '--:--'
-                    ta = c.get('tipo_atendimento') or ''
-                    label = f"{hora_str} - {c.get('paciente_nome','')} - {c.get('medico_nome','')}" + (f" - {ta}" if ta else "")
-                    consulta_opts.append(label)
-                    consultas_map[label] = {
-                        'consulta_id': c.get('consulta_id'),
-                        'paciente_id': c.get('paciente_id'),
-                        'medico_id': c.get('medico_id'),
-                        'paciente_nome': c.get('paciente_nome'),
-                        'medico_nome': c.get('medico_nome'),
-                        'tipo_atendimento': ta,
-                        'valor_exame': c.get('valor_exame'),
-                    }
-                has_consultas = len(consulta_opts) > 0
-            except Exception:
-                consultas = []
-
             consulta_var = tk.StringVar()
-            if not has_consultas:
-                consulta_opts = ["Nenhuma consulta para hoje"]
-                consulta_cb = ttk.Combobox(form, textvariable=consulta_var, values=consulta_opts, state="disabled")
-            else:
-                consulta_cb = ttk.Combobox(form, textvariable=consulta_var, values=consulta_opts, state="readonly")
-            consulta_cb.grid(row=4, column=1, sticky='ew', padx=8, pady=4)
+            consulta_cb = ttk.Combobox(form, textvariable=consulta_var, values=consulta_opts, state="readonly")
+            consulta_cb.grid(row=5, column=1, sticky='ew', padx=8, pady=4)
+
+            def load_consultas_for_date():
+                nonlocal consultas_map, consulta_opts
+                try:
+                    consultas_map = {}
+                    consulta_opts = []
+                    data_escolhida = (data_var.get() or "").strip()
+                    # Converte data BR (DD/MM/AAAA) para ISO (AAAA-MM-DD) para consulta no controller
+                    data_query = None
+                    if data_escolhida:
+                        try:
+                            # Tenta converter do formato brasileiro
+                            dt = datetime.strptime(data_escolhida, '%d/%m/%Y')
+                            data_query = dt.strftime('%Y-%m-%d')
+                        except Exception:
+                            # Se já vier em ISO válido, usa direto; senão, deixa None
+                            try:
+                                dt = datetime.strptime(data_escolhida, '%Y-%m-%d')
+                                data_query = data_escolhida
+                            except Exception:
+                                data_query = None
+                    consultas = fc.listar_consultas_do_dia(data_query if data_query else None)
+                    for c in (consultas or []):
+                        hora_str = str(c.get('hora')) if c.get('hora') is not None else '--:--'
+                        ta = c.get('tipo_atendimento') or ''
+                        label = f"{hora_str} - {c.get('paciente_nome','')} - {c.get('medico_nome','')}" + (f" - {ta}" if ta else "")
+                        consulta_opts.append(label)
+                        consultas_map[label] = {
+                            'consulta_id': c.get('consulta_id'),
+                            'paciente_id': c.get('paciente_id'),
+                            'medico_id': c.get('medico_id'),
+                            'paciente_nome': c.get('paciente_nome'),
+                            'medico_nome': c.get('medico_nome'),
+                            'tipo_atendimento': ta,
+                            'valor_exame': c.get('valor_exame'),
+                            'hora': c.get('hora'),
+                        }
+                    # Atualiza combobox
+                    if consulta_opts:
+                        consulta_cb.configure(values=consulta_opts, state='readonly')
+                        consulta_var.set(consulta_opts[0])
+                        on_consulta_change()
+                    else:
+                        consulta_cb.configure(values=["Nenhuma consulta para a data"], state='disabled')
+                        consulta_var.set("")
+                except Exception:
+                    consulta_cb.configure(values=["Nenhuma consulta"], state='disabled')
+                    consulta_var.set("")
+
+            btn_carregar.configure(command=load_consultas_for_date)
 
             # Variáveis ocultas para IDs e nomes (precisam existir antes do callback)
             paciente_id_var = tk.StringVar()
@@ -614,13 +654,11 @@ class FinanceiroModule:
                     pass
 
             consulta_cb.bind('<<ComboboxSelected>>', on_consulta_change)
-            # Seleciona a primeira consulta por padrão e preenche os campos ocultos
-            if has_consultas and consulta_opts:
-                consulta_var.set(consulta_opts[0])
-                on_consulta_change()
+            # Carrega consultas da data padrão (hoje) e pré-seleciona primeira se houver
+            load_consultas_for_date()
 
             # 6) Campos visuais para nomes (readonly), preenchidos automaticamente
-            tk.Label(form, text="Paciente:", bg=bg_base, fg=CORES["texto"], font=FONTES["normal"]).grid(row=5, column=0, sticky='w', pady=4)
+            tk.Label(form, text="Paciente:", bg=bg_base, fg=CORES["texto"], font=FONTES["normal"]).grid(row=6, column=0, sticky='w', pady=4)
             paciente_nome_ent = tk.Entry(
                 form,
                 textvariable=paciente_nome_var,
@@ -628,9 +666,9 @@ class FinanceiroModule:
                 disabledbackground='white',
                 disabledforeground=CORES.get('texto', '#000')
             )
-            paciente_nome_ent.grid(row=5, column=1, sticky='ew', padx=8, pady=4)
+            paciente_nome_ent.grid(row=6, column=1, sticky='ew', padx=8, pady=4)
 
-            tk.Label(form, text="Médico:", bg=bg_base, fg=CORES["texto"], font=FONTES["normal"]).grid(row=6, column=0, sticky='w', pady=4)
+            tk.Label(form, text="Médico:", bg=bg_base, fg=CORES["texto"], font=FONTES["normal"]).grid(row=7, column=0, sticky='w', pady=4)
             medico_nome_ent = tk.Entry(
                 form,
                 textvariable=medico_nome_var,
@@ -638,18 +676,18 @@ class FinanceiroModule:
                 disabledbackground='white',
                 disabledforeground=CORES.get('texto', '#000')
             )
-            medico_nome_ent.grid(row=6, column=1, sticky='ew', padx=8, pady=4)
+            medico_nome_ent.grid(row=7, column=1, sticky='ew', padx=8, pady=4)
 
             # 7) Descrição
-            tk.Label(form, text="Descrição:", bg=bg_base, fg=CORES["texto"], font=FONTES["normal"]).grid(row=7, column=0, sticky='nw', pady=4)
+            tk.Label(form, text="Descrição:", bg=bg_base, fg=CORES["texto"], font=FONTES["normal"]).grid(row=8, column=0, sticky='nw', pady=4)
             desc_txt = tk.Text(form, height=4, wrap='word')
-            desc_txt.grid(row=8, column=1, sticky='nsew', padx=8, pady=4)
+            desc_txt.grid(row=9, column=1, sticky='nsew', padx=8, pady=4)
 
             # Grid config
             form.columnconfigure(1, weight=1)
-            for r in range(9):
+            for r in range(10):
                 form.rowconfigure(r, weight=0)
-            form.rowconfigure(8, weight=1)
+            form.rowconfigure(9, weight=1)
 
             # Botões
             btns = tk.Frame(dlg, bg=bg_base)
@@ -689,22 +727,60 @@ class FinanceiroModule:
                     if not descricao and exame_consulta:
                         descricao = exame_consulta
 
-                    mid = fc.registrar_movimento(
-                        tipo=tipo_escolhido,
-                        tipo_pagamento=forma,
-                        valor=float(valor),
-                        descricao=descricao,
-                        usuario_id=getattr(self.controller, 'usuario_id', None),
-                        paciente_id=paciente_id,
-                        consulta_id=consulta_id,
-                        medico_id=medico_id,
-                        status=status,
-                    )
-                    if mid:
-                        messagebox.showinfo("Financeiro", "Lançamento registrado com sucesso.")
-                        dlg.destroy()
-                    else:
-                        messagebox.showerror("Financeiro", "Falha ao registrar lançamento. Verifique o caixa.")
+                    # Monta dados do comprovante (preview) e posterga o lançamento até a finalização
+                    # Extrai hora da consulta e nome do procedimento/consulta
+                    hora_sel = None
+                    nome_consulta = None
+                    if info_sel:
+                        try:
+                            hora_sel = info_sel.get('hora')
+                        except Exception:
+                            hora_sel = None
+                        nome_consulta = info_sel.get('tipo_atendimento') or None
+                    # Fallback: tenta extrair da label (formato "HH:MM - ... - tipo")
+                    if not hora_sel:
+                        try:
+                            part = (sel_label or '').split(' - ')[0]
+                            hora_sel = part if part else None
+                        except Exception:
+                            pass
+                    if not nome_consulta:
+                        try:
+                            # pega último segmento como tipo
+                            parts = (sel_label or '').split(' - ')
+                            nome_consulta = parts[-1] if parts else None
+                        except Exception:
+                            pass
+
+                    recibo = {
+                        'data_hora': datetime.now().strftime('%d/%m/%Y %H:%M'),
+                        'hora_consulta': str(hora_sel or '').strip(),
+                        'paciente': paciente_nome_var.get() or '-',
+                        'medico': medico_nome_var.get() or '-',
+                        'tipo': (nome_consulta or descricao or '-'),
+                        'forma': forma,
+                        'valor': f"R$ {float(valor):.2f}".replace('.', ','),
+                        'descricao': descricao or '-',
+                        'status': status,
+                    }
+                    # Prepara payload do lançamento para ser executado ao finalizar
+                    lancamento = {
+                        'tipo': tipo_escolhido,
+                        'tipo_pagamento': forma,
+                        'valor': float(valor),
+                        'descricao': descricao,
+                        'usuario_id': getattr(self.controller, 'usuario_id', None),
+                        'paciente_id': paciente_id,
+                        'consulta_id': consulta_id,
+                        'medico_id': medico_id,
+                        'status': status,
+                    }
+                    try:
+                        # Passa o controller já configurado (com sessão aberta) para a tela de preview
+                        self._show_receipt_preview(recibo, lancamento, fc)
+                    except Exception:
+                        messagebox.showerror("Financeiro", "Falha ao abrir a pré-visualização do comprovante.")
+                    dlg.destroy()
                 except Exception as e:
                     messagebox.showerror("Erro", f"Falha ao registrar lançamento: {e}")
 
@@ -732,6 +808,277 @@ class FinanceiroModule:
             dlg.bind('<Escape>', lambda e: on_cancel())
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao abrir diálogo de lançamento: {e}")
+
+    def _show_receipt_preview(self, recibo: dict, lancamento: dict, fc: FinanceiroController):
+        """Exibe uma janela de pré-visualização do comprovante e permite finalizar com ou sem impressão.
+        Usa o mesmo FinanceiroController (com sessão aberta) para efetivar o lançamento.
+        """
+        win = tk.Toplevel(self.parent)
+        win.title("Comprovante de Pagamento")
+        bg_base = self.parent.cget("bg")
+        win.configure(bg=bg_base)
+        win.transient(self.parent)
+        win.grab_set()
+        # Centraliza a janela de pré-visualização sem alterar o tamanho
+        try:
+            win.update_idletasks()
+            w = win.winfo_width() or win.winfo_reqwidth()
+            h = win.winfo_height() or win.winfo_reqheight()
+            sw = win.winfo_screenwidth()
+            sh = win.winfo_screenheight()
+            x = int((sw - w) / 2)
+            y = int((sh - h) / 2)
+            win.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
+
+        titulo = tk.Label(win, text="Clínica - Comprovante de Pagamento", font=("Arial", 16, 'bold'), bg=bg_base, fg=CORES["texto"]) 
+        titulo.pack(padx=20, pady=(20, 10))
+
+        # Corpo do comprovante (visual simples)
+        frame = tk.Frame(win, bg=bg_base)
+        frame.pack(fill='both', expand=True, padx=20)
+
+        txt = tk.Text(frame, wrap='word')
+        txt.tag_configure('center', justify='center')
+        txt.pack(fill='both', expand=True)
+        linhas = []
+        linhas.append(f"Data/Hora: {recibo.get('data_hora','-')}")
+        if recibo.get('hora_consulta'):
+            linhas.append(f"Hora da Consulta: {recibo.get('hora_consulta')}")
+        if recibo.get('paciente'):
+            linhas.append(f"Paciente: {recibo.get('paciente')}")
+        if recibo.get('medico'):
+            linhas.append(f"Médico: {recibo.get('medico')}")
+        if recibo.get('tipo'):
+            linhas.append(" ")
+            linhas.append(str(recibo.get('tipo')))
+            linhas.append(" ")
+        linhas.append(f"Forma: {recibo.get('forma','-').upper()}")
+        linhas.append(f"Valor: {recibo.get('valor','-')}")
+        linhas.append(f"Status: {recibo.get('status','-').upper()}")
+        linhas.append(f"Descrição: {recibo.get('descricao','-')}")
+        txt.insert('1.0', "\n".join(linhas))
+        txt.tag_add('center', '1.0', 'end')
+        txt.configure(state='disabled')
+
+        # Botões
+        btns = tk.Frame(win, bg=bg_base)
+        btns.pack(fill='x', padx=20, pady=(10, 20))
+
+        def finalizar_e_imprimir():
+            """Efetiva o lançamento e, em seguida, imprime via GerenciadorImpressao."""
+            try:
+                # 1) Registrar movimento usando o controller já configurado
+                mid = fc.registrar_movimento(
+                    tipo=lancamento['tipo'],
+                    tipo_pagamento=lancamento['tipo_pagamento'],
+                    valor=lancamento['valor'],
+                    descricao=lancamento['descricao'],
+                    usuario_id=lancamento['usuario_id'],
+                    paciente_id=lancamento['paciente_id'],
+                    consulta_id=lancamento['consulta_id'],
+                    medico_id=lancamento['medico_id'],
+                    status=lancamento['status'],
+                )
+                if not mid:
+                    messagebox.showerror("Financeiro", "Falha ao registrar lançamento. Verifique o caixa.")
+                    return
+
+                # 2) Imprimir via utilitário padrão do sistema
+                try:
+                    ger = GerenciadorImpressao()
+                except Exception:
+                    ger = None
+                ok_print = False
+                if ger:
+                    # 2.1) Carrega dados da empresa para cabeçalho
+                    try:
+                        from src.controllers.cadastro_controller import CadastroController
+                        cad = CadastroController(db_connection=getattr(fc.financeiro_db, 'db', None))
+                        empresa = cad.obter_empresa() or {}
+                    except Exception:
+                        empresa = {}
+                    # 2.2) Paciente com nome e médico (para impressão)
+                    paciente = {
+                        'nome': recibo.get('paciente', '-'),
+                        'medico': recibo.get('medico', '-')
+                    }
+                    # 2.3) Pagamentos: usar valor numérico para somar corretamente
+                    pagamentos = [{
+                        'forma': lancamento.get('tipo_pagamento', recibo.get('forma', '-')),
+                        'valor': float(lancamento.get('valor', 0.0) or 0.0)
+                    }]
+                    # 2.4) Itens: somente um item com o nome do exame/consulta
+                    itens = [{'descricao': recibo.get('tipo','-')}]
+
+                    # Diálogo simples para escolher uma das 5 impressoras (pontos de impressão)
+                    escolhido = None
+                    try:
+                        import tkinter as tk
+                        from tkinter import ttk
+                        sel = tk.Toplevel(win)
+                        sel.title("Selecionar Impressora")
+                        sel.transient(win)
+                        sel.grab_set()
+                        sel.configure(bg=bg_base)
+                        # Cabeçalho
+                        tk.Label(sel, text="Escolha o ponto de impressão:", bg=bg_base, font=('Arial', 12, 'bold')).pack(padx=16, pady=(40, 12))
+                        var = tk.StringVar(value="impressora 1")
+                        # Lista de opções (até 5 pontos)
+                        pontos = [f"impressora {i}" for i in range(1, 6)]
+                        for chave in pontos:
+                            nome = ger.impressoras.get(chave) or "(não configurada)"
+                            tk.Radiobutton(
+                                sel,
+                                text=f"{chave}: {nome}",
+                                value=chave,
+                                variable=var,
+                                bg=bg_base,
+                                activebackground=bg_base,
+                                selectcolor='white',
+                                anchor='w',
+                                padx=16
+                            ).pack(fill='x', padx=16, pady=4)
+                        # Botões
+                        btns = tk.Frame(sel, bg=bg_base)
+                        btns.pack(fill='x', padx=16, pady=(16, 40))
+                        def _ok():
+                            nonlocal escolhido
+                            escolhido = var.get()
+                            sel.destroy()
+                        def _cancel():
+                            nonlocal escolhido
+                            escolhido = None
+                            sel.destroy()
+                        tk.Button(
+                            btns,
+                            text="Confirmar",
+                            command=_ok,
+                            bg='#4a6fa5', fg='white',
+                            activebackground='#3f5e8a', activeforeground='white',
+                            font=('Arial', 10, 'bold'),
+                            bd=0, padx=20, pady=8, cursor='hand2', width=14
+                        ).pack(side='right', padx=8)
+                        tk.Button(
+                            btns,
+                            text="Cancelar",
+                            command=_cancel,
+                            font=('Arial', 10),
+                            padx=16, pady=8, cursor='hand2', width=12
+                        ).pack(side='right')
+                        # Aumenta a altura em +80px e centraliza sem alterar a largura calculada
+                        try:
+                            sel.update_idletasks()
+                            w = sel.winfo_reqwidth()
+                            h = sel.winfo_reqheight() + 80
+                            sw = sel.winfo_screenwidth()
+                            sh = sel.winfo_screenheight()
+                            x = int((sw - w) / 2)
+                            y = int((sh - h) / 2)
+                            sel.geometry(f"{w}x{h}+{x}+{y}")
+                        except Exception:
+                            pass
+                        sel.wait_window()
+                        # Resolve nome real da impressora a partir da chave
+                        if escolhido:
+                            escolhido = ger.impressoras.get(escolhido) or None
+                    except Exception:
+                        escolhido = None
+                    try:
+                        ok_print = ger.imprimir_comprovante_pagamento(empresa, paciente, pagamentos, itens, impressora=escolhido)
+                    except Exception as e:
+                        ok_print = False
+                if not ok_print:
+                    messagebox.showwarning("Imprimir", "Lançado com sucesso, mas falhou a impressão. Verifique as configurações de impressora em Configurações > Impressoras.")
+                win.destroy()
+            except Exception as e:
+                messagebox.showerror("Imprimir", f"Falha ao finalizar/imprimir: {e}")
+
+        estilo_btn = {
+            'font': ('Arial', 10, 'bold'),
+            'bg': '#4a6fa5',
+            'fg': 'white',
+            'bd': 0,
+            'padx': 20,
+            'pady': 8,
+            'relief': 'flat',
+            'cursor': 'hand2',
+            'width': 22,
+        }
+        btn_print = tk.Button(btns, text="Finalizar e Imprimir...", command=finalizar_e_imprimir, **estilo_btn)
+        btn_print.pack(side='right', padx=5)
+
+        def finalizar_sem_imprimir():
+            try:
+                mid = fc.registrar_movimento(
+                    tipo=lancamento['tipo'],
+                    tipo_pagamento=lancamento['tipo_pagamento'],
+                    valor=lancamento['valor'],
+                    descricao=lancamento['descricao'],
+                    usuario_id=lancamento['usuario_id'],
+                    paciente_id=lancamento['paciente_id'],
+                    consulta_id=lancamento['consulta_id'],
+                    medico_id=lancamento['medico_id'],
+                    status=lancamento['status'],
+                )
+                if mid:
+                    messagebox.showinfo("Financeiro", "Lançamento registrado com sucesso.")
+                    win.destroy()
+                else:
+                    messagebox.showerror("Financeiro", "Falha ao registrar lançamento. Verifique o caixa.")
+            except Exception as e:
+                messagebox.showerror("Financeiro", f"Falha ao finalizar: {e}")
+
+        btn_finalizar = tk.Button(btns, text="Finalizar sem Imprimir", command=finalizar_sem_imprimir, **estilo_btn)
+        btn_finalizar.pack(side='right', padx=5)
+
+        btn_close = tk.Button(btns, text="Fechar", command=win.destroy, **estilo_btn)
+        btn_close.pack(side='left', padx=5)
+
+    def _build_receipt_html(self, recibo: dict, auto_print: bool = False) -> str:
+        """Gera HTML formatado para A4 do comprovante. Se auto_print=True, dispara window.print() ao abrir."""
+        css = """
+        <style>
+        @page { size: A4; margin: 20mm; }
+        body { font-family: Arial, sans-serif; color: #111; text-align: center; }
+        .header { text-align: center; margin-bottom: 16px; }
+        .title { font-size: 22px; font-weight: bold; }
+        .meta { font-size: 12px; color: #444; }
+        .section { border-top: 1px solid #ddd; padding-top: 12px; margin-top: 12px; }
+        .row { margin: 6px 0; }
+        .label { color: #666; margin-right: 6px; }
+        .value { font-weight: bold; }
+        .valor { font-size: 18px; }
+        .footer { margin-top: 24px; font-size: 12px; color: #555; text-align: center; }
+        </style>
+        """
+        script = "<script>window.onload = function(){ %s };</script>" % ("window.print();" if auto_print else "")
+        h = recibo
+        html = f"""
+        <html><head><meta charset='utf-8'>{css}{script}</head><body>
+        <div class='header'>
+          <div class='title'>Clínica - Comprovante de Pagamento</div>
+          <div class='meta'>Emitido em {h.get('data_hora','-')}</div>
+        </div>
+        <div class='section'>
+          {f"<div class='row'><span class='label'>Hora da Consulta</span> <span class='value'>{h.get('hora_consulta','-')}</span></div>" if h.get('hora_consulta') else ''}
+          {f"<div class='row'><span class='label'>Paciente</span> <span class='value'>{h.get('paciente','-')}</span></div>" if h.get('paciente') else ''}
+          {f"<div class='row'><span class='label'>Médico</span> <span class='value'>{h.get('medico','-')}</span></div>" if h.get('medico') else ''}
+          {f"<div class='row'><span class='value'>{h.get('tipo','-')}</span></div>" if h.get('tipo') else ''}
+        </div>
+        <div class='section'>
+          <div class='row'><div class='label'>Forma</div><div class='value'>{h.get('forma','-').upper()}</div></div>
+          <div class='row'><div class='label'>Status</div><div class='value'>{h.get('status','-').upper()}</div></div>
+          <div class='row valor'><div class='label'>Valor</div><div class='value'>{h.get('valor','-')}</div></div>
+          <div class='row'><div class='label'>Descrição</div><div class='value'>{h.get('descricao','-')}</div></div>
+        </div>
+        <div class='footer'></div>
+        </body></html>
+        """
+        return html
+
+    # Removidos utilitários específicos do Windows em favor de src.utils.impressao.GerenciadorImpressao
 
     def _on_lancar_despesa(self):
         """Lança uma despesa (saída) simples: valor, forma e descrição. Status sempre 'pago'."""

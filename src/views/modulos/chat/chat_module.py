@@ -124,7 +124,7 @@ class ChatModule(BaseModule):
         left.pack(side='left', fill='y')
         left.pack_propagate(False)
 
-        self.left_header = tk.Label(left, text='Usuários Online', bg='#f0f2f5', fg='#333333', font=("Arial", 12, 'bold'))
+        self.left_header = tk.Label(left, text='Usuários', bg='#f0f2f5', fg='#333333', font=("Arial", 12, 'bold'))
         self.left_header.pack(fill='x', padx=8, pady=(8, 4))
 
         # Área dos nomes (branca)
@@ -360,73 +360,99 @@ class ChatModule(BaseModule):
         if hasattr(self, 'lista_contatos') and self.lista_contatos:
             for w in list(self.lista_contatos.winfo_children()):
                 w.destroy()
+        # Monta a lista unificada: interlocutores (histórico) + online (status)
         try:
-            # Lista todas as sessões (sem filtro de tempo)
+            # Busca online
             online = self.chatdb.listar_online()
-            if len(online) == 0:
-                # Se não encontrou ninguém, pode ser um problema de conexão
-                # Tenta reconectar e buscar novamente
-                try:
-                    self.conn = db.get_connection()
-                    self.chatdb = ChatDB(self.conn)
-                    online = self.chatdb.listar_online()
-                except Exception as e:
-                    print(f"Erro ao reconectar para buscar usuários online: {e}")
         except Exception as e:
             print(f"Erro ao listar usuários online: {e}")
             online = []
-
-        # Atualiza contador no cabeçalho (exclui o próprio usuário)
-        try:
-            total_exibidos = 0
-            if online:
-                for u in online:
-                    uid = None
-                    try:
-                        uid = u.get('usuario_id')
-                    except Exception:
-                        try:
-                            uid = u[0] if len(u) > 0 else None
-                        except Exception:
-                            uid = None
-                    if self.me_id is not None and uid == self.me_id:
-                        continue
-                    total_exibidos += 1
-            if hasattr(self, 'left_header') and self.left_header:
-                self.left_header.config(text=f"Usuários Online ({total_exibidos})")
-        except Exception:
-            pass
-
-        # Adiciona botões de contato (exceto eu mesmo)
-        for user in online:
+        # Reconnect fallback
+        if len(online) == 0:
             try:
-                uid = user.get('usuario_id')
-                nome = user.get('usuario_nome') or 'Usuário'
-                disp = user.get('dispositivo')
-            except Exception:
-                uid = user[0] if len(user) > 0 else None
-                nome = user[1] if len(user) > 1 else 'Usuário'
-                disp = user[2] if len(user) > 2 else None
+                self.conn = db.get_connection()
+                self.chatdb = ChatDB(self.conn)
+                online = self.chatdb.listar_online()
+            except Exception as e:
+                print(f"Erro ao reconectar para buscar usuários online: {e}")
 
+        # Busca interlocutores (histórico)
+        try:
+            historico = self.chatdb.listar_interlocutores(self.me_id, self.me_nome, self.me_disp)
+        except Exception as e:
+            print(f"Erro ao listar interlocutores: {e}")
+            historico = []
+
+        # Índice de online por id/nome
+        online_index = {}
+        for u in online:
+            try:
+                oid = u.get('usuario_id')
+                onome = u.get('usuario_nome')
+                odisp = u.get('dispositivo')
+            except Exception:
+                oid = u[0] if len(u) > 0 else None
+                onome = u[1] if len(u) > 1 else None
+                odisp = u[2] if len(u) > 2 else None
+            if oid is not None:
+                online_index[('id', oid)] = {'nome': onome, 'disp': odisp}
+            elif onome:
+                online_index[('nome', onome)] = {'nome': onome, 'disp': odisp}
+
+        # Conjunto final de contatos: todos de histórico + qualquer outro online (mesmo sem histórico)
+        contatos_map = {}
+        # Adiciona histórico
+        for h in historico:
+            uid = h.get('usuario_id')
+            nome = h.get('usuario_nome') or 'Usuário'
+            key = ('id', uid) if uid is not None else ('nome', nome)
+            contato = {'usuario_id': uid, 'usuario_nome': nome, 'dispositivo': None, 'online': False}
+            # Sinaliza status se estiver online
+            info = online_index.get(key)
+            if info:
+                contato['online'] = True
+                contato['dispositivo'] = info.get('disp')
+            contatos_map[key] = contato
+        # Adiciona online que não estão no histórico
+        for u in online:
+            try:
+                uid = u.get('usuario_id')
+                nome = u.get('usuario_nome') or 'Usuário'
+                disp = u.get('dispositivo')
+            except Exception:
+                uid = u[0] if len(u) > 0 else None
+                nome = u[1] if len(u) > 1 else 'Usuário'
+                disp = u[2] if len(u) > 2 else None
             # Pula o próprio usuário
             if (uid is not None and self.me_id is not None and uid == self.me_id) or (uid is None and nome == self.me_nome):
                 continue
+            key = ('id', uid) if uid is not None else ('nome', nome)
+            if key not in contatos_map:
+                contatos_map[key] = {'usuario_id': uid, 'usuario_nome': nome, 'dispositivo': disp, 'online': True}
 
-            contato = {'usuario_id': uid, 'usuario_nome': nome, 'dispositivo': disp}
-            btn = tk.Button(
-                self.lista_contatos,
-                text=nome,
-                font=("Arial", 11),
-                bg='#ffffff',
-                fg='#333333',
-                activebackground='#e6e6e6',
-                activeforeground='#333333',
-                relief='flat',
-                anchor='w',
-                padx=8, pady=6,
-                command=lambda c=contato: self._selecionar_contato(c)
-            )
-            btn.pack(fill='x', pady=1)
+        # Atualiza cabeçalho (somente texto simples)
+        try:
+            if hasattr(self, 'left_header') and self.left_header:
+                self.left_header.config(text='Usuários')
+        except Exception:
+            pass
+
+        # Renderiza em "tabela": • indicador + nome + status
+        contatos_ordenados = sorted(contatos_map.values(), key=lambda c: (not c.get('online', False), (c.get('usuario_nome') or '').lower()))
+        for contato in contatos_ordenados:
+            row = tk.Frame(self.lista_contatos, bg='#ffffff')
+            row.pack(fill='x', pady=1)
+            indicador = tk.Label(row, text='●', fg=('#4CAF50' if contato.get('online') else '#000000'), bg='#ffffff', font=("Arial", 12, 'bold'))
+            indicador.pack(side='left', padx=(6, 8))
+            nome_lbl = tk.Label(row, text=contato.get('usuario_nome') or 'Usuário', bg='#ffffff', fg='#333333', font=("Arial", 11))
+            nome_lbl.pack(side='left', padx=(0, 8))
+            # Clique abre conversa
+            def bind_open(widget, c=contato):
+                widget.bind('<Button-1>', lambda e: self._selecionar_contato(c))
+                widget.config(cursor='hand2')
+            bind_open(row)
+            bind_open(indicador)
+            bind_open(nome_lbl)
 
     def _selecionar_contato(self, contato: dict):
         self._contato_sel = contato

@@ -3,6 +3,7 @@ Gerenciador de permissões baseado em banco de dados
 """
 from typing import Optional, Dict, Any, List
 from src.db.database import get_db
+import traceback
 
 class GerenciadorPermissoesDB:
     """Gerencia permissões no banco de dados"""
@@ -46,7 +47,9 @@ class GerenciadorPermissoesDB:
                 'backup': 'backup',
                 'impressoras': 'impressoras',
                 'banco_dados': 'banco_dados',
-                'integracao': 'integracao',  
+                # Botão no banco utiliza chave 'integracoes' (plural)
+                'integracao': 'integracoes',   # alias singular
+                'integracoes': 'integracoes',  # chave real no DB
                 'seguranca': 'seguranca'
             }
 
@@ -79,6 +82,11 @@ class GerenciadorPermissoesDB:
             
         except Exception as e:
             print(f"[ERRO] Erro ao verificar permissão: {e}")
+            try:
+                print(f"[ERRO] Tipo: {type(e)}")
+                traceback.print_exc()
+            except Exception:
+                pass
             return False
 
     def _verificar_permissao_modulo(self, perfil_id: int, modulo: str) -> bool:
@@ -97,6 +105,11 @@ class GerenciadorPermissoesDB:
             return bool(resultado and resultado.get('permitido'))
         except Exception as e:
             print(f"[ERRO] Erro ao verificar permissão de módulo: {e}")
+            try:
+                print(f"[ERRO] Tipo: {type(e)}")
+                traceback.print_exc()
+            except Exception:
+                pass
             return False
 
     def _verificar_permissao_acao(self, perfil_id: int, modulo: str, acao: str) -> bool:
@@ -116,6 +129,11 @@ class GerenciadorPermissoesDB:
             return bool(resultado and resultado.get('permitido'))
         except Exception as e:
             print(f"[ERRO] Erro ao verificar permissão de ação: {e}")
+            try:
+                print(f"[ERRO] Tipo: {type(e)}")
+                traceback.print_exc()
+            except Exception:
+                pass
             return False
     
     def obter_todas_permissoes(self) -> Dict[str, Any]:

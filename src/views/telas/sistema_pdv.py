@@ -43,6 +43,7 @@ class SistemaPDV:
         # Inicialização das variáveis de controle do chat
         self._chat_unread_count = 0
         self._chat_blink_job = None
+        self._chat_poll_job = None
         self._chat_blink_on = False
         self._modulo_labels = {}
         
@@ -124,6 +125,8 @@ class SistemaPDV:
                     try:
                         self._chat_hb_job = None
                         self._start_global_chat_heartbeat()
+                        # Inicia polling global de não lidas (fora da tela de chat)
+                        self._start_global_chat_unread_poll()
                     except Exception as e_hb:
                         print(f"[CHAT] Falha ao iniciar heartbeat global: {e_hb}")
         except Exception as e:
@@ -871,6 +874,13 @@ class SistemaPDV:
                     self._chat_hb_job = None
             except Exception:
                 pass
+            # Cancela polling global de não lidas se estiver agendado
+            try:
+                if hasattr(self, '_chat_poll_job') and self._chat_poll_job:
+                    self.root.after_cancel(self._chat_poll_job)
+                    self._chat_poll_job = None
+            except Exception:
+                pass
             usuario_nome = getattr(getattr(self, 'usuario', None), 'nome', None)
             dispositivo = getattr(self, '_chat_dispositivo', None)
             sessao_id = getattr(self, '_chat_sessao_id', None)
@@ -961,3 +971,75 @@ class SistemaPDV:
                 self._chat_hb_job = self.root.after(10000, self._do_global_chat_heartbeat)
             except Exception:
                 self._chat_hb_job = None
+
+    # ------------------------- Poll Global de Não Lidas -------------------------
+    def _start_global_chat_unread_poll(self):
+        """Inicia polling global de mensagens não lidas para piscar o botão Chat.
+        Roda mesmo quando a tela do chat não está aberta.
+        """
+        try:
+            # Cancela anterior se houver
+            if hasattr(self, '_chat_poll_job') and self._chat_poll_job:
+                self.root.after_cancel(self._chat_poll_job)
+        except Exception:
+            pass
+        # Agenda primeira execução imediata
+        self._do_global_chat_unread_poll()
+
+    def _do_global_chat_unread_poll(self):
+        try:
+            # Garante que temos usuário válido
+            uid = getattr(getattr(self, 'usuario', None), 'id', None)
+            if uid is None:
+                return
+            uname = getattr(self.usuario, 'nome', 'Usuário')
+            disp = getattr(self, '_chat_dispositivo', None)
+            if not disp:
+                try:
+                    import socket
+                    disp = socket.gethostname()
+                    self._chat_dispositivo = disp
+                except Exception:
+                    disp = None
+
+            # Usa a conexão principal se disponível
+            conn = getattr(self, 'db_connection', None)
+            if conn is not None and getattr(conn, 'is_connected', lambda: True)():
+                from src.db.chat_db import ChatDB
+                chat_db = ChatDB(conn)
+                try:
+                    nao_lidas = chat_db.listar_nao_lidas_para(uid, uname, disp)
+                    total = len(nao_lidas or [])
+                    self.notify_chat_unread(total)
+                except Exception as e:
+                    print(f"[CHAT] Poll não lidas (conn existente) falhou: {e}")
+            else:
+                # Fallback: tenta abrir uma conexão direta só para a consulta
+                try:
+                    import mysql.connector
+                    from src.db.config import get_db_config
+                    from src.db.chat_db import ChatDB
+                    cfg = get_db_config()
+                    for k in ['pool_name', 'pool_size', 'pool_reset_session']:
+                        cfg.pop(k, None)
+                    conn2 = mysql.connector.connect(**cfg)
+                    try:
+                        chat_db2 = ChatDB(conn2)
+                        nao_lidas = chat_db2.listar_nao_lidas_para(uid, uname, disp)
+                        total = len(nao_lidas or [])
+                        self.notify_chat_unread(total)
+                    finally:
+                        try:
+                            conn2.close()
+                        except Exception:
+                            pass
+                except Exception as e2:
+                    print(f"[CHAT][FB] Poll não lidas (fallback) falhou: {e2}")
+        except Exception as e:
+            print(f"[CHAT] Erro no poll global de não lidas: {e}")
+        finally:
+            # Agenda próximo ciclo (~1.5s)
+            try:
+                self._chat_poll_job = self.root.after(1500, self._do_global_chat_unread_poll)
+            except Exception:
+                self._chat_poll_job = None

@@ -192,6 +192,57 @@ class ChatDB:
         rows = cur.fetchall() or []
         return rows
     
+    def listar_interlocutores(self, me_id: Optional[int], me_nome: str, me_disp: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Retorna a lista de usuários com quem o usuário atual já teve conversa (remetente ou destinatário).
+        Não depende de estarem online.
+        """
+        try:
+            cur = self.conn.cursor(dictionary=True)
+            params = []
+            where_a = []
+            where_b = []
+            # Mensagens onde EU sou remetente -> pega destinatários
+            if me_id is not None:
+                where_a.append("remetente_id = %s")
+                params.append(me_id)
+            else:
+                where_a.append("remetente_nome = %s")
+                params.append(me_nome)
+            # Mensagens onde EU sou destinatário -> pega remetentes
+            if me_id is not None:
+                where_b.append("destinatario_id = %s")
+                params.append(me_id)
+            else:
+                where_b.append("destinatario_nome = %s")
+                params.append(me_nome)
+
+            sql = f"""
+                SELECT DISTINCT destinatario_id AS usuario_id, COALESCE(destinatario_nome,'Usuário') AS usuario_nome
+                FROM chat_mensagens
+                WHERE {' AND '.join(where_a)}
+                UNION
+                SELECT DISTINCT remetente_id AS usuario_id, COALESCE(remetente_nome,'Usuário') AS usuario_nome
+                FROM chat_mensagens
+                WHERE {' AND '.join(where_b)}
+                ORDER BY usuario_nome ASC
+            """
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall() or []
+            # Remove possíveis autorreferências
+            filtrados = []
+            for r in rows:
+                uid = r.get('usuario_id')
+                nome = r.get('usuario_nome')
+                if me_id is not None and uid == me_id:
+                    continue
+                if me_id is None and isinstance(nome, str) and nome == me_nome:
+                    continue
+                filtrados.append(r)
+            return filtrados
+        except Exception as e:
+            print(f"[ChatDB] Erro ao listar interlocutores: {e}")
+            return []
+    
     def remover_sessao_por_nome_dispositivo(self, usuario_nome: Optional[str], dispositivo: Optional[str] = None):
         """Remove uma sessão pelo nome do usuário e (opcionalmente) dispositivo.
         OBS: o esquema tem UNIQUE(usuario_id, dispositivo), então nome pode não ser único.
