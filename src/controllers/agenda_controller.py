@@ -95,6 +95,32 @@ class AgendaController:
         finally:
             if 'cursor' in locals():
                 cursor.close()
+
+    def atualizar_status_consulta(self, consulta_id: int, status: str) -> tuple[bool, str]:
+        """
+        Atualiza o campo `status` da consulta informada.
+
+        Args:
+            consulta_id: ID da consulta na tabela `consultas`.
+            status: Novo status (ex.: 'Atendido').
+
+        Returns:
+            (sucesso, mensagem)
+        """
+        try:
+            if not self.db_connection:
+                raise Exception("Sem conexão com o banco de dados")
+            cursor = self.db_connection.cursor()
+            cursor.execute("UPDATE consultas SET status = %s WHERE id = %s", (status, consulta_id))
+            self.db_connection.commit()
+            return True, "Status atualizado com sucesso."
+        except Exception as e:
+            if self.db_connection:
+                self.db_connection.rollback()
+            return False, f"Erro ao atualizar status da consulta: {e}"
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
     
     def buscar_medicos(self) -> List[Dict[str, Any]]:
         """Busca todos os médicos."""
@@ -258,13 +284,38 @@ class AgendaController:
             if not self.db_connection:
                 raise Exception("Sem conexão com o banco de dados")
             cursor = self.db_connection.cursor()
-            cursor.execute("UPDATE consultas SET horario_chegada = NOW() WHERE id = %s", (consulta_id,))
+            # Define a chegada usando a DATA da consulta + HORA atual, para registrar apenas o horário do dia do atendimento
+            cursor.execute(
+                """
+                UPDATE `consultas`
+                SET `horario_chegada` = TIMESTAMP(`data`, CURTIME())
+                WHERE `id` = %s
+                """,
+                (consulta_id,)
+            )
             self.db_connection.commit()
             return True, "Chegada registrada com sucesso."
         except Exception as e:
             if self.db_connection:
                 self.db_connection.rollback()
             return False, f"Erro ao marcar chegada: {e}"
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+
+    def remover_chegada(self, consulta_id: int) -> tuple[bool, str]:
+        """Remove a marcação de chegada (define horario_chegada = NULL)."""
+        try:
+            if not self.db_connection:
+                raise Exception("Sem conexão com o banco de dados")
+            cursor = self.db_connection.cursor()
+            cursor.execute("UPDATE `consultas` SET `horario_chegada` = NULL WHERE `id` = %s", (consulta_id,))
+            self.db_connection.commit()
+            return True, "Chegada removida com sucesso."
+        except Exception as e:
+            if self.db_connection:
+                self.db_connection.rollback()
+            return False, f"Erro ao remover chegada: {e}"
         finally:
             if 'cursor' in locals():
                 cursor.close()
@@ -318,19 +369,22 @@ class AgendaController:
 
             data_pagamento = row[0] or row[1]
 
-            # Atualiza status pago e define horario_chegada se ainda estiver vazio
-            # Usa COALESCE para não sobrescrever chegada já registrada manualmente
+            # Atualiza status pago. Só define horario_chegada se a DATA do pagamento for a mesma da consulta.
+            # Mantém horario_chegada já registrado manualmente (COALESCE) e não marca chegada para pagamentos antecipados.
             cur.execute(
                 """
-                UPDATE consultas
-                SET status_pagameto = 1,
-                    horario_chegada = COALESCE(horario_chegada, %s)
-                WHERE id = %s
+                UPDATE `consultas`
+                SET `status_pagameto` = 1,
+                    `horario_chegada` = CASE
+                        WHEN DATE(%s) = `consultas`.`data` THEN COALESCE(`horario_chegada`, %s)
+                        ELSE `horario_chegada`
+                    END
+                WHERE `id` = %s
                 """,
-                (data_pagamento, consulta_id)
+                (data_pagamento, data_pagamento, consulta_id)
             )
             self.db_connection.commit()
-            return True, "Status de pagamento sincronizado (pago) e chegada definida.", True
+            return True, "Status de pagamento sincronizado (pago). Chegada definida apenas se o pagamento for no dia da consulta.", True
         except Exception as e:
             if self.db_connection:
                 self.db_connection.rollback()

@@ -53,3 +53,11 @@ class ExamesProntuarioModule:
     # Exponha métodos conforme precisar no restante do app
     def get_frame(self):
         return self.frame
+
+    def preselect_paciente_por_id(self, paciente_id):
+        """Delegação para pré-selecionar paciente pelo ID no módulo interno."""
+        try:
+            if hasattr(self.prontuario_module, 'preselect_paciente_por_id'):
+                self.prontuario_module.preselect_paciente_por_id(paciente_id)
+        except Exception:
+            pass

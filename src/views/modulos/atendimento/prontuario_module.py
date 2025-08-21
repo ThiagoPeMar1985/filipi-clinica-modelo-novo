@@ -3,16 +3,28 @@ Módulo de Prontuários - Gerencia a visualização e edição de prontuários d
 """
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
+from tkinter import filedialog
 from tkinter import font as tkfont
 import win32print
 from datetime import datetime
 import re
 import sys
 try:
+    # Exportação para Word (.docx)
+    from docx import Document
+    from docx.shared import Pt
+except Exception:
+    Document = None  # tratado em runtime com mensagem amigável
+try:
     # Corretor ortográfico (pt)
     from spellchecker import SpellChecker
 except Exception:
     SpellChecker = None
+try:
+    # Automação do Word (COM)
+    import win32com.client as win32  # type: ignore
+except Exception:
+    win32 = None
 
 from ..base_module import BaseModule
 from src.controllers.cliente_controller import ClienteController
@@ -20,6 +32,7 @@ from src.controllers.prontuario_controller import ProntuarioController
 from src.controllers.auth_controller import AuthController
 from src.controllers.config_controller import ConfigController
 from src.controllers.cadastro_controller import CadastroController
+from src.controllers.agenda_controller import AgendaController
 from src.utils.impressao import GerenciadorImpressao
 
 # Filtra prints de debug específicos deste módulo, sem afetar outros prints úteis
@@ -96,7 +109,26 @@ class ProntuarioModule(BaseModule):
         
         # Constrói a interface
         self._construir_interface()
-    
+        
+    def preselect_paciente_por_id(self, paciente_id):
+        """Preseleciona um paciente pelo ID e atualiza a UI.
+        Não exibe popups em caso de sucesso; em erro, mostra aviso discreto.
+        """
+        try:
+            if not paciente_id:
+                return
+            sucesso, paciente = self.cliente_controller.buscar_cliente_por_id(int(paciente_id))
+            if sucesso and paciente:
+                self.paciente_selecionado = paciente
+                # Reconstrói painel direito com os dados do paciente e histórico
+                self._construir_painel_prontuarios()
+            else:
+                # Apenas alerta simples; sem alterar tema/cores
+                messagebox.showwarning("Aviso", "Paciente não encontrado para pré-seleção.")
+        except Exception:
+            # Falha silenciosa para não interromper fluxo de navegação
+            pass
+
     def _usuario_to_dict(self, usuario):
         """Garante um dicionário a partir do usuário autenticado (objeto ou dict)."""
         try:
@@ -133,7 +165,7 @@ class ProntuarioModule(BaseModule):
             pass
 
     def _candidatos_identificador_medico(self):
-        """Retorna possíveis identificadores do médico para compatibilidade de filtros."""
+        """Retorna possíveis identificadores do médico para compatibilidade."""
         usr = getattr(self, 'usuario_dict', None) or {}
         candidatos = []
         # id numérico do usuário (nova chave para modelos_texto)
@@ -472,8 +504,17 @@ class ProntuarioModule(BaseModule):
         if not self.paciente_selecionado:
             return
         prontuarios = self.prontuario_controller.buscar_prontuarios_paciente(self.paciente_selecionado["id"])
-        # Armazena e reinicia o índice do carrossel
-        self.prontuarios_lista = prontuarios or []
+        # Ordena localmente: mais recentes primeiro (data desc, depois id desc)
+        try:
+            lista = list(prontuarios or [])
+            lista.sort(key=lambda p: (
+                (p.get('data') or ''),
+                (p.get('id') or 0)
+            ), reverse=True)
+            self.prontuarios_lista = lista
+        except Exception:
+            # Fallback sem ordenação caso algo falhe
+            self.prontuarios_lista = prontuarios or []
         self.carousel_index = 0 if self.prontuarios_lista else -1
         self._atualizar_carrossel()
 
@@ -487,17 +528,42 @@ class ProntuarioModule(BaseModule):
             bg='#f0f2f5',
             fg='#333333'
         ).pack(fill=tk.X, pady=(0, 5))
-        
+
         # Navegação
         nav = tk.Frame(parent, bg='#f0f2f5')
         nav.pack(fill=tk.X, pady=(0, 5))
-        self.btn_prev = tk.Button(nav, text='◀', width=3, command=self._carrossel_prev)
+        self.btn_prev = tk.Button(
+            nav, text='◀', width=3, command=self._carrossel_prev,
+            bg='#4a6fa5', fg='#ffffff', activebackground='#3b5a7f', activeforeground='#ffffff',
+            relief=tk.FLAT, cursor='hand2'
+        )
         self.btn_prev.pack(side=tk.LEFT)
         self.carousel_pos_label = tk.Label(nav, text='0/0', bg='#f0f2f5')
         self.carousel_pos_label.pack(side=tk.LEFT, padx=8)
-        self.btn_next = tk.Button(nav, text='▶', width=3, command=self._carrossel_next)
+        self.btn_next = tk.Button(
+            nav, text='▶', width=3, command=self._carrossel_next,
+            bg='#4a6fa5', fg='#ffffff', activebackground='#3b5a7f', activeforeground='#ffffff',
+            relief=tk.FLAT, cursor='hand2'
+        )
         self.btn_next.pack(side=tk.LEFT)
-        
+        # Botão para editar/salvar o item atual do carrossel no Word
+        try:
+            self.btn_edit_save = tk.Button(
+                nav, text='Editar', width=8, command=self._carrossel_editar,
+                bg='#4a6fa5', fg='#ffffff', activebackground='#3b5a7f', activeforeground='#ffffff',
+                relief=tk.FLAT, cursor='hand2'
+            )
+            self.btn_edit_save.pack(side=tk.LEFT, padx=8)
+        except Exception:
+            pass
+        # Botão Excluir ao lado do Editar
+        self.btn_excluir = tk.Button(
+            nav, text='Excluir', width=8, command=self._carrossel_excluir,
+            bg='#dc3545', fg='#ffffff', activebackground='#c82333', activeforeground='#ffffff',
+            relief=tk.FLAT, cursor='hand2'
+        )
+        self.btn_excluir.pack(side=tk.LEFT, padx=(0, 8))
+
         # Preview
         preview_frame = tk.Frame(parent, bg='#f0f2f5')
         preview_frame.pack(fill=tk.BOTH, expand=True)
@@ -521,30 +587,13 @@ class ProntuarioModule(BaseModule):
         state_next = tk.NORMAL if (total and idx < total - 1) else tk.DISABLED
         self.btn_prev.config(state=state_prev)
         self.btn_next.config(state=state_next)
-        
+
         # Atualiza conteúdo
         self.carousel_preview.config(state=tk.NORMAL)
         self.carousel_preview.delete(1.0, tk.END)
         if total and 0 <= idx < total:
             item = self.prontuarios_lista[idx]
-            # Cabeçalho com data (coluna 'data' da tabela prontuarios) e médico
-            data_val = item.get('data', '')
-            if isinstance(data_val, str):
-                # 'data' vem como YYYY-MM-DD
-                data_fmt = ''
-                try:
-                    d = datetime.strptime(data_val, '%Y-%m-%d')
-                    data_fmt = d.strftime('%d/%m/%Y')
-                except Exception:
-                    data_fmt = data_val
-            else:
-                data_fmt = data_val.strftime('%d/%m/%Y') if data_val else ''
-            medico = item.get('nome_medico', 'Médico não identificado')
-            titulo = item.get('titulo') or ''
-            if titulo:
-                self.carousel_preview.insert(tk.END, f"{titulo}\n\n", 'title')
-            self.carousel_preview.insert(tk.END, f"Data: {data_fmt}\n", 'info')
-            self.carousel_preview.insert(tk.END, f"Médico: {medico}\n\n", 'info')
+            # Mostra apenas o conteúdo salvo, sem inserir título ou cabeçalhos extras
             self.carousel_preview.insert(tk.END, item.get('conteudo', ''))
         else:
             self.carousel_preview.insert(tk.END, 'Nenhum prontuário encontrado.')
@@ -560,35 +609,141 @@ class ProntuarioModule(BaseModule):
         if total and getattr(self, 'carousel_index', -1) < total - 1:
             self.carousel_index += 1
             self._atualizar_carrossel()
-    
-    def _selecionar_prontuario(self, event=None):
-        """Seleciona um prontuário da lista e abre pré-visualização sem afetar o editor."""
-        # Se não houver seleção (quando event é None), tenta obter a seleção atual
-        if event is None:
-            selecao = self.prontuarios_tree.selection()
-        else:
-            selecao = self.prontuarios_tree.selection()
-        
-        if not selecao:
-            return
-        
-        # Obtém o ID do prontuário selecionado
-        item = self.prontuarios_tree.item(selecao[0])
-        prontuario_id = item['values'][0]
-        
-        # Se for a mensagem de "Nenhum prontuário encontrado", não faz nada
-        if not prontuario_id:
-            return
-        
-        # Busca os dados do prontuário
-        prontuario = self.prontuario_controller.buscar_prontuario_por_id(prontuario_id)
-        
-        if prontuario:
-            self.prontuario_atual = prontuario
-            self._mostrar_prontuario_modal(prontuario)
-        else:
-            messagebox.showerror("Erro", "Não foi possível carregar os dados do prontuário")
-    
+
+    def _carrossel_editar(self):
+        """Abre o Word com o conteúdo do item atual do carrossel para edição e troca o botão para 'Salvar'."""
+        try:
+            total = len(getattr(self, 'prontuarios_lista', []) or [])
+            idx = getattr(self, 'carousel_index', -1)
+            if not (total and 0 <= idx < total):
+                return
+            item = self.prontuarios_lista[idx]
+            conteudo = item.get('conteudo') or ''
+            if win32 is None:
+                messagebox.showwarning('Aviso', 'Automação do Word não está disponível nesta máquina.')
+                return
+            # Instância do Word
+            try:
+                word_app = getattr(self, '_word_app_carousel', None) or win32.gencache.EnsureDispatch('Word.Application')
+            except Exception:
+                word_app = getattr(self, '_word_app_carousel', None) or win32.Dispatch('Word.Application')
+            word_app.Visible = True
+            self._word_app_carousel = word_app
+            # Fecha documento anterior deste fluxo, se houver
+            try:
+                if getattr(self, '_word_doc_carousel', None) is not None:
+                    self._word_doc_carousel.Close(SaveChanges=0)
+            except Exception:
+                pass
+            # Cria documento e injeta o texto (\n -> \r)
+            doc = word_app.Documents.Add()
+            self._word_doc_carousel = doc
+            doc.Range(0, 0).Text = (conteudo or '').replace('\n', '\r')
+            # Troca o botão para 'Salvar' (verde)
+            if hasattr(self, 'btn_edit_save'):
+                self.btn_edit_save.config(
+                    text='Salvar', command=self._carrossel_salvar,
+                    bg='#28a745', fg='#ffffff', activebackground='#218838', activeforeground='#ffffff'
+                )
+        except Exception as e:
+            messagebox.showerror('Erro', f'Falha ao abrir no Word: {e}')
+
+    def _carrossel_salvar(self):
+        """Salva o conteúdo do Word no mesmo registro e atualiza o preview, mantendo posição/quantidade."""
+        try:
+            total = len(getattr(self, 'prontuarios_lista', []) or [])
+            idx = getattr(self, 'carousel_index', -1)
+            if not (total and 0 <= idx < total):
+                return
+            item = self.prontuarios_lista[idx]
+            prontuario_id = item.get('id')
+            if not prontuario_id:
+                messagebox.showwarning('Aviso', 'Registro do prontuário não encontrado para salvar.')
+                return
+            # Lê texto do Word
+            raw = ''
+            try:
+                if getattr(self, '_word_doc_carousel', None) is not None:
+                    raw = self._word_doc_carousel.Content.Text or ''
+            except Exception:
+                raw = ''
+            texto = (raw or '').replace('\r', '\n').rstrip('\n')
+            # Atualiza no banco
+            ok, msg = self.prontuario_controller.atualizar_prontuario(prontuario_id, {'conteudo': texto})
+            if not ok:
+                messagebox.showerror('Erro', msg)
+                return
+            # Atualiza em memória e preview
+            self.prontuarios_lista[idx]['conteudo'] = texto
+            self._atualizar_carrossel()
+            # Fecha doc do Word (mantém app para reuso)
+            try:
+                if getattr(self, '_word_doc_carousel', None) is not None:
+                    self._word_doc_carousel.Close(SaveChanges=0)
+            except Exception:
+                pass
+            self._word_doc_carousel = None
+            # Volta botão para 'Editar' (azul)
+            if hasattr(self, 'btn_edit_save'):
+                self.btn_edit_save.config(
+                    text='Editar', command=self._carrossel_editar,
+                    bg='#4a6fa5', fg='#ffffff', activebackground='#3b5a7f', activeforeground='#ffffff'
+                )
+           
+        except Exception as e:
+            messagebox.showerror('Erro', f'Falha ao salvar alterações: {e}')
+
+    def _carrossel_excluir(self):
+        """Exclui o prontuário atual do carrossel após confirmação, atualizando a lista e o preview."""
+        try:
+            total = len(getattr(self, 'prontuarios_lista', []) or [])
+            idx = getattr(self, 'carousel_index', -1)
+            if not (total and 0 <= idx < total):
+                return
+            item = self.prontuarios_lista[idx]
+            prontuario_id = item.get('id')
+            if not prontuario_id:
+                messagebox.showwarning('Aviso', 'Registro do prontuário não encontrado para excluir.')
+                return
+            # Confirmação
+            if not messagebox.askyesno('Excluir', 'Confirma a exclusão deste prontuário? Esta ação não pode ser desfeita.'):
+                return
+            # Se houver documento Word aberto no fluxo do carrossel, fecha sem salvar
+            try:
+                if getattr(self, '_word_doc_carousel', None) is not None:
+                    self._word_doc_carousel.Close(SaveChanges=0)
+            except Exception:
+                pass
+            self._word_doc_carousel = None
+            # Chama controller para excluir
+            ok, msg = self.prontuario_controller.excluir_prontuario(prontuario_id)
+            if not ok:
+                messagebox.showerror('Erro', msg)
+                return
+            # Remove da lista e ajusta índice
+            try:
+                del self.prontuarios_lista[idx]
+            except Exception:
+                # fallback: reconstruir
+                self.prontuarios_lista = [p for p in self.prontuarios_lista if p.get('id') != prontuario_id]
+            novo_total = len(self.prontuarios_lista)
+            if novo_total == 0:
+                self.carousel_index = -1
+            else:
+                if idx >= novo_total:
+                    idx = novo_total - 1
+                self.carousel_index = idx
+            # Restaura estado do botão editar
+            if hasattr(self, 'btn_edit_save'):
+                self.btn_edit_save.config(
+                    text='Editar', command=self._carrossel_editar,
+                    bg='#4a6fa5', fg='#ffffff', activebackground='#3b5a7f', activeforeground='#ffffff'
+                )
+            # Atualiza UI
+            self._atualizar_carrossel()
+        except Exception as e:
+            messagebox.showerror('Erro', f'Falha ao excluir prontuário: {e}')
+
     def _exibir_prontuario(self):
         """Exibe o conteúdo do prontuário selecionado."""
         # Limpa o frame de conteúdo
@@ -610,25 +765,7 @@ class ProntuarioModule(BaseModule):
         # Limpa o conteúdo atual
         self.texto_prontuario.delete(1.0, tk.END)
         
-        # Formata o cabeçalho do prontuário
-        data_criacao = self.prontuario_atual.get("data_criacao", "Data não disponível")
-        if isinstance(data_criacao, str):
-            try:
-                data_obj = datetime.strptime(data_criacao, '%Y-%m-%d %H:%M:%S')
-                data_formatada = data_obj.strftime('%d/%m/%Y às %H:%M')
-            except ValueError:
-                data_formatada = data_criacao
-        else:
-            data_formatada = data_criacao.strftime('%d/%m/%Y às %H:%M')
-        
-        medico_nome = self.prontuario_atual.get("nome_medico", "Médico não identificado")
-        
-        # Insere o cabeçalho formatado
-        self.texto_prontuario.insert(tk.END, f"Data: {data_formatada}\n", "info")
-        self.texto_prontuario.insert(tk.END, f"Médico: {medico_nome}\n", "info")
-        self.texto_prontuario.insert(tk.END, f"Paciente: {self.paciente_selecionado['nome']}\n\n", "info")
-        
-        # Insere o conteúdo do prontuário
+        # Insere apenas o conteúdo do prontuário (sem cabeçalho extra)
         conteudo = self.prontuario_atual.get("conteudo", "")
         self.texto_prontuario.insert(tk.END, conteudo, "conteudo")
         
@@ -648,352 +785,399 @@ class ProntuarioModule(BaseModule):
         # Cabeçalho do editor
         header = tk.Frame(parent, bg='#ffffff')
         header.pack(fill=tk.X)
-        tk.Label(header, text="Novo Prontuário", bg='#ffffff', fg='#333333', font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=8, pady=8)
+        tk.Label(
+            header,
+            text="Novo Prontuário",
+            bg='#ffffff',
+            fg='#333333',
+            font=('Arial', 12, 'bold')
+        ).pack(side=tk.LEFT, padx=8, pady=8)
 
-        # Botões de ação do editor
+        # Barra de botões
         botoes = tk.Frame(parent, bg='#ffffff')
-        botoes.pack(fill=tk.X)
-        tk.Button(botoes, text="Salvar", bg="#28a745", fg="white", relief=tk.FLAT, cursor='hand2',
-                  command=self._salvar_novo_prontuario).pack(side=tk.LEFT, padx=(8, 4), pady=(0, 8))
-        tk.Button(botoes, text="Inserir Modelo", bg="#4a6fa5", fg="white", relief=tk.FLAT, cursor='hand2',
-                  command=self._selecionar_modelo).pack(side=tk.LEFT, padx=4, pady=(0, 8))
-        tk.Button(botoes, text="Inserir Receita", bg="#4a6fa5", fg="white", relief=tk.FLAT, cursor='hand2',
-                  command=self._selecionar_receita).pack(side=tk.LEFT, padx=4, pady=(0, 8))
-        tk.Button(botoes, text="Limpar", bg="#6c757d", fg="white", relief=tk.FLAT, cursor='hand2',
-                  command=lambda: self.editor_texto.delete(1.0, tk.END)).pack(side=tk.LEFT, padx=4, pady=(0, 8))
-        # Botão Imprimir (abre pré-visualização)
-        tk.Button(botoes, text="Imprimir", bg="#17a2b8", fg="white", relief=tk.FLAT, cursor='hand2',
-                  command=self._abrir_pre_visualizacao).pack(side=tk.RIGHT, padx=(4, 8), pady=(0, 8))
+        botoes.pack(fill=tk.X, padx=8, pady=(0, 6))
 
-        # Área de texto do editor
-        self.editor_texto = scrolledtext.ScrolledText(parent, wrap=tk.WORD, font=('Arial', 11))
-        self.editor_texto.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
-        # Mantém fonte padrão do editor; sem controle de tamanho persistente
-        try:
-            current_font = tkfont.Font(font=self.editor_texto['font'])
-            self._editor_font_family = current_font.actual().get('family', 'Arial')
-        except Exception:
-            self._editor_font_family = 'Arial'
+        # Botões (mantém tema/cores existentes)
+        tk.Button(
+            botoes, text="Salvar", command=self._salvar_novo_prontuario,
+            bg="#28a745", fg="#ffffff", activebackground="#218838", activeforeground="#ffffff",
+            relief=tk.FLAT, cursor='hand2'
+        ).pack(side=tk.RIGHT, padx=4)
 
-        # Compatibilidade com rotinas existentes de inserção de modelo
-        # Usa os mesmos atributos esperados: self.modo_edicao e self.texto_prontuario
-        self.modo_edicao = True
-        self.texto_prontuario = self.editor_texto
+        tk.Button(
+            botoes, text="Prontuarios", command=self._selecionar_modelo,
+            bg="#4a6fa5", fg="white", relief=tk.FLAT, cursor='hand2'
+        ).pack(side=tk.RIGHT, padx=4)
 
-        # Prefill: Paciente e Data de hoje no novo prontuário
-        self._preencher_cabecalho_novo_prontuario()
+        tk.Button(
+            botoes, text="Receitas", command=self._selecionar_receita,
+            bg="#4a6fa5", fg="white", relief=tk.FLAT, cursor='hand2'
+        ).pack(side=tk.RIGHT, padx=4)
 
-        # Ativa corretor ortográfico (se disponível)
-        self._habilitar_corretor_ortografico()
-
-    def _imprimir_prontuario(self):
-        """Gera um laudo simples com o conteúdo atual e envia para a impressora escolhida."""
-        try:
-            # Coleta conteúdo
-            txt = getattr(self, 'editor_texto', None)
-            if not txt:
-                messagebox.showwarning("Atenção", "Editor não disponível para impressão.")
-                return
-            corpo = txt.get('1.0', 'end-1c').strip()
-            if not corpo:
-                messagebox.showwarning("Atenção", "O conteúdo do prontuário está vazio.")
-                return
-            # Identificação de paciente e médico
-            paciente = {
-                'nome': (self.paciente_selecionado or {}).get('nome', 'Paciente')
-            }
-            medico = {}
+        def _limpar():
             try:
-                # Tenta recuperar nome e CRM a partir do cadastro_controller/prontuario_atual se existirem
-                medico['nome'] = (self.usuario_dict or {}).get('nome') or 'Médico(a) Responsável'
-            except Exception:
-                medico['nome'] = 'Médico(a) Responsável'
-            # Empresa (opcional)
-            empresa = {}
-            # Monta laudo: imprime exatamente o corpo, sem diretivas automáticas
-            corpo_emitir = corpo
-            laudo = {
-                'titulo': 'Prontuário',
-                'corpo': corpo_emitir,
-                'data': datetime.now().strftime('%d/%m/%Y')
-            }
-            # Escolhe SALA de impressão (1..5) conforme Configurações
-            escolhido = self._dialogo_escolher_sala()
-            if not escolhido:
-                return
-            # Chamada correta: (empresa, paciente, medico, laudo, impressora)
-            self.impressao.imprimir_laudo_medico(empresa, paciente, medico, laudo, impressora=escolhido)
-            
-        except Exception as e:
-            messagebox.showerror("Erro ao imprimir", str(e))
-            print("[DEBUG][Prontuario] Erro ao imprimir:", e)
-
-    def _abrir_pre_visualizacao(self):
-        """Abre janela de pré-visualização A4 com edição rápida e ajuste de fonte."""
-        try:
-            conteudo_atual = (self.editor_texto.get('1.0', 'end-1c') if hasattr(self, 'editor_texto') else '').strip()
-        except Exception:
-            conteudo_atual = ''
-
-        win = tk.Toplevel(self.frame)
-        win.title("Pré-visualização de Impressão")
-        win.geometry("1200x800")
-        win.transient(self.frame)
-        win.grab_set()
-        win.configure(bg='#f0f2f5')
-        # Não maximizar: mantém janela em tamanho padrão
-
-        # Barra superior: somente alternância Editor/Prévia
-        topbar = tk.Frame(win, bg='#e9ecef')
-        topbar.pack(fill=tk.X, padx=8, pady=(8, 0))
-
-        # Alternância Editor/Prévia (uma visão por vez), com edição dentro da página A4
-        show_editor = {'val': False}  # inicia na PRÉ-VISUALIZAÇÃO
-        def toggle_editor():
-            show_editor['val'] = not show_editor['val']
-            if show_editor['val']:
-                # Modo Editar: editor embutido na página A4 do canvas
-                toggle_btn.configure(text='Pré-visualizar')
-            else:
-                # Modo Prévia: oculta overlay
-                toggle_btn.configure(text='Editar')
-            atualizar_preview()
-        toggle_btn = tk.Button(topbar, text="Pré-visualizar", bg="#6c757d", fg="white", relief=tk.FLAT, cursor='hand2', command=toggle_editor)
-        toggle_btn.pack(side=tk.RIGHT, padx=4)
-
-        main = tk.Frame(win, bg='#f0f2f5')
-        main.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-
-        left = tk.Frame(main, bg='#f0f2f5', width=1, height=1)
-        # mantém o editor como widget existente, mas sem exibir o frame
-        right = tk.Frame(main, bg='#f0f2f5')
-        right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-
-        # Barra de fonte global
-        bar = tk.Frame(left, bg='#f0f2f5')
-        bar.pack(fill=tk.X, pady=(0, 6))
-        tk.Label(bar, text="Fonte:", bg='#f0f2f5', fg='#333', font=('Arial', 10, 'bold')).pack(side=tk.LEFT)
-        def aplicar_fonte_global(n: int):
-            # Atualiza/insere diretiva <<font:N>> e reflete no Text
-            txt = editor
-            prev = txt.get('1.0', 'end-1c')
-            linhas = prev.splitlines()
-            nova = f"<<font:{n}>>"
-            if not linhas:
-                txt.insert('1.0', nova + "\n")
-            else:
-                prim = (linhas[0].strip() if linhas else '')
-                if prim.lower().startswith('<<font:') and prim.endswith('>>'):
-                    linhas[0] = nova
-                    novo = "\n".join(linhas)
-                    txt.delete('1.0', tk.END)
-                    txt.insert('1.0', novo)
-                else:
-                    txt.insert('1.0', nova + "\n")
-            try:
-                editor.configure(font=('Arial', int(n)))
+                self.editor_texto.delete('1.0', tk.END)
+                self._preencher_cabecalho_novo_prontuario()
             except Exception:
                 pass
-            atualizar_preview()
-        for n in range(6, 13):
-            tk.Button(bar, text=str(n), bg="#495057", fg="white", relief=tk.FLAT,
-                      cursor='hand2', command=lambda v=n: aplicar_fonte_global(v)).pack(side=tk.LEFT, padx=2)
+        tk.Button(
+            botoes, text="Limpar", command=_limpar,
+            bg="#dc3545", fg="white", relief=tk.FLAT, cursor='hand2'
+        ).pack(side=tk.RIGHT, padx=4)
 
-        # Editor local da prévia
-        editor_frame = tk.Frame(left, bg='#fff', bd=1, relief=tk.SOLID)
-        editor_frame.pack(fill=tk.BOTH, expand=True)
-        editor_scroll = tk.Scrollbar(editor_frame)
-        editor_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        editor = tk.Text(left, wrap=tk.WORD, font=('Times New Roman', 10), undo=True, relief=tk.FLAT, bg='white', fg='#111')
-        # não faz pack; será inserido no canvas como janela
-        editor_scroll.config(command=editor.yview)
-        if conteudo_atual:
-            editor.insert('1.0', conteudo_atual)
+        # Imprimir: mantém fluxo existente; se método não existir, mostra aviso discreto
+        def _imprimir_dispatch():
+            try:
+                func = getattr(self, '_imprimir_prontuario', None)
+                if callable(func):
+                    return func()
+                messagebox.showinfo('Impressão', 'Função de impressão indisponível nesta versão.')
+            except Exception:
+                pass
+        tk.Button(
+            botoes, text="Imprimir", command=_imprimir_dispatch,
+            bg="#17a2b8", fg="white", relief=tk.FLAT, cursor='hand2'
+        ).pack(side=tk.RIGHT, padx=4)
 
-        # Canvas A4 para prévia
-        canvas = tk.Canvas(right, bg='#cccccc')
-        canvas.pack(fill=tk.BOTH, expand=True)
+        # Novo: Exportar Word (.docx)
+        self._btn_word = tk.Button(
+            botoes, text="Editar", command=self._toggle_word_roundtrip,
+            bg="#4a6fa5", fg="white", relief=tk.FLAT, cursor='hand2'
+        )
+        self._btn_word.pack(side=tk.RIGHT, padx=4)
 
-        # Parâmetros A4 fixos para preview de tela (DPI=96)
-        DPI = 96
-        A4_W_IN, A4_H_IN = 8.27, 11.69
-        page_w = int(A4_W_IN * DPI)
-        page_h = int(A4_H_IN * DPI)
-        margem_mm = 10
-        def mm_to_px(mm):
-            return int((mm / 25.4) * DPI)
-        m_esq = mm_to_px(margem_mm)
-        m_dir = mm_to_px(margem_mm)
-        m_top = mm_to_px(margem_mm)
-        m_bot = mm_to_px(margem_mm)
+        # Editor de texto
+        self.editor_texto = scrolledtext.ScrolledText(
+            parent,
+            wrap=tk.WORD,
+            font=('Arial', 11),
+            height=22
+        )
+        self.editor_texto.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
 
-        page_id = None
-        editor_win_id = {'val': None}
-        text_items = []
+        # Estado de edição ativo
+        self.modo_edicao = True
+        # Prefill de cabeçalho com paciente + data
+        self._preencher_cabecalho_novo_prontuario()
 
-        def parse_base_font(texto: str, default_pt=10):
-            for ln in texto.splitlines():
+   
+
+    def _imprimir_prontuario(self):
+        """Imprime o texto atual do editor em A4 usando o GerenciadorImpressao.
+        Não altera o conteúdo: envia exatamente o que está no editor (diretivas <<font:>> e alinhamento são suportados pelo motor de impressão).
+        """
+        try:
+            txt = getattr(self, 'editor_texto', None)
+            if not txt:
+                messagebox.showwarning('Impressão', 'Editor não está disponível para impressão.')
+                return
+            conteudo = txt.get('1.0', 'end-1c')
+            if not conteudo.strip():
+                messagebox.showwarning('Impressão', 'Não há conteúdo para imprimir.')
+                return
+
+            # Seleciona impressora (usa diálogo existente)
+            alvo = self._dialogo_escolher_sala()
+            if not alvo:
+                return  # cancelado
+
+            # Imprime como texto A4 simples (usa método público que encaminha ao A4)
+            ok = False
+            try:
+                ok = self.impressao.imprimir_receita_texto(conteudo, impressora=alvo)
+            except Exception:
+                ok = False
+            if not ok:
+                messagebox.showerror('Impressão', 'Falha ao enviar para a impressora. Verifique a impressora configurada.')
+        except Exception as e:
+            messagebox.showerror('Impressão', f'Erro ao imprimir: {e}')
+
+    def _exportar_para_word(self):
+        """Exporta o conteúdo do editor para um arquivo Word (.docx)."""
+        try:
+            # Coleta dados de cabeçalho
+            nome_paciente = ''
+            try:
+                if getattr(self, 'paciente_selecionado', None):
+                    nome_paciente = self.paciente_selecionado.get('nome') or ''
+            except Exception:
+                nome_paciente = ''
+            medico_info = None
+            try:
+                medico_info = self._buscar_medico_por_usuario()
+            except Exception:
+                medico_info = None
+            nome_medico = ''
+            try:
+                usr = getattr(self, 'usuario_dict', None) or {}
+                nome_medico = (medico_info.get('nome') if medico_info else None) or (usr.get('nome') or '')
+            except Exception:
+                pass
+            data_hoje = datetime.now().strftime('%d/%m/%Y')
+
+            # Obtém conteúdo do editor (texto simples)
+            txt_widget = getattr(self, 'editor_texto', None)
+            if not txt_widget:
+                messagebox.showwarning('Aviso', 'Editor não está disponível para exportação.')
+                return
+            conteudo = txt_widget.get('1.0', 'end-1c')
+
+            # Detecta diretiva de fonte global (<<font:N>>) e remove-a do conteúdo
+            base_pt = 11
+            linhas = conteudo.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+            for i, ln in enumerate(list(linhas)):
                 s = ln.strip()
                 if s.lower().startswith('<<font:') and s.endswith('>>'):
                     try:
                         v = int(s[7:-2])
-                        if 6 <= v <= 12:
-                            return v
-                    except Exception:
-                        continue
-            return default_pt
-
-        def atualizar_preview():
-            nonlocal page_id, text_items
-            canvas.delete('all')
-            # Centraliza página no canvas
-            cw = canvas.winfo_width() or (page_w + 40)
-            ch = canvas.winfo_height() or (page_h + 40)
-            x0 = max(20, (cw - page_w)//2)
-            y0 = max(20, (ch - page_h)//2)
-            page_id = canvas.create_rectangle(x0, y0, x0+page_w, y0+page_h, fill='white', outline='#888')
-
-            texto = editor.get('1.0', 'end-1c')
-            base_pt = parse_base_font(texto)
-            try:
-                editor.configure(font=('Arial', base_pt))
-            except Exception:
-                pass
-            # Remove a linha de diretiva da pré-visualização (como na impressão)
-            lines = texto.replace('\r\n', '\n').replace('\r', '\n').split('\n')
-            for i, ln in enumerate(lines):
-                s = ln.strip()
-                if s.lower().startswith('<<font:') and s.endswith('>>'):
-                    del lines[i]
-                    break
-            texto = "\n".join(lines)
-
-            # Desenha com margens utilizando o MESMO comportamento da impressão:
-            # wrap por palavras medindo com tkfont.Font.measure e altura = linespace
-            import tkinter.font as tkfont
-            largura_util = page_w - m_esq - m_dir
-            x_left = x0 + m_esq
-            x_right = x0 + page_w - m_dir
-            y_cursor = y0 + m_top
-            tkf = tkfont.Font(family='Times New Roman', size=base_pt)
-            line_h = int(tkf.metrics('linespace') or (base_pt + 6))
-
-            # Se estiver em modo Editar, embute o Text exatamente na área útil da página
-            # para o usuário editar dentro do retângulo A4 real
-            try:
-                if show_editor['val']:
-                    if editor_win_id['val'] is None:
-                        editor_win_id['val'] = canvas.create_window(x_left, y0 + m_top, anchor='nw', window=editor,
-                                                                    width=largura_util, height=(page_h - m_top - m_bot))
-                    else:
-                        canvas.coords(editor_win_id['val'], x_left, y0 + m_top)
-                        canvas.itemconfigure(editor_win_id['val'], width=largura_util, height=(page_h - m_top - m_bot))
-                    # Ajusta a fonte do editor para a base detectada
-                    try:
-                        editor.configure(font=('Times New Roman', base_pt))
+                        if 6 <= v <= 20:
+                            base_pt = v
                     except Exception:
                         pass
-                    aplicar_alinhamento_no_editor()
-                else:
-                    if editor_win_id['val'] is not None:
+                    # Remove a linha da diretiva do texto exportado
+                    try:
+                        del linhas[i]
+                    except Exception:
+                        pass
+                    break
+
+            # Remove cabeçalho duplicado no início do texto (Paciente/Médico/Data)
+            try:
+                def _strip_initial_header(ls):
+                    i = 0
+                    seen = {'paciente': False, 'medico': False, 'data': False}
+                    while i < len(ls):
+                        s = (ls[i] or '').strip()
+                        if not s:
+                            i += 1
+                            continue
+                        low = s.lower()
+                        if low.startswith('paciente:') or low.startswith('paciente :'):
+                            seen['paciente'] = True
+                            i += 1
+                            continue
+                        if low.startswith('médico:') or low.startswith('medico:') or low.startswith('médico :') or low.startswith('medico :'):
+                            seen['medico'] = True
+                            i += 1
+                            continue
+                        if low.startswith('data:') or low.startswith('data :'):
+                            seen['data'] = True
+                            i += 1
+                            continue
+                        break
+                    if seen['paciente'] or seen['medico'] or seen['data']:
+                        # remove linhas consideradas cabeçalho e espaços em branco seguintes
+                        while i < len(ls) and not (ls[i] or '').strip():
+                            i += 1
+                        return ls[i:]
+                    return ls
+                linhas = _strip_initial_header(linhas)
+            except Exception:
+                pass
+
+            # Tenta abrir diretamente no Word via COM (preferido)
+            if win32 is not None:
+                try:
+                    word_app = getattr(self, '_word_app_export', None) or win32.gencache.EnsureDispatch('Word.Application')
+                    word_app.Visible = True
+                    self._word_app_export = word_app
+                    doc = word_app.Documents.Add()
+                    sel = word_app.Selection
+
+                    # Cabeçalho: Paciente, Médico, Data (Arial 11, bold)
+                    header_lines = []
+                    if nome_paciente:
+                        header_lines.append(f"Paciente: {nome_paciente}")
+                    if nome_medico:
+                        header_lines.append(f"Médico: {nome_medico}")
+                    header_lines.append(f"Data: {data_hoje}")
+
+                    for hl in header_lines:
                         try:
-                            canvas.delete(editor_win_id['val'])
+                            sel.Font.Name = 'Arial'
                         except Exception:
                             pass
-                        editor_win_id['val'] = None
-            except Exception:
-                pass
+                        sel.Font.Size = 11
+                        sel.Font.Bold = True
+                        sel.TypeText(hl)
+                        sel.TypeParagraph()
+                    sel.TypeParagraph()  # linha em branco
+                    sel.Font.Bold = False
 
-            # Heurística: alinhar ao CENTRO a linha com 'CRM' e a linha anterior (nome)
-            # e ADICIONAR 5 LINHAS de espaçamento APENAS antes da linha do nome (primeira do bloco)
-            linhas_full = texto.split('\n')
-            indices_center = set()
-            indices_first_of_block = set()
-            for i, ln in enumerate(linhas_full):
-                if 'crm' in ln.lower():
-                    indices_center.add(i)
-                    if i > 0:
-                        indices_center.add(i-1)
-                        indices_first_of_block.add(i-1)
+                    # Corpo: respeita <<center>> e <<right>>; fonte base_pt
+                    # WdParagraphAlignment: Left=0, Center=1, Right=2, Justify=3
+                    for linha in linhas:
+                        raw = linha.lstrip()
+                        align = 0
+                        text = raw
+                        low = raw.lower()
+                        if low.startswith('<<center>>'):
+                            align = 1
+                            text = raw[10:].lstrip()
+                        elif low.startswith('<<right>>'):
+                            align = 2
+                            text = raw[9:].lstrip()
+                        sel.ParagraphFormat.Alignment = align
+                        try:
+                            sel.Font.Name = 'Arial'
+                        except Exception:
+                            pass
+                        sel.Font.Size = base_pt
+                        sel.TypeText(text)
+                        sel.TypeParagraph()
 
-            def wrap_and_draw(line_raw: str, idx: int):
-                nonlocal y_cursor
-                line = line_raw
-                align = 'center' if idx in indices_center else 'left'
-                s = line.strip()
-                low = s.lower()
-                if low.startswith('<<center>>'):
-                    line = line.lower().replace('<<center>>', '', 1).lstrip()
-                    align = 'center'
-                elif low.startswith('<<right>>'):
-                    line = line.lower().replace('<<right>>', '', 1).lstrip()
-                    align = 'right'
-
-                if line == '':
-                    # linha em branco
-                    canvas.create_text(x_left, y_cursor, text='', font=('Times New Roman', base_pt), anchor='nw', fill='#000')
-                    y_cursor += line_h
+                    # Guarda referência do documento e habilita retorno
+                    try:
+                        self._word_doc_export = doc
+                        self._word_return_ready = True
+                        if hasattr(self, '_btn_word') and self._btn_word.winfo_exists():
+                            self._btn_word.config(text='Retornar')
+                    except Exception:
+                        pass
                     return
+                except Exception:
+                    # Se falhar COM, cai no fluxo de salvar .docx
+                    pass
 
-                words = line.split()
-                atual = ''
-                desenhados = []
-                for w in words:
-                    tentativa = (atual + (' ' if atual else '') + w)
-                    wpx = tkf.measure(tentativa)
-                    if wpx <= largura_util:
-                        atual = tentativa
-                    else:
-                        desenhados.append(atual)
-                        atual = w
-                if atual or line.endswith(' '):
-                    desenhados.append(atual)
+            # Fallback: fluxo atual de salvar .docx
+            # Verifica dependência
+            if Document is None:
+                messagebox.showwarning('Recurso indisponível', 'Biblioteca python-docx não está instalada. Instale para usar a exportação para Word (.docx).')
+                return
 
-                # Se este é o PRIMEIRO índice do bloco Nome/CRM, adiciona 5 linhas antes
-                add_spacing = (idx in indices_first_of_block)
-                for j, part in enumerate(desenhados):
-                    if add_spacing and j == 0:
-                        y_cursor += 5 * line_h
-                    if align == 'center':
-                        px = tkf.measure(part)
-                        cx = x_left + max(0, (largura_util - px)//2)
-                        canvas.create_text(cx, y_cursor, text=part, font=('Times New Roman', base_pt), anchor='nw', fill='#000')
-                    elif align == 'right':
-                        px = tkf.measure(part)
-                        rx = x_left + max(0, largura_util - px)
-                        canvas.create_text(rx, y_cursor, text=part, font=('Times New Roman', base_pt), anchor='nw', fill='#000')
-                    else:
-                        canvas.create_text(x_left, y_cursor, text=part, font=('Times New Roman', base_pt), anchor='nw', fill='#000')
-                    y_cursor += line_h
+            # Dialogo de salvar
+            sugestao_nome = f"Prontuario_{nome_paciente.replace(' ', '_')}_{datetime.now().strftime('%Y-%m-%d')}.docx" if nome_paciente else f"Prontuario_{datetime.now().strftime('%Y-%m-%d')}.docx"
+            caminho = filedialog.asksaveasfilename(
+                title='Salvar como',
+                defaultextension='.docx',
+                filetypes=[('Documento do Word', '*.docx')],
+                initialfile=sugestao_nome
+            )
+            if not caminho:
+                return
 
-            text_items = []
-            if not show_editor['val']:
-                for i, raw in enumerate(linhas_full):
-                    wrap_and_draw(raw, i)
+            # Monta documento
+            document = Document()
 
-            # Sem controles de zoom: tamanho fixo
+            # Cabeçalho: Paciente, Médico, Data
+            header_lines = []
+            if nome_paciente:
+                header_lines.append(f"Paciente: {nome_paciente}")
+            if nome_medico:
+                header_lines.append(f"Médico: {nome_medico}")
+            header_lines.append(f"Data: {data_hoje}")
 
-        canvas.bind('<Configure>', lambda e: atualizar_preview())
+            for linha in header_lines:
+                run = document.add_paragraph().add_run(linha)
+                f = run.font
+                try:
+                    f.name = 'Arial'
+                except Exception:
+                    pass
+                f.size = Pt(11)
+                f.bold = True
 
-        # Rodapé com botões
-        footer = tk.Frame(win, bg='#f0f2f5')
-        footer.pack(fill=tk.X, pady=(6, 0))
-        def imprimir_da_previa():
-            # Sobrescreve conteúdo do editor principal com o editado na prévia e chama impressão real
+            document.add_paragraph('')  # linha em branco
+
+            # Conteúdo: mantém texto simples, removendo marcadores de alinhamento
+            # Remove marcadores reconhecidos do início de cada linha: <<center>>, <<right>>
+            for linha in linhas:
+                low = linha.lstrip().lower()
+                if low.startswith('<<center>>'):
+                    linha = linha.lstrip()[10:].lstrip()
+                elif low.startswith('<<right>>'):
+                    linha = linha.lstrip()[9:].lstrip()
+                run = document.add_paragraph().add_run(linha)
+                f = run.font
+                try:
+                    f.name = 'Arial'
+                except Exception:
+                    pass
+                f.size = Pt(base_pt)
+
+            # Salva
+            document.save(caminho)
+            messagebox.showinfo('Exportação', f'Prontuário exportado com sucesso para:\n{caminho}')
+            # Marca caminho para retorno e alterna botão
             try:
-                if hasattr(self, 'editor_texto'):
-                    self.editor_texto.delete('1.0', tk.END)
-                    self.editor_texto.insert('1.0', editor.get('1.0', 'end-1c'))
+                self._last_export_docx_path = caminho
+                self._word_return_ready = True
+                if hasattr(self, '_btn_word') and self._btn_word.winfo_exists():
+                    self._btn_word.config(text='Salvar')
             except Exception:
                 pass
-            win.destroy()
-            self._imprimir_prontuario()
-        tk.Button(footer, text="Imprimir", bg="#17a2b8", fg="white", relief=tk.FLAT, cursor='hand2',
-                  command=imprimir_da_previa).pack(side=tk.RIGHT, padx=6)
-        tk.Button(footer, text="Fechar", bg="#6c757d", fg="white", relief=tk.FLAT, cursor='hand2',
-                  command=win.destroy).pack(side=tk.RIGHT, padx=6)
+        except Exception as e:
+            messagebox.showerror('Erro ao exportar', f'{e}')
 
-        atualizar_preview()
+    def _toggle_word_roundtrip(self):
+        """Alterna entre exportar para o Word e retornar o conteúdo editado."""
+        try:
+            if getattr(self, '_word_return_ready', False):
+                # Retornar conteúdo para o editor
+                self._importar_do_word()
+                # Reset estado e botão
+                self._word_return_ready = False
+                if hasattr(self, '_btn_word') and self._btn_word.winfo_exists():
+                    self._btn_word.config(text='Editar')
+            else:
+                # Exportar
+                self._exportar_para_word()
+                # Se a exportação preparou retorno, o texto do botão já foi ajustado lá
+        except Exception:
+            pass
+
+    def _importar_do_word(self):
+        """Importa o conteúdo do documento Word aberto/salvo de volta para o editor_texto.
+        Prioriza COM (documento aberto). Caso contrário, tenta último .docx exportado.
+        """
+        try:
+            txt_widget = getattr(self, 'editor_texto', None)
+            if not txt_widget:
+                messagebox.showwarning('Aviso', 'Editor não está disponível para importar o conteúdo.')
+                return
+
+            conteudo_retorno = None
+
+            # 1) COM: documento aberto no Word
+            try:
+                if win32 is not None and getattr(self, '_word_app_export', None) is not None:
+                    doc = getattr(self, '_word_doc_export', None)
+                    if doc is not None:
+                        # Captura todo o texto do documento
+                        raw = doc.Content.Text
+                        # Normaliza quebras de linha
+                        conteudo_retorno = (raw or '').replace('\r\x07', '\n').replace('\r', '\n')
+            except Exception:
+                conteudo_retorno = None
+
+            # 2) Fallback: último arquivo .docx salvo
+            if conteudo_retorno is None:
+                try:
+                    caminho = getattr(self, '_last_export_docx_path', None)
+                    if caminho and Document is not None:
+                        docx = Document(caminho)
+                        # Concatena parágrafos com \n
+                        conteudo_retorno = "\n".join(p.text or '' for p in docx.paragraphs)
+                except Exception:
+                    conteudo_retorno = None
+
+            if not conteudo_retorno:
+                messagebox.showinfo('Retornar do Word', 'Não foi possível obter o conteúdo do Word. Salve o documento e tente novamente.')
+                return
+
+            # Atualiza o editor com o conteúdo retornado
+            try:
+                txt_widget.delete('1.0', tk.END)
+                txt_widget.insert(tk.END, conteudo_retorno)
+                # Reaplica correção ortográfica, se habilitada
+                try:
+                    self._verificar_ortografia()
+                except Exception:
+                    pass
+            except Exception as e:
+                messagebox.showerror('Erro', f'Falha ao atualizar conteúdo do editor: {e}')
+        except Exception:
+            pass
 
     def _dialogo_escolher_sala(self):
         """Dialoga a escolha de Sala de Impressão (1..5) e retorna o nome da impressora configurada ou None.
@@ -1011,12 +1195,12 @@ class ProntuarioModule(BaseModule):
         itens = []
         for i in range(1, 6):
             nome_imp = cfg.get(f'impressora {i}') or ''
-            label = f"Sala {i} — {nome_imp if nome_imp else 'Não configurada'}"
+            label = f"Impressora {i} — {nome_imp if nome_imp else 'Não configurada'}"
             itens.append((label, nome_imp))
 
         sel = {'valor': None}
         dlg = tk.Toplevel(self.parent)
-        dlg.title("Selecionar Sala de Impressão")
+        dlg.title("Selecionar Impressora")
         dlg.configure(bg='#ffffff')
         dlg.transient(self.parent)
         dlg.grab_set()
@@ -1030,7 +1214,7 @@ class ProntuarioModule(BaseModule):
             dlg.geometry(f"{W}x{H}")
         dlg.minsize(520, 360)
 
-        tk.Label(dlg, text="Escolha a sala:", bg='#ffffff', fg='#333333', font=('Arial', 11, 'bold')).pack(padx=12, pady=(12, 8))
+        tk.Label(dlg, text="Escolha a impressora:", bg='#ffffff', fg='#333333', font=('Arial', 11, 'bold')).pack(padx=12, pady=(12, 8))
 
         # Área da lista com scrollbar
         cont = tk.Frame(dlg, bg='#ffffff')
@@ -1056,7 +1240,7 @@ class ProntuarioModule(BaseModule):
                     return
                 _, nome_imp = itens[idx[0]]
                 if not nome_imp:
-                    messagebox.showwarning("Sala sem impressora", "Esta sala não possui impressora configurada em Configurações.")
+                    messagebox.showwarning("Impressora não configurada", "Esta impressora não está configurada em Configurações.")
                     return
                 sel['valor'] = nome_imp
                 dlg.destroy()
@@ -1188,7 +1372,7 @@ class ProntuarioModule(BaseModule):
             medico_info = self._buscar_medico_por_usuario()
             usr = getattr(self, 'usuario_dict', None) or {}
             # Nome exibido: sempre prioriza o nome do médico (tabela medicos); nunca usar login
-            nome = (medico_info.get('nome') if medico_info else None) or (usr.get('nome') or 'Médico')
+            nome = (medico_info.get('nome') if medico_info else None) or (usr.get('nome') or '')
             nome = (nome or 'Médico').strip()
             crm = (medico_info.get('crm') if medico_info else None) or (usr.get('crm') or usr.get('CRM') or usr.get('imp') or usr.get('codigo_medico') or '')
             crm = (crm or '').strip()
@@ -1239,7 +1423,7 @@ class ProntuarioModule(BaseModule):
                 print(f"[DEBUG][Prontuario] buscar_medico_por_usuario: user_id={user_id}")
             except Exception:
                 pass
-            # 1) Tenta por FK usuario_id (se existir)
+            # 1) por usuario_id
             try:
                 cur.execute("SELECT nome, crm FROM medicos WHERE usuario_id = %s LIMIT 1", (user_id,))
                 row = cur.fetchone()
@@ -1252,23 +1436,20 @@ class ProntuarioModule(BaseModule):
             except Exception:
                 # coluna pode não existir; segue para fallback
                 pass
-            # 2) Tenta vincular automaticamente por nome+telefone e tenta novamente por usuario_id
-            try:
-                print("[DEBUG][Prontuario] tentando vincular medico por nome+telefone...")
-                self._tentar_vincular_medico_por_nome_telefone()
+            # 2) por nome
+            nome_usr = (usr.get('nome') or '').strip()
+            if nome_usr:
                 try:
-                    cur.execute("SELECT nome, crm FROM medicos WHERE usuario_id = %s LIMIT 1", (user_id,))
+                    cur.execute("SELECT id, nome, crm, telefone, usuario_id FROM medicos WHERE LOWER(nome) = LOWER(%s) LIMIT 1", (nome_usr,))
                     row = cur.fetchone()
                     if row:
                         try:
-                            print(f"[DEBUG][Prontuario] médico vinculado e encontrado: nome='{row[0]}', crm='{row[1]}'")
+                            print(f"[DEBUG][Prontuario] médico encontrado por nome: nome='{row[1]}', crm='{row[2]}'")
                         except Exception:
                             pass
-                        return {"nome": row[0], "crm": row[1]}
+                        return {"nome": row[1], "crm": row[2]}
                 except Exception:
                     pass
-            except Exception:
-                pass
             # 2) Fallback por nome (pode gerar múltiplos; pega o primeiro)
             try:
                 nome_usr = (usr.get('nome') or '').strip()
@@ -1307,14 +1488,20 @@ class ProntuarioModule(BaseModule):
                                 pass
                             return {"nome": r[1], "crm": r[2]}
                 else:
-                    # Sem telefone do usuário: se houver exatamente um médico com este nome, usar este
-                    if len(rows) == 1:
-                        r = rows[0]
+                    # Sem telefone: só vincula se houver exatamente um médico com o nome e ainda sem usuario_id
+                    sem_vinculo = [r for r in rows if not r[4]]
+                    if len(sem_vinculo) != 1:
                         try:
-                            print(f"[DEBUG][Prontuario] único médico por nome (sem telefone): nome='{r[1]}', crm='{r[2]}'")
+                            print(f"[DEBUG][Prontuario] vinculação por nome (sem telefone) ambígua: candidatos_sem_vinculo={len(sem_vinculo)}")
                         except Exception:
                             pass
-                        return {"nome": r[1], "crm": r[2]}
+                        return None
+                    r = sem_vinculo[0]
+                    try:
+                        print(f"[DEBUG][Prontuario] único médico por nome (sem telefone): nome='{r[1]}', crm='{r[2]}'")
+                    except Exception:
+                        pass
+                    return {"nome": r[1], "crm": r[2]}
                 # fallback: primeiro registro por nome
                 r = rows[0]
                 try:
@@ -1416,21 +1603,6 @@ class ProntuarioModule(BaseModule):
         body = tk.Frame(dlg, bg='#f0f2f5', padx=10, pady=10)
         body.pack(fill=tk.BOTH, expand=True)
 
-        # Cabeçalho
-        info = tk.Frame(body, bg='#f0f2f5')
-        info.pack(fill=tk.X)
-        data = prontuario.get("data_criacao") or prontuario.get("data")
-        if isinstance(data, str):
-            try:
-                d = datetime.strptime(data, '%Y-%m-%d %H:%M:%S')
-                data_fmt = d.strftime('%d/%m/%Y %H:%M')
-            except Exception:
-                data_fmt = str(data)
-        else:
-            data_fmt = data.strftime('%d/%m/%Y %H:%M') if data else 'N/A'
-        tk.Label(info, text=f"Data: {data_fmt}", bg='#f0f2f5', font=('Arial', 10, 'italic')).pack(anchor='w')
-        tk.Label(info, text=f"Médico: {prontuario.get('nome_medico', 'N/I')}", bg='#f0f2f5', font=('Arial', 10, 'italic')).pack(anchor='w')
-
         # Conteúdo
         txt = scrolledtext.ScrolledText(body, wrap=tk.WORD, font=('Arial', 10), state=tk.NORMAL)
         txt.pack(fill=tk.BOTH, expand=True)
@@ -1446,6 +1618,7 @@ class ProntuarioModule(BaseModule):
         if not self.paciente_selecionado:
             messagebox.showwarning("Aviso", "Selecione um paciente antes de salvar o prontuário.")
             return
+        
         # Garante que há um usuário logado (usuario_id) para atribuir ao prontuário
         usuario_id = None
         try:
@@ -1459,10 +1632,10 @@ class ProntuarioModule(BaseModule):
             )
             return
         
-        # Obtém o conteúdo do editor
+        # Obtém o conteúdo do editor exatamente como está (sem alterações)
         origem = getattr(self, 'editor_texto', None) or getattr(self, 'texto_prontuario', None)
         conteudo = origem.get(1.0, tk.END).strip() if origem else ''
-        
+
         if not conteudo:
             messagebox.showinfo("Aviso", "O conteúdo do prontuário não pode estar vazio")
             return
@@ -1471,20 +1644,58 @@ class ProntuarioModule(BaseModule):
         primeira_linha = (conteudo.splitlines()[0] if conteudo.splitlines() else "").strip()
         titulo = (primeira_linha or "Prontuário")[0:255]
 
+        # Se veio da agenda, captura o ID da consulta para vincular e atualizar status
+        consulta_id_ctx = None
+        try:
+            consulta_id_ctx = getattr(self.controller, '_preselect_consulta_id', None)
+            if consulta_id_ctx is not None:
+                try:
+                    consulta_id_ctx = int(consulta_id_ctx)
+                except Exception:
+                    pass
+        except Exception:
+            consulta_id_ctx = None
+
         dados = {
             "paciente_id": self.paciente_selecionado["id"],
             "usuario_id": usuario_id,
             "conteudo": conteudo,
             "data": datetime.now().strftime('%Y-%m-%d'),  # campo 'data' é DATE na tabela
             "titulo": titulo,
-            "consulta_id": None  # manter None se não houver consulta vinculada
+            "consulta_id": consulta_id_ctx if consulta_id_ctx else None  # manter None se não houver consulta vinculada
         }
         
         sucesso, resultado = self.prontuario_controller.criar_prontuario(dados)
         
         if sucesso:
-            messagebox.showinfo("Sucesso", "Prontuário criado com sucesso")
-            
+   
+            # Se houver consulta vinculada, marca como 'Atendido' na agenda
+            if consulta_id_ctx:
+                try:
+                    conn = self._obter_conexao_valida()
+                    agenda_ctrl = AgendaController(conn)
+                    ok, msg = agenda_ctrl.atualizar_status_consulta(int(consulta_id_ctx), 'Atendido')
+                    if not ok:
+                        try:
+                            print(f"[DEBUG][Prontuario] Falha ao atualizar status da consulta {consulta_id_ctx}: {msg}")
+                        except Exception:
+                            pass
+                    # Sinaliza para a agenda que há atualização pendente de UI
+                    try:
+                        setattr(self.controller, '_agenda_needs_refresh', True)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    try:
+                        print(f"[DEBUG][Prontuario] Erro ao atualizar status da consulta {consulta_id_ctx}: {e}")
+                    except Exception:
+                        pass
+                # Limpa o contexto para evitar reaproveitamento indevido
+                try:
+                    setattr(self.controller, '_preselect_consulta_id', None)
+                except Exception:
+                    pass
+
             # Recarrega o painel de prontuários
             self._carregar_prontuarios()
         else:
@@ -1517,10 +1728,12 @@ class ProntuarioModule(BaseModule):
             messagebox.showinfo("Aviso", "É necessário estar em modo de edição para inserir modelos")
             return
         
-        # Verifica se o usuário é um médico: aceita se nivel='medico' ou se houver medico_id mapeado
+        # Verificação de permissão para modelos:
+        # Aceita se: nivel='medico' OU houver medico_id mapeado OU houver usuario_id (id do usuário logado)
         nivel_usr = ((self.usuario_dict or {}).get('nivel') or '').strip().lower()
-        if not (nivel_usr == 'medico' or self.medico_id):
-            messagebox.showinfo("Aviso", "É necessário estar logado como médico para usar modelos")
+        usuario_id = (self.usuario_dict or {}).get('id')
+        if not (nivel_usr == 'medico' or self.medico_id or usuario_id):
+            messagebox.showinfo("Aviso", "É necessário estar logado para usar modelos")
             return
         if nivel_usr == 'medico' and not self.medico_id:
             try:
@@ -1609,8 +1822,6 @@ class ProntuarioModule(BaseModule):
         frame_botoes = tk.Frame(frame_principal, bg='#f0f2f5')
         frame_botoes.pack(fill=tk.X, pady=(0, 5))
         
-        # Removido: função de pré-visualização, não é mais necessária
-        
         # Função para inserir o modelo selecionado
         def inserir_modelo():
             selecao = listbox.curselection()
@@ -1646,7 +1857,37 @@ class ProntuarioModule(BaseModule):
                     self.editor_texto.insert(tk.END, "\n\n")
             except Exception:
                 pass
-            self.editor_texto.insert(tk.END, conteudo)
+            # Remove quaisquer linhas de diretiva de fonte do conteúdo antes de inserir
+            try:
+                linhas = conteudo.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+                linhas = [ln for ln in linhas if not (ln.strip().lower().startswith('<<font:') and ln.strip().endswith('>>'))]
+                # Remove cabeçalho (Paciente/Médico/Data) do INÍCIO do conteúdo do modelo, se existir
+                def _strip_initial_header(ls):
+                    i = 0
+                    seen = {'paciente': False, 'medico': False, 'data': False}
+                    while i < len(ls):
+                        s = (ls[i] or '').strip()
+                        if not s:
+                            i += 1
+                            continue
+                        low = s.lower()
+                        if low.startswith('paciente:') or low.startswith('paciente :'):
+                            seen['paciente'] = True; i += 1; continue
+                        if low.startswith('médico:') or low.startswith('medico:') or low.startswith('médico :') or low.startswith('medico :'):
+                            seen['medico'] = True; i += 1; continue
+                        if low.startswith('data:') or low.startswith('data :'):
+                            seen['data'] = True; i += 1; continue
+                        break
+                    if seen['paciente'] or seen['medico'] or seen['data']:
+                        while i < len(ls) and not (ls[i] or '').strip():
+                            i += 1
+                        return ls[i:]
+                    return ls
+                linhas = _strip_initial_header(linhas)
+                conteudo_limp = "\n".join(linhas)
+            except Exception:
+                conteudo_limp = conteudo
+            self.editor_texto.insert(tk.END, conteudo_limp)
             # Assinatura do médico duas linhas abaixo do modelo inserido
             try:
                 self._inserir_assinatura_medico()
@@ -1668,8 +1909,8 @@ class ProntuarioModule(BaseModule):
             fg="white",
             relief=tk.FLAT,
             cursor='hand2'
-        ).pack(side=tk.RIGHT, padx=5, pady=2)
-        
+        ).pack(side=tk.RIGHT, padx=5)
+
         tk.Button(
             frame_botoes,
             text="Cancelar",
@@ -1678,8 +1919,8 @@ class ProntuarioModule(BaseModule):
             fg="white",
             relief=tk.FLAT,
             cursor='hand2'
-        ).pack(side=tk.RIGHT, padx=5, pady=2)
-        
+        ).pack(side=tk.RIGHT, padx=5)
+
         # Removido botão 'Gerenciar Modelos' por solicitação
         
         # Centraliza o diálogo
@@ -1777,7 +2018,37 @@ class ProntuarioModule(BaseModule):
             except Exception:
                 pass
             if texto:
-                self.editor_texto.insert(tk.END, texto)
+                # Remove quaisquer linhas de diretiva de fonte antes de inserir a receita
+                try:
+                    linhas_r = texto.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+                    linhas_r = [ln for ln in linhas_r if not (ln.strip().lower().startswith('<<font:') and ln.strip().endswith('>>'))]
+                    # Remove cabeçalho (Paciente/Médico/Data) do INÍCIO do texto da receita, se existir
+                    def _strip_initial_header(ls):
+                        i = 0
+                        seen = {'paciente': False, 'medico': False, 'data': False}
+                        while i < len(ls):
+                            s = (ls[i] or '').strip()
+                            if not s:
+                                i += 1
+                                continue
+                            low = s.lower()
+                            if low.startswith('paciente:') or low.startswith('paciente :'):
+                                seen['paciente'] = True; i += 1; continue
+                            if low.startswith('médico:') or low.startswith('medico:') or low.startswith('médico :') or low.startswith('medico :'):
+                                seen['medico'] = True; i += 1; continue
+                            if low.startswith('data:') or low.startswith('data :'):
+                                seen['data'] = True; i += 1; continue
+                            break
+                        if seen['paciente'] or seen['medico'] or seen['data']:
+                            while i < len(ls) and not (ls[i] or '').strip():
+                                i += 1
+                            return ls[i:]
+                        return ls
+                    linhas_r = _strip_initial_header(linhas_r)
+                    texto_limp = "\n".join(linhas_r)
+                except Exception:
+                    texto_limp = texto
+                self.editor_texto.insert(tk.END, texto_limp)
             # Assinatura do médico abaixo
             try:
                 self._inserir_assinatura_medico()
@@ -1838,14 +2109,14 @@ class ProntuarioModule(BaseModule):
         except Exception:
             return None
         return None
-    
+
     def _gerenciar_modelos(self):
         """Abre uma janela para gerenciar modelos de texto."""
-        # Verifica se o usuário é um médico
-        if not self.medico_id:
-            messagebox.showwarning("Acesso Restrito", "Apenas médicos podem gerenciar modelos de texto.")
+        # Verifica permissão: permite quando houver medico_id OU usuario_id (compatível com modelos por usuário)
+        if not (self.medico_id or (self.usuario_dict or {}).get('id')):
+            messagebox.showwarning("Acesso Restrito", "É necessário estar logado para gerenciar modelos de texto.")
             return
-        
+
         # Cria uma janela de diálogo
         dialogo = tk.Toplevel(self.frame)
         dialogo.title("Gerenciar Modelos de Texto")
@@ -1853,11 +2124,11 @@ class ProntuarioModule(BaseModule):
         dialogo.transient(self.frame)
         dialogo.grab_set()
         dialogo.configure(bg='#f0f2f5')
-        
+
         # Frame principal
         frame_principal = tk.Frame(dialogo, bg='#f0f2f5', padx=15, pady=15)
         frame_principal.pack(fill=tk.BOTH, expand=True)
-        
+
         # Título
         tk.Label(
             frame_principal,
@@ -1866,7 +2137,7 @@ class ProntuarioModule(BaseModule):
             bg='#f0f2f5',
             fg='#333333'
         ).pack(fill=tk.X, pady=(0, 15))
-        
+
         # Descrição
         tk.Label(
             frame_principal,
@@ -1876,15 +2147,15 @@ class ProntuarioModule(BaseModule):
             fg='#555555',
             wraplength=750
         ).pack(fill=tk.X, pady=(0, 15))
-        
+
         # Frame para a lista e o conteúdo
         frame_conteudo = tk.Frame(frame_principal, bg='#f0f2f5')
         frame_conteudo.pack(fill=tk.BOTH, expand=True)
-        
+
         # Frame para a lista de modelos
         frame_lista = tk.Frame(frame_conteudo, bg='#f0f2f5', width=250)
         frame_lista.pack(side=tk.LEFT, fill=tk.BOTH, padx=(0, 10))
-        
+
         # Título da lista
         tk.Label(
             frame_lista,
@@ -1893,11 +2164,11 @@ class ProntuarioModule(BaseModule):
             bg='#f0f2f5',
             fg='#333333'
         ).pack(fill=tk.X, pady=(0, 5))
-        
+
         # Lista de modelos com scrollbar
         frame_listbox = tk.Frame(frame_lista, bg='#f0f2f5')
         frame_listbox.pack(fill=tk.BOTH, expand=True)
-        
+
         listbox = tk.Listbox(
             frame_listbox,
             font=('Arial', 11),
@@ -1907,24 +2178,24 @@ class ProntuarioModule(BaseModule):
             height=15
         )
         listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
+
         scrollbar = ttk.Scrollbar(
             frame_listbox,
             orient="vertical",
             command=listbox.yview
         )
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
+
         listbox.configure(yscrollcommand=scrollbar.set)
-        
+
         # Botões para a lista (sem criação de modelos nesta tela)
         frame_botoes_lista = tk.Frame(frame_lista, bg='#f0f2f5')
         frame_botoes_lista.pack(fill=tk.X, pady=(10, 0))
-        
+
         # Frame para o conteúdo do modelo
         frame_conteudo_direito = tk.Frame(frame_conteudo, bg='#f0f2f5')
         frame_conteudo_direito.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        
+
         # Mensagem inicial
         tk.Label(
             frame_conteudo_direito,
@@ -1933,68 +2204,68 @@ class ProntuarioModule(BaseModule):
             bg='#f0f2f5',
             fg='#555555'
         ).pack(pady=50)
-        
+
         # Armazena os IDs dos modelos
         modelo_ids = []
-        
+
         # Função para carregar os modelos
         def carregar_modelos():
             # Limpa a lista
             listbox.delete(0, tk.END)
             modelo_ids.clear()
-            
+
             # Carrega os modelos do médico com fallback de identificadores
             try:
                 modelos = self._listar_modelos_compat()
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao listar modelos de texto: {e}")
                 return
-            
+
             if not modelos:
                 listbox.insert(tk.END, "Nenhum modelo encontrado")
                 return
-            
+
             # Adiciona os modelos à lista
             for modelo in modelos:
                 listbox.insert(tk.END, modelo['nome'])
                 modelo_ids.append(modelo['id'])
-        
+
         # Função para exibir o modelo selecionado
         def exibir_modelo_selecionado(event):
             # Limpa o frame de conteúdo
             for widget in frame_conteudo_direito.winfo_children():
                 widget.destroy()
-            
+
             # Obtém o índice selecionado
             try:
                 indice = listbox.curselection()[0]
             except IndexError:
                 return
-            
+
             # Verifica se há modelos
             if not modelo_ids:
                 return
-            
+
             # Obtém o ID do modelo
             modelo_id = modelo_ids[indice]
-            
+
             # Busca o modelo
             modelo = self.prontuario_controller.buscar_modelo_texto_por_id(modelo_id)
-            
+
             if not modelo:
                 return
-            
+
             # Frame para o nome do modelo
             frame_nome = tk.Frame(frame_conteudo_direito, bg='#f0f2f5')
             frame_nome.pack(fill=tk.X, pady=(0, 10))
-            
+
             tk.Label(
                 frame_nome,
                 text="Nome:",
                 font=('Arial', 11),
                 bg='#f0f2f5'
             ).pack(side=tk.LEFT)
-            
+
             nome_var = tk.StringVar(value=modelo['nome'])
             nome_entry = ttk.Entry(
                 frame_nome,
@@ -2003,18 +2274,18 @@ class ProntuarioModule(BaseModule):
                 width=40
             )
             nome_entry.pack(side=tk.LEFT, padx=(5, 0))
-            
+
             # Frame para o conteúdo do modelo
             frame_texto = tk.Frame(frame_conteudo_direito, bg='#f0f2f5')
             frame_texto.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-            
+
             tk.Label(
                 frame_texto,
                 text="Conteúdo:",
                 font=('Arial', 11),
                 bg='#f0f2f5'
             ).pack(anchor="w")
-            
+
             # Área de texto para o conteúdo
             texto_modelo = scrolledtext.ScrolledText(
                 frame_texto,
@@ -2024,11 +2295,11 @@ class ProntuarioModule(BaseModule):
             )
             texto_modelo.pack(fill=tk.BOTH, expand=True)
             texto_modelo.insert(tk.END, modelo['conteudo'])
-            
+
             # Frame para os botões
             frame_botoes = tk.Frame(frame_conteudo_direito, bg='#f0f2f5')
             frame_botoes.pack(fill=tk.X)
-            
+
             # Botão para salvar alterações
             ttk.Button(
                 frame_botoes,
@@ -2036,33 +2307,33 @@ class ProntuarioModule(BaseModule):
                 command=lambda: salvar_alteracoes(modelo_id, nome_var.get(), texto_modelo.get("1.0", tk.END)),
                 style='Accent.TButton'
             ).pack(side=tk.RIGHT)
-        
+
         # Função para salvar alterações no modelo
         def salvar_alteracoes(modelo_id, nome, conteudo):
             # Valida os campos
             if not nome or not conteudo.strip():
                 messagebox.showwarning("Campos Obrigatórios", "Preencha todos os campos.")
                 return
-            
+
             # Atualiza o modelo
             sucesso = self.prontuario_controller.atualizar_modelo_texto(
                 modelo_id,
                 nome,
                 conteudo.strip()
             )
-            
+
             if sucesso:
                 messagebox.showinfo("Sucesso", "Modelo atualizado com sucesso!")
                 carregar_modelos()
             else:
                 messagebox.showerror("Erro", "Não foi possível atualizar o modelo.")
-        
+
         # Vincula a seleção de um modelo
         listbox.bind("<<ListboxSelect>>", exibir_modelo_selecionado)
-        
+
         # Carrega os modelos iniciais
         carregar_modelos()
-        
+
         # Centraliza o diálogo
         dialogo.update_idletasks()
         width = dialogo.winfo_width()
@@ -2070,13 +2341,13 @@ class ProntuarioModule(BaseModule):
         x = (dialogo.winfo_screenwidth() // 2) - (width // 2)
         y = (dialogo.winfo_screenheight() // 2) - (height // 2)
         dialogo.geometry(f"{width}x{height}+{x}+{y}")
-    
+
     def _novo_modelo_texto(self, frame_conteudo, listbox, modelo_ids):
         """Cria um novo modelo de texto."""
         # Limpa o frame de conteúdo
         for widget in frame_conteudo.winfo_children():
             widget.destroy()
-        
+
         # Título
         tk.Label(
             frame_conteudo,
@@ -2085,18 +2356,18 @@ class ProntuarioModule(BaseModule):
             bg='#f0f2f5',
             fg='#333333'
         ).pack(fill=tk.X, pady=(0, 10))
-        
+
         # Frame para o nome do modelo
         frame_nome = tk.Frame(frame_conteudo, bg='#f0f2f5')
         frame_nome.pack(fill=tk.X, pady=(0, 10))
-        
+
         tk.Label(
             frame_nome,
             text="Nome:",
             font=('Arial', 11),
             bg='#f0f2f5'
         ).pack(side=tk.LEFT)
-        
+
         nome_var = tk.StringVar()
         nome_entry = ttk.Entry(
             frame_nome,
@@ -2105,18 +2376,18 @@ class ProntuarioModule(BaseModule):
             width=40
         )
         nome_entry.pack(side=tk.LEFT, padx=(5, 0))
-        
+
         # Frame para o conteúdo
         frame_texto = tk.Frame(frame_conteudo, bg='#f0f2f5')
         frame_texto.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
+
         tk.Label(
             frame_texto,
             text="Conteúdo:",
             font=('Arial', 11),
             bg='#f0f2f5'
         ).pack(anchor="w")
-        
+
         # Área de texto para o conteúdo
         texto = scrolledtext.ScrolledText(
             frame_texto,
@@ -2125,20 +2396,20 @@ class ProntuarioModule(BaseModule):
             height=15
         )
         texto.pack(fill=tk.BOTH, expand=True)
-        
+
         # Frame para os botões
         frame_botoes = tk.Frame(frame_conteudo, bg='#f0f2f5')
         frame_botoes.pack(fill=tk.X, pady=(0, 5))
-        
+
         # Função para salvar o novo modelo
         def salvar_modelo():
             nome = nome_var.get().strip()
             conteudo = texto.get(1.0, tk.END).strip()
-            
+
             if not nome or not conteudo:
                 messagebox.showwarning("Campos Obrigatórios", "Preencha todos os campos.")
                 return
-            
+
             # Cria o novo modelo
             dados = {
                 "nome": nome,
@@ -2146,27 +2417,27 @@ class ProntuarioModule(BaseModule):
                 # modelos_texto agora usa usuario_id
                 "usuario_id": (self.usuario_dict or {}).get('id')
             }
-            
+
             sucesso, resultado = self.prontuario_controller.criar_modelo_texto(dados)
-            
+
             if sucesso:
                 messagebox.showinfo("Sucesso", "Modelo criado com sucesso!")
-                
+
                 # Recarrega a lista de modelos
                 listbox.delete(0, tk.END)
                 modelo_ids.clear()
-                
+
                 modelos = self.prontuario_controller.listar_modelos_texto((self.usuario_dict or {}).get('id'))
                 for modelo in modelos:
                     listbox.insert(tk.END, modelo['nome'])
                     modelo_ids.append(modelo['id'])
-                
+
                 # Limpa o formulário
                 nome_var.set("")
                 texto.delete(1.0, tk.END)
             else:
                 messagebox.showerror("Erro", f"Não foi possível criar o modelo: {resultado}")
-        
+
         # Botões de ação
         ttk.Button(
             frame_botoes,
@@ -2174,16 +2445,15 @@ class ProntuarioModule(BaseModule):
             command=salvar_modelo,
             style='Accent.TButton'
         ).pack(side=tk.RIGHT, padx=5)
-        
+
         ttk.Button(
             frame_botoes,
             text="Cancelar",
             command=lambda: frame_conteudo.winfo_children()[0].destroy()
         ).pack(side=tk.RIGHT, padx=5)
-        
+
         # Define o foco no campo de nome
         nome_entry.focus_set()
-
 
     def exibir(self):
         """Exibe o módulo sem adicionar elementos extras na tela."""

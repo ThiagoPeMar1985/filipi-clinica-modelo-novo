@@ -19,6 +19,7 @@ requests>=2.31.0
 pywin32>=306  # Necessário para impressão no Windows (win32print/win32api)
 python-dateutil>=2.8.0
 pytz>=2021.1
+python-docx>=0.8.11
 
 # Para desenvolvimento
 pylint>=2.12.0

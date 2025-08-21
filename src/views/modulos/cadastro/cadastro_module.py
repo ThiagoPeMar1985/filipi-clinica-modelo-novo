@@ -54,6 +54,7 @@ class CadastroModule(BaseModule):
             "usuarios": self.mostrar_usuarios,
             "medicos": self.mostrar_medicos,
             "pacientes": self.mostrar_pacientes,
+            "novo_cliente": self.novo_cliente,
             "modelos": self.mostrar_tela_modelo,
             "receitas": self.mostrar_tela_receitas,
             "exames_consultas": self.mostrar_tela_exames_consultas,
@@ -1375,7 +1376,7 @@ class CadastroModule(BaseModule):
         self.entries = {}
         for label, field, row, col, width in campos:  # Adicionado width nos parâmetros
             # Label
-            tk.Label(form_frame, text=label, font=('Arial', 10)).grid(row=row, column=col, sticky='e', padx=5, pady=5)
+            tk.Label(form_frame, text=label).grid(row=row, column=col, sticky='e', padx=5, pady=5)
             
             # Entry
             entry = tk.Entry(form_frame, font=('Arial', 10), width=width)
@@ -1897,6 +1898,21 @@ class CadastroModule(BaseModule):
             state=tk.DISABLED
         )
         self.btn_salvar.pack(side=tk.RIGHT, padx=5)
+        
+        # Botão Cancelar (aparece durante criação/edição)
+        self.btn_cancelar = tk.Button(
+            botoes_acao_frame,
+            text="Cancelar",
+            command=self._cancelar_edicao_receita,
+            bg="#f44336",  # Vermelho
+            fg="white",
+            bd=0,
+            padx=15,
+            pady=5,
+            state=tk.DISABLED
+        )
+        # Empilhar à direita, ficando ao lado do Salvar
+        self.btn_cancelar.pack(side=tk.RIGHT, padx=5)
      
         
         # Configura o bind da lista de receitas
@@ -1947,6 +1963,81 @@ class CadastroModule(BaseModule):
                 self.medico_cb['values'] = valores
                 # Não seleciona nenhum médico por padrão
                 self.medico_cb.set('Selecione um médico...')
+                
+            return valores
+                
+        except Exception as e:
+            print(f"Erro ao carregar médicos: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Erro", f"Erro ao carregar lista de médicos: {str(e)}")
+            return []
+
+    def _carregar_medicos_receitas(self):
+        """Carrega a lista de médicos no combobox de receitas."""
+        try:
+            
+            # Inicializa o dicionário de médicos
+            self.medicos_receita_dict = {}
+            
+            # Limpa o combobox
+            if hasattr(self, 'medico_cb'):
+                self.medico_cb.set('')  # Limpa a seleção atual
+                self.medico_cb['values'] = []
+            
+            # Obtém a lista de médicos do banco de dados
+            medicos = self.db.listar_medicos()
+            
+            if not medicos:
+                print("Nenhum médico encontrado no banco de dados")
+                messagebox.showwarning("Aviso", "Nenhum médico cadastrado.")
+                return []
+                    
+            # Preenche o dicionário e a lista de valores
+            valores = []
+       
+            for i, medico in enumerate(medicos, 1):
+                medico_id = medico.get('id')
+                medico_nome = medico.get('nome')
+                if medico_id and medico_nome:
+             
+                    self.medicos_receita_dict[medico_nome] = medico_id
+                    valores.append(medico_nome)
+            
+          
+            
+            # Atualiza o combobox sem selecionar nenhum item
+            if hasattr(self, 'medico_cb'):
+                self.medico_cb['values'] = valores
+                # Tenta auto-selecionar o médico do usuário logado
+                try:
+                    usuario_atual = getattr(self.controller, 'usuario', None)
+                    if not usuario_atual:
+                        auth = getattr(self.controller, 'auth_controller', None)
+                        if auth and hasattr(auth, 'obter_usuario_autenticado'):
+                            usuario_atual = auth.obter_usuario_autenticado()
+                    usuario_id = None
+                    if usuario_atual is not None:
+                        if isinstance(usuario_atual, dict):
+                            usuario_id = usuario_atual.get('id')
+                        else:
+                            usuario_id = getattr(usuario_atual, 'id', None)
+                    nome_medico_logado = None
+                    if usuario_id:
+                        for m in medicos:
+                            uid = m.get('usuario_id') if isinstance(m, dict) else getattr(m, 'usuario_id', None)
+                            if uid == usuario_id:
+                                nome_medico_logado = m.get('nome') if isinstance(m, dict) else getattr(m, 'nome', None)
+                                break
+                    if nome_medico_logado:
+                        self.medico_cb.set(nome_medico_logado)
+                        # Carrega receitas automaticamente para o médico selecionado
+                        self._carregar_receitas()
+                    else:
+                        self.medico_cb.set('Selecione um médico...')
+                except Exception:
+                    # Fallback para manter o comportamento atual
+                    self.medico_cb.set('Selecione um médico...')
                 
             return valores
                 
@@ -2025,6 +2116,7 @@ class CadastroModule(BaseModule):
         # Habilita os campos para edição
         self.entry_nome.config(state='normal')
         self.texto_receita.config(state='normal')
+
         
         # Limpa os campos
         self.nome_receita_var.set('')
@@ -2041,9 +2133,37 @@ class CadastroModule(BaseModule):
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
         self.btn_salvar.config(state=tk.NORMAL)
+        # Habilita Cancelar
+        if hasattr(self, 'btn_cancelar'):
+            self.btn_cancelar.config(state=tk.NORMAL)
         
         # Foca no campo de nome
         self.entry_nome.focus_set()
+        # Abrir Word e carregar conteúdo atual (sem diretiva de fonte) para edição externa (opcional)
+        try:
+            # Obtém o texto atual da receita (preferencialmente do objeto atual)
+            texto_atual = ''
+            if hasattr(self, 'receita_atual') and self.receita_atual and self.receita_atual.get('texto') is not None:
+                texto_atual = self.receita_atual.get('texto', '')
+            else:
+                texto_atual = self.texto_receita.get('1.0', 'end-1c')
+            # Remove diretiva de fonte da primeira linha, se existir
+            try:
+                linhas_doc = texto_atual.splitlines()
+                if linhas_doc and linhas_doc[0].strip().lower().startswith('<<font:') and linhas_doc[0].strip().endswith('>>'):
+                    texto_atual = "\n".join(linhas_doc[1:])
+            except Exception:
+                pass
+            import win32com.client as win32  # type: ignore
+            word_app = getattr(self, '_word_app_receita', None) or win32.gencache.EnsureDispatch('Word.Application')
+            word_app.Visible = True
+            self._word_app_receita = word_app
+            self._word_doc_receita = word_app.Documents.Add()
+            # Preenche o documento com o texto atual (converter \n -> \r)
+            self._word_doc_receita.Range(0, 0).Text = (texto_atual or '').replace('\n', '\r')
+        except Exception:
+            # Se Word/pywin32 indisponível, segue apenas com editor interno
+            pass
 
     def _editar_receita(self):
         """Prepara a interface para editar a receita selecionada."""
@@ -2086,9 +2206,37 @@ class CadastroModule(BaseModule):
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
         self.btn_salvar.config(state=tk.NORMAL)
+        # Habilita Cancelar
+        if hasattr(self, 'btn_cancelar'):
+            self.btn_cancelar.config(state=tk.NORMAL)
         
         # Foca no campo de nome
         self.entry_nome.focus_set()
+        # Abrir Word e carregar conteúdo atual (sem diretiva de fonte) para edição externa (opcional)
+        try:
+            # Obtém o texto atual da receita (preferencialmente do objeto atual)
+            texto_atual = ''
+            if hasattr(self, 'receita_atual') and self.receita_atual and self.receita_atual.get('texto') is not None:
+                texto_atual = self.receita_atual.get('texto', '')
+            else:
+                texto_atual = self.texto_receita.get('1.0', 'end-1c')
+            # Remove diretiva de fonte da primeira linha, se existir
+            try:
+                linhas_doc = texto_atual.splitlines()
+                if linhas_doc and linhas_doc[0].strip().lower().startswith('<<font:') and linhas_doc[0].strip().endswith('>>'):
+                    texto_atual = "\n".join(linhas_doc[1:])
+            except Exception:
+                pass
+            import win32com.client as win32  # type: ignore
+            word_app = getattr(self, '_word_app_receita', None) or win32.gencache.EnsureDispatch('Word.Application')
+            word_app.Visible = True
+            self._word_app_receita = word_app
+            self._word_doc_receita = word_app.Documents.Add()
+            # Preenche o documento com o texto atual (converter \n -> \r)
+            self._word_doc_receita.Range(0, 0).Text = (texto_atual or '').replace('\n', '\r')
+        except Exception:
+            # Se Word/pywin32 indisponível, segue apenas com editor interno
+            pass
 
     def _salvar_receita(self):
         """Salva uma receita no banco de dados."""
@@ -2098,7 +2246,17 @@ class CadastroModule(BaseModule):
             # Obtém os dados do formulário
             medico_nome = self.medico_cb.get()
             nome = self.nome_receita_var.get().strip()
-            texto = self.texto_receita.get("1.0", tk.END).strip()
+            # Prioriza ler o conteúdo do documento do Word, se estiver aberto
+            texto = ''
+            try:
+                if getattr(self, '_word_doc_receita', None) is not None:
+                    raw = self._word_doc_receita.Content.Text
+                    texto = (raw or '').replace('\r', '\n').rstrip('\n')
+            except Exception:
+                texto = ''
+            if not texto:
+                texto = self.texto_receita.get("1.0", tk.END).strip()
+            
             # Garante diretiva de fonte 8 na primeira linha
             try:
                 linhas = texto.splitlines()
@@ -2178,6 +2336,22 @@ class CadastroModule(BaseModule):
             traceback.print_exc()
             messagebox.showerror("Erro", f"Erro ao salvar receita: {str(e)}")
     
+    def _cancelar_edicao_receita(self):
+        """Cancela o modo de criação/edição atual e restaura o estado padrão da tela de receitas."""
+        try:
+            # Resetar indicadores de modo
+            self.modo_edicao = None
+            self.receita_atual = None
+            # Restaurar campos e botões
+            self._limpar_campos()
+            # Limpa referência ao documento do Word (receitas)
+            try:
+                self._word_doc_receita = None
+            except Exception:
+                pass
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível cancelar a edição: {str(e)}")
+    
     def _excluir_receita(self):
         """Exclui a receita selecionada."""
         selecionado = self.lista_receitas.selection()
@@ -2215,6 +2389,13 @@ class CadastroModule(BaseModule):
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
         self.btn_salvar.config(state=tk.DISABLED)
+        if hasattr(self, 'btn_cancelar'):
+            self.btn_cancelar.config(state=tk.DISABLED)
+        # Limpa referência ao documento do Word (receitas)
+        try:
+            self._word_doc_receita = None
+        except Exception:
+            pass
         
         # Remove a seleção da lista
         for item in self.lista_receitas.selection():
@@ -2334,6 +2515,34 @@ class CadastroModule(BaseModule):
             # Empacota o frame para preencher o espaço disponível
             exames_consultas_module.frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
             
+            # Auto-seleciona o médico do usuário logado no combobox (se possível)
+            try:
+                usuario_atual = getattr(self.controller, 'usuario', None)
+                if not usuario_atual:
+                    auth = getattr(self.controller, 'auth_controller', None)
+                    if auth and hasattr(auth, 'obter_usuario_autenticado'):
+                        usuario_atual = auth.obter_usuario_autenticado()
+                usuario_id = None
+                if usuario_atual is not None:
+                    if isinstance(usuario_atual, dict):
+                        usuario_id = usuario_atual.get('id')
+                    else:
+                        usuario_id = getattr(usuario_atual, 'id', None)
+                if usuario_id and self.db:
+                    medicos = self.db.listar_medicos() or []
+                    nome_medico_logado = None
+                    for m in medicos:
+                        if m.get('usuario_id') == usuario_id:
+                            nome_medico_logado = m.get('nome')
+                            break
+                    if nome_medico_logado and hasattr(exames_consultas_module, 'medico_cb'):
+                        exames_consultas_module.medico_cb.set(nome_medico_logado)
+                        # Dispara o carregamento de exames para o médico selecionado
+                        if hasattr(exames_consultas_module, '_carregar_exames'):
+                            exames_consultas_module._carregar_exames()
+            except Exception:
+                pass
+             
         except Exception as e:
             messagebox.showerror("Erro", f"Não foi possível carregar a tela de exames e consultas: {str(e)}")
             print(f"Erro ao carregar exames e consultas: {str(e)}")
@@ -2366,10 +2575,34 @@ class CadastroModule(BaseModule):
         self.limpar_conteudo()
         
         try:
-            # Cria uma instância do módulo de horários
+            # Determina o médico do usuário logado (se houver) para auto-seleção
+            medico_id_pref = None
+            try:
+                usuario_atual = getattr(self.controller, 'usuario', None)
+                if not usuario_atual:
+                    auth = getattr(self.controller, 'auth_controller', None)
+                    if auth and hasattr(auth, 'obter_usuario_autenticado'):
+                        usuario_atual = auth.obter_usuario_autenticado()
+                usuario_id = None
+                if usuario_atual is not None:
+                    if isinstance(usuario_atual, dict):
+                        usuario_id = usuario_atual.get('id')
+                    else:
+                        usuario_id = getattr(usuario_atual, 'id', None)
+                if usuario_id and self.db:
+                    medicos = self.db.listar_medicos() or []
+                    for m in medicos:
+                        if m.get('usuario_id') == usuario_id:
+                            medico_id_pref = m.get('id')
+                            break
+            except Exception:
+                pass
+            
+            # Cria uma instância do módulo de horários já com o médico preferido
             horario_module = HorarioDisponivelModule(
                 parent=self.conteudo_frame,
-                db_connection=self.db.db if hasattr(self.db, 'db') else None
+                db_connection=self.db.db if hasattr(self.db, 'db') else None,
+                medico_id=medico_id_pref
             )
             
             # Empacota o frame do módulo para preencher o espaço disponível

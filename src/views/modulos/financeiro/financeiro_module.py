@@ -1366,13 +1366,54 @@ class FinanceiroModule:
         dlg.configure(bg=bg_base)
         dlg.transient(self.parent)
         dlg.grab_set()
-        self._center_window(dlg, 820, 740)
+        self._center_window(dlg, 820, 650)
 
         title = tk.Label(dlg, text="Comparação de Fechamento", font=("Arial", 12, 'bold'), bg=bg_base, fg=CORES["texto"])
         title.pack(padx=24, pady=(20, 8), anchor='w')
 
-        container = tk.Frame(dlg, bg=bg_base)
-        container.pack(fill='both', expand=True, padx=24, pady=(0, 10))
+        # Container com rolagem vertical para comportar conteúdo maior que a altura
+        content_wrap = tk.Frame(dlg, bg=bg_base)
+        content_wrap.pack(fill='both', expand=True, padx=24, pady=(0, 10))
+
+        canvas = tk.Canvas(content_wrap, bg=bg_base, highlightthickness=0)
+        vsb = tk.Scrollbar(content_wrap, orient='vertical', command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side='right', fill='y')
+        canvas.pack(side='left', fill='both', expand=True)
+
+        scroll_frame = tk.Frame(canvas, bg=bg_base)
+        canvas_window = canvas.create_window((0, 0), window=scroll_frame, anchor='nw')
+
+        def _on_frame_configure(event=None):
+            # Ajusta a região rolável conforme o tamanho do conteúdo
+            canvas.configure(scrollregion=canvas.bbox('all'))
+            # Ajusta largura do frame ao canvas, para colunas expandirem corretamente
+            try:
+                canvas.itemconfig(canvas_window, width=canvas.winfo_width())
+            except Exception:
+                pass
+
+        def _on_canvas_configure(event=None):
+            # Mantém a largura do frame sincronizada ao redimensionar
+            try:
+                canvas.itemconfig(canvas_window, width=canvas.winfo_width())
+            except Exception:
+                pass
+
+        scroll_frame.bind('<Configure>', _on_frame_configure)
+        canvas.bind('<Configure>', _on_canvas_configure)
+
+        # Suporte à rolagem com roda do mouse (Windows)
+        def _on_mouse_wheel(event):
+            try:
+                canvas.yview_scroll(int(-1*(event.delta/120)), 'units')
+            except Exception:
+                pass
+        canvas.bind_all('<MouseWheel>', _on_mouse_wheel)
+
+        # Dentro do frame rolável ficam as duas colunas
+        container = tk.Frame(scroll_frame, bg=bg_base)
+        container.pack(fill='both', expand=True)
 
         left = tk.Frame(container, bg=bg_base)
         right = tk.Frame(container, bg=bg_base)
@@ -1503,22 +1544,37 @@ class FinanceiroModule:
             except Exception as e:
                 messagebox.showerror("Observação", f"Falha ao salvar observação: {e}")
 
-        # Ordem de empacotamento para que o Salvar fique mais à direita
-        btn_style = {
-            'font': ('Arial', 10, 'bold'),
-            'bg': '#4a6fa5',
-            'fg': 'white',
-            'bd': 0,
-            'padx': 20,
-            'pady': 8,
-            'relief': 'flat',
-            'cursor': 'hand2',
-            'width': 15,
-        }
-        btn_close = tk.Button(btns, text="Fechar", command=close_dlg, **btn_style)
+  
+        btn_close = tk.Button(
+            btns,
+            text="Fechar",
+            command=close_dlg,
+            font=('Arial', 10, 'bold'),
+            bg=CORES.get('primaria', '#4a6fa5'),
+            fg=CORES.get('texto_claro', 'white'),
+            bd=0,
+            padx=20,
+            pady=8,
+            relief='flat',
+            cursor='hand2',
+            width=15,
+        )
         btn_close.pack(side='right', padx=5)
 
-        btn_save = tk.Button(btns, text="Salvar Observação", command=salvar_obs, **btn_style)
+        btn_save = tk.Button(
+            btns,
+            text="Salvar Observação",
+            command=salvar_obs,
+            font=('Arial', 10, 'bold'),
+            bg=CORES.get('destaque', '#4caf50'),
+            fg=CORES.get('texto_claro', 'white'),
+            bd=0,
+            padx=20,
+            pady=8,
+            relief='flat',
+            cursor='hand2',
+            width=15,
+        )
         btn_save.pack(side='right', padx=5)
 
     def _show_conferencia_dialog(self):

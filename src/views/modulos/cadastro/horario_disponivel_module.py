@@ -32,20 +32,20 @@ class HorarioDisponivelModule:
         tk.Label(
             title_frame,
             text="Lista de Horários Médicos",
-            font=('Arial', 16, 'bold'),
+            font=FONTES['titulo'],
             bg='#f0f2f5',
             fg='#000000'
         ).pack(side='left')
         
         # Seletor de Médico
-        tk.Label(main_frame, text="Médico:", bg=CORES['fundo'], font=FONTES['normal']).pack(anchor='w')
-        self.combo_medico = ttk.Combobox(main_frame, state="readonly", font=FONTES['normal'])
+        tk.Label(main_frame, text="Médico:", bg=CORES['fundo'], font=FONTES['pequena']).pack(anchor='w')
+        self.combo_medico = ttk.Combobox(main_frame, state="readonly", font=FONTES['pequena'])
         self.combo_medico.pack(fill=tk.X, pady=5)
         self.combo_medico.bind('<<ComboboxSelected>>', self.carregar_horarios)
         
         # Frame para os dias da semana
         dias_frame = tk.LabelFrame(main_frame, text="Dias da Semana", bg=CORES['fundo'], fg=CORES['texto'],
-                                 font=FONTES['normal'], padx=10, pady=10)
+                                 font=FONTES['pequena'], padx=10, pady=10)
         dias_frame.pack(fill=tk.X, pady=10)
         
         self.dias_semana = [
@@ -64,29 +64,29 @@ class HorarioDisponivelModule:
             cb = tk.Checkbutton(dias_frame, text=dia, variable=var, bg=CORES['fundo'],
                               fg=CORES['texto'], selectcolor='white',
                               activebackground=CORES['fundo'], activeforeground=CORES['texto'],
-                              font=FONTES['normal'])
+                              font=FONTES['pequena'])
             cb.grid(row=i//4, column=i%4, sticky='w', padx=5, pady=2)
             self.var_dias.append((var, dia))
         
         # Horários
         tk.Label(main_frame, text="Horário de Atendimento:", bg=CORES['fundo'],
-                font=FONTES['normal']).pack(anchor='w', pady=(10,0))
+                font=FONTES['pequena']).pack(anchor='w', pady=(10,0))
         
         horario_frame = tk.Frame(main_frame, bg=CORES['fundo'])
         horario_frame.pack(fill=tk.X, pady=5)
         
         tk.Label(horario_frame, text="Das", bg=CORES['fundo'],
-                font=FONTES['normal']).pack(side=tk.LEFT) 
+                font=FONTES['pequena']).pack(side=tk.LEFT) 
         
         self.hora_inicio = ttk.Combobox(horario_frame, values=self.gerar_horarios(), 
-                                      width=8, font=FONTES['normal'])
+                                      width=8, font=FONTES['pequena'])
         self.hora_inicio.pack(side=tk.LEFT, padx=5)
         
         tk.Label(horario_frame, text="às", bg=CORES['fundo'],
-                font=FONTES['normal']).pack(side=tk.LEFT)
+                font=FONTES['pequena']).pack(side=tk.LEFT)
         
         self.hora_fim = ttk.Combobox(horario_frame, values=self.gerar_horarios(), 
-                                   width=8, font=FONTES['normal'])
+                                   width=8, font=FONTES['pequena'])
         self.hora_fim.pack(side=tk.LEFT, padx=5)
         
         # Botões
@@ -100,7 +100,7 @@ class HorarioDisponivelModule:
             command=self.adicionar_horario,
             bg=CORES['destaque'],
             fg='white',
-            font=FONTES['normal'],
+            font=FONTES['pequena'],
             relief='flat',
             padx=15,
             pady=5,
@@ -117,7 +117,7 @@ class HorarioDisponivelModule:
             command=self.remover_horario,
             bg=CORES['alerta'],
             fg='white',
-            font=FONTES['normal'],
+            font=FONTES['pequena'],
             relief='flat',
             padx=15,
             pady=5,
@@ -133,7 +133,7 @@ class HorarioDisponivelModule:
                        background=CORES['fundo_conteudo'],
                        foreground=CORES['texto'],
                        fieldbackground=CORES['fundo_conteudo'],
-                       font=FONTES['normal'])
+                       font=FONTES['pequena'])
         
         self.tree = ttk.Treeview(main_frame, columns=('dia', 'horario'), show='headings')
         self.tree.heading('dia', text='Dia da Semana')

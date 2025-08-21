@@ -41,6 +41,8 @@ class ModeloProntuarioModule(BaseModule):
         self.medico_selecionado = None  # id do médico
         self.medico_selecionado_usuario_id = None  # usuario_id do médico
         self.modo_edicao = False
+        # Referência ao documento do Word para edição externa (opcional)
+        self._word_doc_modelo = None
         
         # Dicionário para armazenar a lista de médicos
         self.medicos = {}
@@ -198,8 +200,6 @@ class ModeloProntuarioModule(BaseModule):
         # Campo para exibir o nome do modelo
         self.nome_modelo = ttk.Entry(
             self.nome_frame,
-            background='white',
-            foreground='black',
             width=50,
         )
         self.nome_modelo.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -258,21 +258,29 @@ class ModeloProntuarioModule(BaseModule):
             pady=5,
             state=tk.DISABLED
         )
+        # Botão Cancelar
+        self.btn_cancelar = tk.Button(
+            self.botoes_acao_frame,
+            text="Cancelar",
+            command=self._cancelar_edicao,
+            bg="#f44336",  # Vermelho
+            fg="white",
+            bd=0,
+            padx=15,
+            pady=5,
+            state=tk.DISABLED
+        )
         self.btn_salvar.pack(side=tk.RIGHT, padx=5)
+        self.btn_cancelar.pack(side=tk.RIGHT, padx=5)
 
 
     def _carregar_medicos(self):
         """Carrega a lista de médicos no combobox."""
         try:
-            # Prioriza usuários que possuem modelos (fonte: ProntuarioController)
-            usuarios_com_modelos = self.prontuario_controller.listar_medicos_com_modelos() or []
-            medicos = usuarios_com_modelos
-            
-            # Se vier vazio, cai no cadastro de médicos apenas para exibir nomes (sem usuario_id)
+            # Carrega TODOS os médicos do cadastro, independentemente de terem modelos
+            medicos = self.cadastro_controller.listar_medicos() or []
             if not medicos:
-                medicos = self.cadastro_controller.listar_medicos() or []
-                if not medicos:
-                    return
+                return
             
             # Limpa o dicionário de médicos/usuários
             self.medicos = {}
@@ -281,25 +289,54 @@ class ModeloProntuarioModule(BaseModule):
             opcoes = []
             for m in medicos:
                 nome = m.get('nome', 'Sem nome')
-                crm = m.get('crm', '')  # pode não existir quando vier de usuarios
-                texto = f"{nome} - {crm}" if crm else nome
-                # Quando vem de listar_medicos_com_modelos (ProntuarioController), o campo é usuario_id
-                uid = m.get('usuario_id') or m.get('id') if 'usuario_id' in m else None
-                # Mantém medico_id se existir
+                texto = nome
+                # Mapear corretamente IDs: medico_id e usuario_id (sem fallback incorreto)
                 self.medicos[texto] = {
-                    'medico_id': m.get('id') if 'crm' in m else None,
-                    'usuario_id': uid
+                    'medico_id': m.get('id'),
+                    'usuario_id': m.get('usuario_id')
                 }
                 opcoes.append(texto)
             
             # Atualiza o combobox
             if hasattr(self, 'medico_cb') and self.medico_cb.winfo_exists():
                 self.medico_cb['values'] = opcoes
-                # Se houver apenas um, seleciona automaticamente
-                if len(opcoes) == 1:
-                    self.medico_cb.current(0)
-                    self._on_medico_selecionado()
-                
+                # Auto-seleciona o médico do usuário logado, quando existir mapeamento usuario_id
+                try:
+                    usuario_atual = getattr(self.controller, 'usuario', None)
+                    if not usuario_atual:
+                        auth = getattr(self.controller, 'auth_controller', None)
+                        if auth and hasattr(auth, 'obter_usuario_autenticado'):
+                            usuario_atual = auth.obter_usuario_autenticado()
+                    usuario_id = None
+                    if usuario_atual is not None:
+                        if isinstance(usuario_atual, dict):
+                            usuario_id = usuario_atual.get('id')
+                        else:
+                            usuario_id = getattr(usuario_atual, 'id', None)
+                    if usuario_id:
+                        # Procura opção cujo usuario_id combine
+                        for nome_opt, ids in self.medicos.items():
+                            if ids.get('usuario_id') == usuario_id:
+                                self.medico_cb.set(nome_opt)
+                                # dispara carregamento de modelos para o médico
+                                self._on_medico_selecionado()
+                                break
+                        else:
+                            # Se não achou por usuário, cai no comportamento anterior
+                            if len(opcoes) == 1:
+                                self.medico_cb.current(0)
+                                self._on_medico_selecionado()
+                    else:
+                        # Sem usuário, mantém fallback existente
+                        if len(opcoes) == 1:
+                            self.medico_cb.current(0)
+                            self._on_medico_selecionado()
+                except Exception:
+                    # Fallback: mantém comportamento anterior
+                    if len(opcoes) == 1:
+                        self.medico_cb.current(0)
+                        self._on_medico_selecionado()
+            
         except Exception as e:
             import traceback
             traceback.print_exc()  # Imprime o stack trace completo
@@ -390,6 +427,7 @@ class ModeloProntuarioModule(BaseModule):
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
         self.btn_salvar.config(state=tk.NORMAL)
+        self.btn_cancelar.config(state=tk.NORMAL)
         
         # Define o modo de edição e armazena o nome do modelo
         self.modo_edicao = 'criar'
@@ -397,6 +435,16 @@ class ModeloProntuarioModule(BaseModule):
         
         # Define o foco no campo de texto
         self.texto_modelo.focus_set()
+        # Abrir Word com documento em branco para edição externa (opcional)
+        try:
+            import win32com.client as win32  # type: ignore
+            word_app = getattr(self, '_word_app_modelo', None) or win32.gencache.EnsureDispatch('Word.Application')
+            word_app.Visible = True
+            self._word_app_modelo = word_app
+            self._word_doc_modelo = word_app.Documents.Add()
+        except Exception:
+            # Se Word/pywin32 indisponível, segue apenas com editor interno
+            pass
 
     def _editar_modelo(self):
         """Prepara a interface para editar o modelo de prontuário selecionado."""
@@ -451,6 +499,7 @@ class ModeloProntuarioModule(BaseModule):
             self.btn_editar.config(state=tk.DISABLED)
             self.btn_excluir.config(state=tk.DISABLED)
             self.btn_salvar.config(state=tk.NORMAL)
+            self.btn_cancelar.config(state=tk.NORMAL)
             
             # Define o modo de edição
             self.modo_edicao = 'editar'
@@ -550,19 +599,55 @@ class ModeloProntuarioModule(BaseModule):
             self.btn_editar.config(state=tk.NORMAL)
             self.btn_excluir.config(state=tk.NORMAL)
             self.btn_salvar.config(state=tk.DISABLED)
+            self.btn_cancelar.config(state=tk.DISABLED)
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar o modelo: {str(e)}")
 
     def _salvar_modelo(self):
         """Salva o modelo de prontuário, seja criando um novo ou atualizando um existente."""
+        # Garante que a janela da aplicação esteja em foco (pode estar atrás do Word)
+        try:
+            topo = self.frame.winfo_toplevel()
+            topo.lift()
+            topo.focus_force()
+        except Exception:
+            pass
+        # Garante que está em modo de edição válido
+        if self.modo_edicao not in ('criar', 'editar'):
+            messagebox.showwarning("Aviso", "Inicie uma edição clicando em Novo ou Editar antes de salvar.")
+            return
+        # Valida nome do modelo
+        nome_atual = (self.nome_modelo.get() or '').strip()
+        if not nome_atual:
+            messagebox.showwarning("Aviso", "Informe o nome do modelo antes de salvar.")
+            try:
+                self.nome_modelo.focus_set()
+            except Exception:
+                pass
+            return
         # Verifica se há um usuário (profissional) vinculado selecionado
         if not self.medico_selecionado_usuario_id:
             messagebox.showwarning("Aviso", "Selecione um profissional com usuário vinculado antes de salvar o modelo.")
+            try:
+                if hasattr(self, 'medico_cb') and self.medico_cb.winfo_exists():
+                    self.medico_cb.focus_set()
+            except Exception:
+                pass
             return
         
-        # Obtém e garante diretiva de fonte 8 no conteúdo
-        conteudo = self.texto_modelo.get("1.0", tk.END).strip()
+        # Obtém conteúdo priorizando o documento do Word aberto (se houver)
+        conteudo = ''
+        try:
+            if getattr(self, '_word_doc_modelo', None) is not None:
+                raw = self._word_doc_modelo.Content.Text
+                # Remove marcador de fim de documento do Word (\x07) e normaliza quebras
+                conteudo = (raw or '').replace('\x07', '').replace('\r', '\n').rstrip('\n')
+        except Exception:
+            conteudo = ''
+        if not conteudo:
+            conteudo = self.texto_modelo.get("1.0", tk.END).strip()
+        # Garante diretiva de fonte 8 na primeira linha
         try:
             linhas = conteudo.splitlines()
             nova_dir = '<<font:8>>'
@@ -580,6 +665,12 @@ class ModeloProntuarioModule(BaseModule):
         
         # Verifica se o conteúdo não está vazio
         if not conteudo:
+            try:
+                topo = self.frame.winfo_toplevel()
+                topo.lift()
+                topo.focus_force()
+            except Exception:
+                pass
             messagebox.showwarning("Aviso", "O conteúdo do modelo não pode estar vazio.")
             return
         
@@ -629,6 +720,8 @@ class ModeloProntuarioModule(BaseModule):
             
             # Sai do modo de edição
             self.modo_edicao = False
+            # Desabilita Cancelar após salvar
+            self.btn_cancelar.config(state=tk.DISABLED)
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao salvar o modelo: {str(e)}")
@@ -653,6 +746,7 @@ class ModeloProntuarioModule(BaseModule):
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
         self.btn_salvar.config(state=tk.DISABLED)
+        self.btn_cancelar.config(state=tk.DISABLED)
             
         # Limpa a seleção na lista
         self.lista_modelos.selection_remove(self.lista_modelos.selection())
@@ -681,4 +775,6 @@ class ModeloProntuarioModule(BaseModule):
         self.texto_modelo.config(state=tk.NORMAL)
         self.texto_modelo.delete(1.0, tk.END)
         self.texto_modelo.config(state=tk.DISABLED)
+        # Limpa referência ao documento do Word
+        self._word_doc_modelo = None
         self.modelo_atual = None

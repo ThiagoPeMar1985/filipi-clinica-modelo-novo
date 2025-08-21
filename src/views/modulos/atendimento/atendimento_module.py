@@ -25,21 +25,10 @@ class AtendimentoModule(BaseModule):
         self.conteudo_frame = tk.Frame(self.frame, bg='#f0f2f5')
         self.conteudo_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Mapeamento de ações para as funções correspondentes
-        # As chaves DEVEM corresponder exatamente ao que é passado pelo menu lateral
-        # Suporta rótulos antigos ("prontuario") e novos ("Consultas" e "Área Médica")
         self.acoes = {
             "inicio": self.mostrar_inicio,
             "agenda": self.mostrar_agenda,
-            "prontuario": self.mostrar_prontuario,
-            # aliases para o novo nome do botão/rota "Consultas"
             "consultas": self.mostrar_prontuario,
-            "consulta": self.mostrar_prontuario,
-            # aliases para o novo nome do botão/rota
-            "area_medica": self.mostrar_prontuario,
-            "área_médica": self.mostrar_prontuario,
-            "área médica": self.mostrar_prontuario,
-            "area medica": self.mostrar_prontuario,
             "exames": self.mostrar_exames,
         }
         
@@ -114,6 +103,19 @@ class AtendimentoModule(BaseModule):
         # Cria e exibe o módulo de prontuários (garante conexão DB para resolver CRM)
         prontuario_module = ProntuarioModule(self.conteudo_frame, self.controller, db_connection=self.db_connection)
         prontuario_module.exibir()
+        # Se houver paciente pré-selecionado definido no controller principal, aplica
+        try:
+            pre_id = getattr(self.controller, '_preselect_paciente_id', None)
+            if pre_id:
+                if hasattr(prontuario_module, 'preselect_paciente_por_id'):
+                    prontuario_module.preselect_paciente_por_id(pre_id)
+                # Limpa a flag para evitar reaplicações
+                try:
+                    setattr(self.controller, '_preselect_paciente_id', None)
+                except Exception:
+                    pass
+        except Exception:
+            pass
     
     def mostrar_exames(self):
         """Mostra a tela de exames"""
@@ -126,6 +128,17 @@ class AtendimentoModule(BaseModule):
         exames_module = ExamesProntuarioModule(self.conteudo_frame, self.controller, db_connection=self.db_connection)
         frame = exames_module.get_frame()
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Se houver paciente pré-selecionado definido no controller principal, aplica
+        try:
+            pre_id = getattr(self.controller, '_preselect_paciente_id', None)
+            if pre_id and hasattr(exames_module, 'preselect_paciente_por_id'):
+                exames_module.preselect_paciente_por_id(pre_id)
+                try:
+                    setattr(self.controller, '_preselect_paciente_id', None)
+                except Exception:
+                    pass
+        except Exception:
+            pass
     
     def limpar_conteudo(self):
         """Limpa o conteúdo do frame"""
@@ -134,10 +147,15 @@ class AtendimentoModule(BaseModule):
     
     def executar_acao(self, acao):
         """
-        Executa uma ação específica no módulo
-        
+        Executa uma ação específica no módulo.
         Args:
-            acao (str): Nome da ação a ser executada (deve corresponder a uma chave em self.acoes)
+            acao (str): Nome da ação (deve corresponder a uma chave em self.acoes)
         """
-        if acao in self.acoes:
-            self.acoes[acao]()
+        fn = self.acoes.get(acao)
+        if fn:
+            fn()
+        else:
+            try:
+                messagebox.showwarning("Ação não encontrada", f"Ação '{acao}' não reconhecida.")
+            except Exception:
+                pass

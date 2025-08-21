@@ -236,7 +236,7 @@ class ExamesConsultasModule:
         
         # Coloca o foco no campo de nome
         self.entry_nome.focus()
-        
+
     def _novo_exame(self):
         """Prepara a interface para cadastrar um novo exame."""
         self._limpar_campos()
@@ -246,11 +246,12 @@ class ExamesConsultasModule:
         self.entry_valor.config(state="normal")
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
-        self.btn_salvar.config(state=tk.NORMAL)
+        # Volta o botão para Salvar e reatribui o comando
+        self.btn_salvar.config(text="Salvar", command=self._salvar_exame, state=tk.NORMAL)
         self.btn_cancelar.config(state=tk.NORMAL)  # Habilita o botão cancelar
         self.entry_nome.focus()
         self.exame_atual = None  # Garante que é um novo exame
-        
+    
     def _cancelar_edicao(self):
         """Cancela a edição e volta ao estado anterior."""
         if self.exame_atual:
@@ -276,7 +277,7 @@ class ExamesConsultasModule:
         else:
             # Se estava criando um novo, limpa os campos
             self._limpar_campos()
-            
+        
     def _salvar_exame(self):
         """Salva um exame/consulta."""
         try:
@@ -348,7 +349,7 @@ class ExamesConsultasModule:
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao salvar exame/consulta: {str(e)}")
-    
+
     def _excluir_exame(self):
         """Exclui o exame/consulta selecionado."""
         if not self.exame_atual:
@@ -364,7 +365,7 @@ class ExamesConsultasModule:
                     messagebox.showerror("Erro", "Não foi possível excluir o exame/consulta.")
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao excluir exame/consulta: {str(e)}")
-    
+
     def _selecionar_exame(self, event):
         """Preenche os campos quando um exame é selecionado na lista."""
         # Verifica se há algum item selecionado
@@ -401,7 +402,7 @@ class ExamesConsultasModule:
         self.btn_excluir.config(state=tk.NORMAL)
         self.btn_salvar.config(state=tk.DISABLED)
         self.btn_cancelar.config(state=tk.DISABLED)
-        
+
     def _limpar_campos(self):
         """Limpa todos os campos do formulário."""
         self.exame_atual = None
@@ -412,7 +413,8 @@ class ExamesConsultasModule:
         # Configura o estado dos botões
         self.btn_editar.config(state=tk.DISABLED)
         self.btn_excluir.config(state=tk.DISABLED)
-        self.btn_salvar.config(state=tk.DISABLED)
+        # Transforma o botão Salvar em "Novo" e mantém habilitado
+        self.btn_salvar.config(text="Novo", command=self._novo_exame, state=tk.NORMAL)
         self.btn_cancelar.config(state=tk.DISABLED)
         
         # Habilita a seleção de médico

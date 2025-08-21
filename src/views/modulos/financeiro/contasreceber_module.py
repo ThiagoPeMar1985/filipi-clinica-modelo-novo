@@ -101,7 +101,7 @@ class ContasReceberModule:
             pass
 
         cols = (
-            'descricao','categoria','dia_venc','valor_prev','valor_atual','status','vencimento','dias_atraso'
+            'descricao','categoria','valor_prev','valor_atual','status','vencimento','dias_atraso'
         )
         self.tree = ttk.Treeview(right, columns=cols, show='headings', height=16, style='CR.Treeview')
         self.tree.pack(fill='both', expand=True, pady=(10, 0))
@@ -109,22 +109,20 @@ class ContasReceberModule:
         headers = {
             'descricao': 'Descrição',
             'categoria': 'Categoria',
-            'dia_venc': 'Dia Venc.',
-            'valor_prev': 'Valor Previsto',
-            'valor_atual': 'Valor Atual',
+            'valor_prev': 'Va.Previsto',
+            'valor_atual': 'Va.Atual',
             'status': 'Status',
             'vencimento': 'Vencimento',
             'dias_atraso': 'Dias Atraso',
         }
         widths = {
-            'descricao': 220,
-            'categoria': 120,
-            'dia_venc': 80,
-            'valor_prev': 120,
-            'valor_atual': 120,
-            'status': 100,
-            'vencimento': 120,
-            'dias_atraso': 100,
+            'descricao': 130,
+            'categoria': 60,
+            'valor_prev': 30,
+            'valor_atual': 30,
+            'status': 20,
+            'vencimento': 40,
+            'dias_atraso': 20,
         }
         for c in cols:
             self.tree.heading(c, text=headers[c])
@@ -194,8 +192,7 @@ class ContasReceberModule:
                     continue
             valores = (
                 row.get('descricao') or '',
-                row.get('categoria') or '',
-                int(row.get('dia_vencimento') or 0),
+                row.get('categoria') or '', 
                 (f"{float(row.get('valor_previsto') or 0):.2f}" if row.get('valor_previsto') is not None else '-'),
                 (f"{float(row.get('valor_atual') or 0):.2f}" if row.get('valor_atual') is not None else '-'),
                 ('Recebido' if (row.get('status') == 'recebido') else 'Aberto'),

@@ -11,9 +11,9 @@ class HorarioController:
             query = """
                 INSERT INTO horarios_disponiveis 
                 (medico_id, dia_semana, hora_inicio, hora_fim)
-                VALUES (%s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s) AS new
                 ON DUPLICATE KEY UPDATE
-                hora_fim = VALUES(hora_fim)
+                hora_fim = new.hora_fim
             """
             cursor.execute(query, (medico_id, dia_semana, hora_inicio, hora_fim))
             self.db_connection.commit()

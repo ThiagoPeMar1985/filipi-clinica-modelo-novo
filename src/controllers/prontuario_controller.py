@@ -172,9 +172,6 @@ class ProntuarioController:
         if not dados:
             return False, "Nenhum dado para atualizar."
         
-        # Adicionar data de atualização
-        dados['data_atualizacao'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
         # Preparar os pares campo=valor para a atualização
         sets = []
         valores = []

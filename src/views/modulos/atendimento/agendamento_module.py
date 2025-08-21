@@ -14,7 +14,7 @@ LOCALE_ATTEMPTS = (
     'Portuguese_Brazil', 'Portuguese_Brazil.1252', 'Portuguese_Brazilian', 'Portuguese',
     'pt_PT', 'pt_PT.UTF-8', 'Portuguese_Portugal',
     # Inglês (Linux/Windows)
-    'en_US', 'en_US.UTF-8',
+    'en_US', 'en_US.UTF-8'
     'English_United States', 'English_United States.1252', 'English'
 )
 from datetime import datetime, timedelta
@@ -374,14 +374,14 @@ class AgendamentoModule:
         self.filtro_medico = ttk.Combobox(self.filtros_frame, state='readonly', width=25 if not is_small_screen else 15)
         self.filtro_medico.pack(side='left', padx=(0, 5))
 
-        # Adicione esta linha para chamar a função quando o médico for selecionado
-        self.filtro_medico.bind('<<ComboboxSelected>>', self._ao_selecionar_medico)
+        # Seleção de médico na AGENDA: não abrir calendário automaticamente
+        self.filtro_medico.bind('<<ComboboxSelected>>', self._selecionar_medico_agenda)
                 
         # Botão de filtrar
         btn_filtrar = tk.Button(
             self.filtros_frame,
             text="Filtrar",
-            command=self._filtrar_agendamentos,
+            command=self._filtrar_agenda_por_medico,
             bg='#4a6fa5',
             fg='white',
             font=('Arial', 9 if is_small_screen else 10, 'bold'),
@@ -404,8 +404,57 @@ class AgendamentoModule:
         # Toolbar da tabela (ações rápidas)
         self.tabela_toolbar = tk.Frame(self.tabela_frame)
         self.tabela_toolbar.pack(fill='x', side='top', pady=(0, 6))
+        
+        # Botão para marcar/remover chegada (toggle conforme seleção)
+        self.btn_chegada = tk.Button(
+            self.tabela_toolbar,
+            text="Marcar Chegada",
+            command=self._marcar_chegada,
+            bg='#4CAF50',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            activebackground='#43a047',
+            activeforeground='white'
+        )
+        self.btn_chegada.pack(side='left')
 
-        # Removido botão "Marcar Chegada" (chegada deve ser vinculada ao pagamento)
+        # Botão: Levar para Consulta (abre Prontuário com paciente pré-selecionado)
+        self.btn_levar_consulta = tk.Button(
+            self.tabela_toolbar,
+            text="Levar p/ Consulta",
+            command=self._levar_para_consulta,
+            bg='#4a6fa5',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            activebackground='#3b5a7f',
+            activeforeground='white'
+        )
+        self.btn_levar_consulta.pack(side='left', padx=(8, 0))
+
+        # Botão: Levar para Exame (abre Exames com paciente pré-selecionado)
+        self.btn_levar_exame = tk.Button(
+            self.tabela_toolbar,
+            text="Levar p/ Exame",
+            command=self._levar_para_exame,
+            bg='#4a6fa5',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            bd=0,
+            padx=10,
+            pady=5,
+            relief='flat',
+            activebackground='#3b5a7f',
+            activeforeground='white'
+        )
+        self.btn_levar_exame.pack(side='left', padx=(8, 0))
 
         # Configurar a tabela de agendamentos
         colunas = ('hora', 'paciente', 'medico', 'tipo_agendamento', 'status', 'pagamento', 'chegada', 'id')
@@ -415,6 +464,8 @@ class AgendamentoModule:
             show='headings',
             selectmode='browse'
         )
+        # Atualiza o estado do botão ao trocar a seleção
+        self.tabela_agendamentos.bind('<<TreeviewSelect>>', self._atualizar_estado_botao_chegada)
         
         # Configurar colunas
         self.tabela_agendamentos.heading('hora', text='Hora')
@@ -427,13 +478,13 @@ class AgendamentoModule:
         self.tabela_agendamentos.heading('id', text='ID')  # Coluna oculta para o ID
         
         # Configurar largura das colunas
-        self.tabela_agendamentos.column('hora', width=80, anchor='center')
-        self.tabela_agendamentos.column('paciente', width=150)
-        self.tabela_agendamentos.column('medico', width=150)
-        self.tabela_agendamentos.column('tipo_agendamento', width=160)
-        self.tabela_agendamentos.column('status', width=100, anchor='center')
-        self.tabela_agendamentos.column('pagamento', width=90, anchor='center')
-        self.tabela_agendamentos.column('chegada', width=150, anchor='center')
+        self.tabela_agendamentos.column('hora', width=30, anchor='center')
+        self.tabela_agendamentos.column('paciente', width=100)
+        self.tabela_agendamentos.column('medico', width=100)
+        self.tabela_agendamentos.column('tipo_agendamento', width=90)
+        self.tabela_agendamentos.column('status', width=70, anchor='center')
+        self.tabela_agendamentos.column('pagamento', width=70, anchor='center')
+        self.tabela_agendamentos.column('chegada', width=70, anchor='center')
         self.tabela_agendamentos.column('id', width=0, stretch=False)  # Coluna oculta
         
         # Adicionar barra de rolagem
@@ -491,10 +542,13 @@ class AgendamentoModule:
                     # ISO: "YYYY-MM-DD HH:MM:SS" ou "YYYY-MM-DDTHH:MM:SS"
                     if len(s) >= 16 and s[4] == '-' and s[7] == '-' and (s[10] == ' ' or s[10] == 'T'):
                         hora_pt = s[11:16]
-                        data_pt = f"{s[8:10]}/{s[5:7]}"
-                        chegada_txt = f"{hora_pt} {data_pt}"
+                        chegada_txt = hora_pt  # Exibe somente HH:MM
                     else:
-                        chegada_txt = s
+                        # Tenta extrair somente a hora quando possível (ex.: HH:MM:SS -> HH:MM)
+                        if len(s) >= 5 and s[2] == ':' and (len(s) == 5 or (len(s) > 5 and s[5] == ':')):
+                            chegada_txt = s[:5]
+                        else:
+                            chegada_txt = s
             except Exception:
                 chegada_txt = str(chegada_raw) if chegada_raw is not None else ''
             self.tabela_agendamentos.insert(
@@ -511,6 +565,11 @@ class AgendamentoModule:
                     agendamento['id']  # ID da consulta
                 )
             )
+        # Atualiza o estado do botão de chegada após renderizar as linhas
+        try:
+            self._atualizar_estado_botao_chegada()
+        except Exception:
+            pass
 
     # Removido método _marcar_chegada (lógica de chegada será tratada no fluxo de pagamento)
 
@@ -555,6 +614,77 @@ class AgendamentoModule:
                 self.parent.after(30000, self._refresh_consultas_periodico)
             except Exception:
                 pass
+
+    def _obter_consulta_selecionada(self):
+        """Retorna o dicionário da consulta selecionada na tabela, ou None."""
+        try:
+            sel = self.tabela_agendamentos.selection()
+            if not sel:
+                return None
+            item_id = sel[0]
+            values = self.tabela_agendamentos.item(item_id, 'values')
+            if not values:
+                return None
+            consulta_id = values[-1]
+            # procura na lista atual
+            for c in (self.consultas or []):
+                try:
+                    if str(c.get('id')) == str(consulta_id):
+                        return c
+                except Exception:
+                    continue
+            return None
+        except Exception:
+            return None
+
+    def _levar_para_consulta(self):
+        """Navega para Consultas (Prontuário) com paciente pré-selecionado da linha escolhida."""
+        try:
+            consulta = self._obter_consulta_selecionada()
+            if not consulta:
+                messagebox.showwarning('Aviso', 'Selecione um agendamento na tabela.')
+                return
+            paciente_id = consulta.get('paciente_id')
+            if not paciente_id:
+                messagebox.showwarning('Aviso', 'Não foi possível identificar o paciente deste agendamento.')
+                return
+            # define pré-seleção no controller principal e navega
+            try:
+                setattr(self.controller, '_preselect_paciente_id', int(paciente_id))
+            except Exception:
+                setattr(self.controller, '_preselect_paciente_id', paciente_id)
+            # Armazena também o ID da consulta para vínculo com o prontuário
+            try:
+                setattr(self.controller, '_preselect_consulta_id', int(consulta.get('id')))
+            except Exception:
+                setattr(self.controller, '_preselect_consulta_id', consulta.get('id'))
+            self.controller.mostrar_conteudo_modulo('atendimento', 'consultas')
+        except Exception as e:
+            messagebox.showerror('Erro', f'Falha ao navegar para Consultas: {e}')
+
+    def _levar_para_exame(self):
+        """Navega para Exames com paciente pré-selecionado da linha escolhida."""
+        try:
+            consulta = self._obter_consulta_selecionada()
+            if not consulta:
+                messagebox.showwarning('Aviso', 'Selecione um agendamento na tabela.')
+                return
+            paciente_id = consulta.get('paciente_id')
+            if not paciente_id:
+                messagebox.showwarning('Aviso', 'Não foi possível identificar o paciente deste agendamento.')
+                return
+            try:
+                setattr(self.controller, '_preselect_paciente_id', int(paciente_id))
+            except Exception:
+                setattr(self.controller, '_preselect_paciente_id', paciente_id)
+            # Guarda o ID da consulta também para o fluxo de Exames/Laudo
+            try:
+                setattr(self.controller, '_preselect_consulta_id', int(consulta.get('id')))
+            except Exception:
+                setattr(self.controller, '_preselect_consulta_id', consulta.get('id'))
+            self.controller.mostrar_conteudo_modulo('atendimento', 'exames')
+        except Exception as e:
+            messagebox.showerror('Erro', f'Falha ao navegar para Exames: {e}')
     
     def _buscar_medicos(self):
         """Busca todos os médicos no banco de dados"""
@@ -623,14 +753,21 @@ class AgendamentoModule:
             if hasattr(self, 'filtro_medico'):
                 self.filtro_medico['values'] = ["Todos"] + [m["nome"] for m in self.medicos]
                 self.filtro_medico.set("Todos")
-            
-            # Buscar e exibir consultas do dia atual
-            hoje = datetime.now().strftime('%Y-%m-%d')
-            self.consultas = self._buscar_agendamentos(data_inicio=hoje, data_fim=hoje)
-            
-            # Verificar se a tabela de agendamentos já foi criada antes de tentar atualizá-la
-            if hasattr(self, 'tabela_agendamentos'):
-                self._atualizar_tabela_agendamentos()
+            # Tenta pré-selecionar médico vinculado ao usuário logado e aplicar filtro inicial
+            pre_aplicado = False
+            try:
+                pre_aplicado = self._preselect_medico_usuario()
+            except Exception:
+                pre_aplicado = False
+
+            if not pre_aplicado:
+                # Buscar e exibir consultas do dia atual (sem filtro de médico)
+                hoje = datetime.now().strftime('%Y-%m-%d')
+                self.consultas = self._buscar_agendamentos(data_inicio=hoje, data_fim=hoje)
+                
+                # Verificar se a tabela de agendamentos já foi criada antes de tentar atualizá-la
+                if hasattr(self, 'tabela_agendamentos'):
+                    self._atualizar_tabela_agendamentos()
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar dados: {str(e)}")
@@ -674,6 +811,270 @@ class AgendamentoModule:
             
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao filtrar agendamentos: {str(e)}")
+
+    def _filtrar_agenda_por_medico(self, event=None):
+        """AGENDA: Ao clicar em Filtrar, aplica SOMENTE o médico selecionado
+        na data que já está exibida (ou hoje se nada estiver selecionado),
+        atualizando apenas a tabela, sem exigir escolha de data."""
+        try:
+            # Data exibida no calendário (selec.) ou hoje
+            try:
+                data_sel = self.calendario.selection_get()
+            except Exception:
+                data_sel = datetime.now()
+            data_fmt = data_sel.strftime('%Y-%m-%d')
+
+            # Médico selecionado
+            nome_medico = self.filtro_medico.get() if hasattr(self, 'filtro_medico') else None
+            if not nome_medico or nome_medico == 'Todos':
+                messagebox.showwarning('Aviso', 'Selecione um médico para aplicar o filtro nesta tela.')
+                return
+
+            medico_id = self._obter_id_medico_por_nome(nome_medico)
+            if not medico_id:
+                messagebox.showwarning('Aviso', 'Médico não encontrado!')
+                return
+
+            # Busca apenas para o médico selecionado no dia exibido
+            self.consultas = self.agenda_controller.buscar_consultas_por_medico(
+                medico_id=medico_id,
+                data_inicio=data_fmt,
+                data_fim=data_fmt
+            )
+            self._atualizar_tabela_agendamentos()
+        except Exception as e:
+            messagebox.showerror('Erro', f'Erro ao filtrar agendamentos (agenda): {str(e)}')
+
+    def _selecionar_medico_agenda(self, event=None):
+        """AGENDA: Handler de seleção do médico que NÃO abre calendário e NÃO auto-filtra.
+        Apenas carrega exames/tipos do médico (se aplicável) e mantém a seleção para o botão Filtrar."""
+        try:
+            nome_medico = self.filtro_medico.get()
+            if not nome_medico or nome_medico == "Todos":
+                return
+            medico_id = self._obter_id_medico_por_nome(nome_medico)
+            if not medico_id:
+                return
+            # Carrega exames do médico (para outros componentes da tela), mas NÃO abre calendário
+            try:
+                exames = self.agenda_controller.buscar_exames_por_medico(medico_id)
+                self.exames_medico = {str(ex['id']): ex for ex in exames}
+                if hasattr(self, 'combobox_exame'):
+                    valores_exames = [(str(e['id']), e['nome']) for e in exames]
+                    self._atualizar_combobox_exames(valores_exames)
+            except Exception:
+                pass
+            # Sem chamadas a _mostrar_calendario_medico() aqui
+        except Exception:
+            pass
+
+    def _preselect_medico_usuario(self) -> bool:
+        """Se o usuário logado estiver vinculado a um médico, pré-seleciona-o e
+        aplica o filtro inicial para o dia atual SEM abrir calendário.
+
+        Retorna True se aplicou um filtro inicial por médico, caso contrário False.
+        """
+        try:
+            # Obtém usuário logado do controller principal, se existir
+            usuario = None
+            try:
+                usuario = getattr(self.controller, 'usuario', None)
+            except Exception:
+                usuario = None
+            if not usuario:
+                return False
+
+            # Normaliza dict
+            if not isinstance(usuario, dict):
+                u = {}
+                for attr in ('id', 'nome', 'nivel', 'login', 'telefone'):
+                    if hasattr(usuario, attr):
+                        u[attr] = getattr(usuario, attr)
+                usuario = u or None
+            if not usuario:
+                return False
+
+            # Resolve médico por usuario_id diretamente na base
+            medico = self._obter_medico_por_usuario_id(usuario.get('id'))
+            # Fallback: tenta por nome do usuário se nada encontrado
+            if not medico and usuario.get('nome'):
+                try:
+                    nome_usr = str(usuario['nome']).strip().lower()
+                    medico = next((m for m in (self.medicos or []) if str(m.get('nome', '')).strip().lower() == nome_usr), None)
+                except Exception:
+                    medico = None
+
+            if not medico:
+                return False
+
+            # Define combobox para o médico encontrado (não dispara calendário)
+            if hasattr(self, 'filtro_medico') and medico.get('nome'):
+                try:
+                    self.filtro_medico.set(medico['nome'])
+                except Exception:
+                    pass
+                # Carrega exames do médico para demais componentes
+                try:
+                    self._selecionar_medico_agenda()
+                except Exception:
+                    pass
+
+            # Aplica filtro inicial do dia para este médico
+            try:
+                hoje = datetime.now().strftime('%Y-%m-%d')
+                mid = medico.get('id') or self._obter_id_medico_por_nome(medico.get('nome'))
+                if not mid:
+                    return False
+                self.consultas = self.agenda_controller.buscar_consultas_por_medico(
+                    medico_id=mid,
+                    data_inicio=hoje,
+                    data_fim=hoje
+                )
+                if hasattr(self, 'tabela_agendamentos'):
+                    self._atualizar_tabela_agendamentos()
+                return True
+            except Exception:
+                return False
+        except Exception:
+            return False
+
+    def _obter_medico_por_usuario_id(self, usuario_id):
+        """Busca um médico vinculado a um usuario_id diretamente no banco.
+        Retorna dict do médico (com ao menos id e nome) ou None.
+        """
+        try:
+            if not usuario_id or not self.db_connection:
+                return None
+            cur = self.db_connection.cursor(dictionary=True)
+            try:
+                cur.execute("SELECT id, nome FROM medicos WHERE usuario_id = %s LIMIT 1", (usuario_id,))
+                return cur.fetchone()
+            finally:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+        except Exception:
+            return None
+
+    def _marcar_chegada(self):
+        """Marca a chegada manualmente para a consulta selecionada na tabela.
+        Útil para pacientes que pagaram antecipadamente (pagamento em data diferente da consulta)."""
+        try:
+            sel = self.tabela_agendamentos.selection()
+            if not sel:
+                messagebox.showwarning('Aviso', 'Selecione uma consulta na tabela para marcar a chegada.')
+                return
+            item_id = sel[0]
+            valores = self.tabela_agendamentos.item(item_id, 'values')
+            if not valores or len(valores) < 8:
+                messagebox.showerror('Erro', 'Não foi possível identificar a consulta selecionada.')
+                return
+            consulta_id = int(valores[7])
+
+            ok, msg = self.agenda_controller.marcar_chegada(consulta_id)
+            if not ok:
+                messagebox.showerror('Erro', msg)
+                return
+            # Atualiza a listagem do dia exibido, preservando filtro do médico
+            try:
+                data_sel = self.calendario.selection_get()
+            except Exception:
+                data_sel = datetime.now()
+            data_fmt = data_sel.strftime('%Y-%m-%d')
+            medico_nome = self.filtro_medico.get() if hasattr(self, 'filtro_medico') else 'Todos'
+            if medico_nome and medico_nome != 'Todos':
+                mid = self._obter_id_medico_por_nome(medico_nome)
+                if mid:
+                    self.consultas = self.agenda_controller.buscar_consultas_por_medico(mid, data_fmt, data_fmt)
+            else:
+                self.consultas = self._buscar_agendamentos(data_inicio=data_fmt, data_fim=data_fmt)
+            self._atualizar_tabela_agendamentos()
+            # Atualiza o estado do botão conforme a nova seleção/linhas
+            self._atualizar_estado_botao_chegada()
+        except Exception as e:
+            messagebox.showerror('Erro', f'Falha ao marcar chegada: {e}')
+
+    def _remover_chegada(self):
+        """Remove a marcação de chegada para a consulta selecionada."""
+        try:
+            sel = self.tabela_agendamentos.selection()
+            if not sel:
+                messagebox.showwarning('Aviso', 'Selecione uma consulta na tabela para remover a chegada.')
+                return
+            item_id = sel[0]
+            valores = self.tabela_agendamentos.item(item_id, 'values')
+            if not valores or len(valores) < 8:
+                messagebox.showerror('Erro', 'Não foi possível identificar a consulta selecionada.')
+                return
+            consulta_id = int(valores[7])
+
+            ok, msg = self.agenda_controller.remover_chegada(consulta_id)
+            if not ok:
+                messagebox.showerror('Erro', msg)
+                return
+
+            # Recarrega o dia mantendo o filtro
+            try:
+                data_sel = self.calendario.selection_get()
+            except Exception:
+                data_sel = datetime.now()
+            data_fmt = data_sel.strftime('%Y-%m-%d')
+            medico_nome = self.filtro_medico.get() if hasattr(self, 'filtro_medico') else 'Todos'
+            if medico_nome and medico_nome != 'Todos':
+                mid = self._obter_id_medico_por_nome(medico_nome)
+                if mid:
+                    self.consultas = self.agenda_controller.buscar_consultas_por_medico(mid, data_fmt, data_fmt)
+            else:
+                self.consultas = self._buscar_agendamentos(data_inicio=data_fmt, data_fim=data_fmt)
+            self._atualizar_tabela_agendamentos()
+            self._atualizar_estado_botao_chegada()
+        except Exception as e:
+            messagebox.showerror('Erro', f'Falha ao remover chegada: {e}')
+
+    def _atualizar_estado_botao_chegada(self, event=None):
+        """Altera o texto/cor/ação do botão para Marcar ou Remover Chegada conforme a seleção."""
+        try:
+            sel = self.tabela_agendamentos.selection()
+            if not sel:
+                # Sem seleção: volta para padrão "Marcar Chegada"
+                self._configurar_botao_chegada(modo='marcar')
+                return
+            item_id = sel[0]
+            valores = self.tabela_agendamentos.item(item_id, 'values')
+            # Coluna 'chegada' é o índice 6
+            chegada_val = valores[6] if valores and len(valores) > 6 else ''
+            if chegada_val:
+                self._configurar_botao_chegada(modo='remover')
+            else:
+                self._configurar_botao_chegada(modo='marcar')
+        except Exception:
+            # Em caso de qualquer falha, mantém botão no modo marcar
+            self._configurar_botao_chegada(modo='marcar')
+
+    def _configurar_botao_chegada(self, modo: str):
+        """Aplica tema/ação ao botão de chegada.
+        modo: 'marcar' | 'remover'"""
+        if not hasattr(self, 'btn_chegada'):
+            return
+        if modo == 'remover':
+            self.btn_chegada.config(
+                text='Remover Chegada',
+                command=self._remover_chegada,
+                bg='#E53935',
+                activebackground='#d32f2f',
+                fg='white',
+                activeforeground='white'
+            )
+        else:
+            self.btn_chegada.config(
+                text='Marcar Chegada',
+                command=self._marcar_chegada,
+                bg='#4CAF50',
+                activebackground='#43a047',
+                fg='white',
+                activeforeground='white'
+            )
 
     def _ao_selecionar_medico(self, event=None):
         """Chamado quando um médico é selecionado"""
@@ -767,11 +1168,11 @@ class AgendamentoModule:
             
             # Centralizar a janela
             window_width = 500
-            window_height = 700  # Aumentado para acomodar o novo campo
+            window_height = 700  # Altura ajustada para 700px
             screen_width = self.janela_agendamento.winfo_screenwidth()
             screen_height = self.janela_agendamento.winfo_screenheight()
             x = (screen_width // 2) - (window_width // 2)
-            y = (screen_height // 2) - (window_height // 2)
+            y = 0  # Posiciona no topo da tela
             self.janela_agendamento.geometry(f'{window_width}x{window_height}+{x}+{y}')
             
             # Frame principal
@@ -835,8 +1236,14 @@ class AgendamentoModule:
             
             # Botão para novo paciente
             def abrir_cadastro_paciente():
-                # Implemente a abertura do cadastro de paciente aqui
-                pass
+                try:
+                    if hasattr(self, 'controller') and self.controller:
+                        # Navega para o módulo de Cadastro diretamente no formulário de Novo Paciente
+                        self.controller.mostrar_conteudo_modulo('cadastro', 'novo_cliente')
+                    else:
+                        messagebox.showwarning("Aviso", "Controlador indisponível para abrir o Cadastro.")
+                except Exception as e:
+                    messagebox.showerror("Erro", f"Não foi possível abrir o Cadastro de Pacientes:\n{e}")
                 
             btn_novo_paciente = tk.Button(
                 campos_frame,

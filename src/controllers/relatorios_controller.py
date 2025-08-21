@@ -55,11 +55,10 @@ class RelatoriosController:
                         FROM contas_pagar
                         WHERE pago_em IS NULL AND (status IS NULL OR status<>'pago')
                           AND vencimento IS NOT NULL
-                          AND vencimento < NOW()
-                          AND vencimento BETWEEN %s AND %s
+                          AND vencimento <= %s
                         ORDER BY vencimento ASC, id ASC
                         """,
-                        (dt_ini, dt_fim)
+                        (dt_fim,)
                     )
             else:
                 if situacao.startswith('Quitadas'):
@@ -92,11 +91,10 @@ class RelatoriosController:
                         FROM contas_receber
                         WHERE pago_em IS NULL AND (status IS NULL OR status<>'recebido')
                           AND vencimento IS NOT NULL
-                          AND vencimento < NOW()
-                          AND vencimento BETWEEN %s AND %s
+                          AND vencimento <= %s
                         ORDER BY vencimento ASC, id ASC
                         """,
-                        (dt_ini, dt_fim)
+                        (dt_fim,)
                     )
             rows = cur.fetchall() or []
             # total: somatório do valor_atual (quando existir) senão valor_previsto

@@ -94,8 +94,8 @@ class CadastroController:
                 # Inserção
                 query = """
                     INSERT INTO medicos 
-                    (nome, especialidade, crm, telefone, email, usuario_id, data_cadastro)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    (nome, especialidade, crm, telefone, email, usuario_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                 """
                 valores = (nome, dados['especialidade'], crm, telefone, email, usuario_id)
             
@@ -400,6 +400,16 @@ class CadastroController:
         if not self.db:
             return False
 
+        try:
+            cursor = self.db.cursor()
+            cursor.execute("DELETE FROM receitas WHERE id = %s", (receita_id,))
+            self.db.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Erro ao excluir receita: {e}")
+            self.db.rollback()
+            return False
+
     def _ensure_exames_consultas_valor(self):
         """Garante que a tabela exames_consultas possui a coluna 'valor'."""
         if not self.db:
@@ -418,15 +428,6 @@ class CadastroController:
             except Exception:
                 pass
             print(f"Aviso: não foi possível garantir a coluna 'valor' em exames_consultas: {e}")
-        try:
-            cursor = self.db.cursor()
-            cursor.execute("DELETE FROM receitas WHERE id = %s", (receita_id,))
-            self.db.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            print(f"Erro ao excluir receita: {e}")
-            self.db.rollback()
-            return False
 
     def listar_medicos_receitas(self):
         """Método temporário para depuração."""

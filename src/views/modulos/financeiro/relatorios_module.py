@@ -388,7 +388,7 @@ class RelatoriosModule:
         # Centraliza
         try:
             dlg.update_idletasks()
-            w = 1130
+            w = 1100
             h = 560
             sw = dlg.winfo_screenwidth()
             sh = dlg.winfo_screenheight()
@@ -818,8 +818,8 @@ class RelatoriosModule:
         # Tenta centralizar
         try:
             dlg.update_idletasks()
-            w = 900
-            h = 520
+            w = 1100
+            h = 560
             sw = dlg.winfo_screenwidth()
             sh = dlg.winfo_screenheight()
             x = (sw - w) // 2
@@ -1010,8 +1010,8 @@ class RelatoriosModule:
         # Centraliza
         try:
             dlg.update_idletasks()
-            w = 900
-            h = 520
+            w = 1100
+            h = 560
             sw = dlg.winfo_screenwidth()
             sh = dlg.winfo_screenheight()
             x = (sw - w) // 2
